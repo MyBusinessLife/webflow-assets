@@ -91,6 +91,18 @@
   init();
 
   async function init() {
+
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    if (authError || !authData?.user) {
+      els.list.innerHTML = `
+        <div class="ti-empty">
+          <div class="ti-empty-title">Session expirée</div>
+          <div class="ti-empty-body">Merci de vous reconnecter.</div>
+        </div>
+      `;
+      return;
+    }
+
     showSkeleton(els.list);
     try {
       const { data: authData, error: authError } = await supabase.auth.getUser();
