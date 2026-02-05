@@ -953,20 +953,27 @@ window.Webflow.push(async function () {
     modal.querySelector(".f-equipment").value = intervention.equipment_needed || "";
     modal.querySelector(".f-infos").value = intervention.infos || "";
     modal.querySelector(".f-observations").value = intervention.observations || "";
-
+  
     const techSelect = modal.querySelector(".f-techs");
-    const selectedIds = (assigns || []).map(a => a.user_id);
+  
+    // ✅ Techs sélectionnés = assignations + techs présents dans les compensations
+    const assignIds = (assigns || []).map(a => a.user_id);
+    const compTechIds = (compensations || []).map(c => c.tech_id).filter(Boolean);
+    const mergedIds = Array.from(new Set([...assignIds, ...compTechIds]));
+  
     Array.from(techSelect.options || []).forEach(o => {
-      o.selected = selectedIds.includes(o.value);
+      o.selected = mergedIds.includes(o.value);
     });
-
+  
+    // ✅ Ici on passe bien toutes les compensations
     renderCompRows(compensations || []);
     renderExpenseRows(expenses || []);
     renderFilesList(files || []);
     renderPvSection(pv || null);
-
+  
     refreshSummary();
   }
+
 
   // =========================
   // COMPENSATIONS
@@ -980,36 +987,34 @@ window.Webflow.push(async function () {
   function renderCompRows(existing = null) {
     const modal = ensureModalExists();
     const wrap = modal.querySelector(".comp-rows");
-    const selected = getSelectedTechs();
-
-    if (!existing) {
-      const current = new Map();
-      modal.querySelectorAll(".comp-row").forEach(row => {
-        current.set(row.dataset.techId, {
-          tech_id: row.dataset.techId,
-          amount_cents: parseEurosToCents(row.querySelector(".c-amount").value),
-          status: row.querySelector(".c-status").value.trim() || null,
-          currency: row.querySelector(".c-currency").value.trim() || "EUR",
-          notes: row.querySelector(".c-notes").value.trim() || null
-        });
-      });
-      existing = Array.from(current.values());
+  
+    // Si aucune sélection tech, on utilise directement les compensations
+    let selected = getSelectedTechs();
+  
+    if (!selected.length && existing?.length) {
+      // Mode fallback: affichage basé uniquement sur les compensations
+      selected = existing.map(c => ({
+        id: c.tech_id,
+        name: c.tech_id // nom remplacé ensuite si possible
+      }));
     }
-
+  
     const byTech = new Map();
-    existing.forEach(c => {
+    (existing || []).forEach(c => {
       if (c.tech_id) byTech.set(c.tech_id, c);
     });
-
+  
     wrap.innerHTML = "";
     selected.forEach((t) => {
       const comp = byTech.get(t.id) || {};
+      const displayName = t.name && t.name !== t.id ? t.name : (t.name || t.id);
+  
       const row = document.createElement("div");
       row.className = "itv-row comp-row";
       row.dataset.techId = t.id;
       row.innerHTML = `
         <div>
-          <div style="font-weight:700;">${t.name}</div>
+          <div style="font-weight:700;">${displayName}</div>
           <small>${t.id}</small>
         </div>
         <div><input class="c-amount" type="text" placeholder="ex: 50,00" value="${centsToEurosInput(comp.amount_cents)}" /></div>
@@ -1026,7 +1031,7 @@ window.Webflow.push(async function () {
       `;
       wrap.appendChild(row);
     });
-
+  
     const datalist = document.getElementById("comp-status-list");
     if (!datalist) {
       const dl = document.createElement("datalist");
@@ -1035,6 +1040,7 @@ window.Webflow.push(async function () {
       document.body.appendChild(dl);
     }
   }
+
 
   function computeCompTotalCents() {
     const modal = ensureModalExists();
