@@ -27,6 +27,20 @@
     ]
   };
 
+  const supabase =
+    window.__MBL_SUPABASE__ ||
+    window.__techSupabase ||
+    window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        storageKey: "mbl-extranet-auth"
+      }
+    });
+
+  window.__techSupabase = supabase;
+
   const STR = {
     title: "Mes interventions",
     subtitle: "Suivi terrain et validation rapide",
