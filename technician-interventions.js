@@ -60,7 +60,7 @@
     startCTA: "Demarrer",
     flowCTA: "Parcours",
     arriveCTA: "Arrive sur place",
-    nextCTA: "Continuer",
+    continueCTA: "Continuer",
     validateCTA: "Valider l'intervention",
     notesLabel: "Observations",
     diagnosticLabel: "Diagnostic",
@@ -84,6 +84,8 @@
     toastProductsInvalid: "Produits incomplets. Verifie les quantites et prix.",
     toastNeedDiagnostic: "Renseigne le diagnostic",
     toastNeedResolution: "Renseigne la resolution",
+    toastNeedPhotos: "Ajoute au moins une photo",
+    toastNeedSignature: "Signature obligatoire",
     mapChooseTitle: "Choisir une app",
     mapPlans: "Plans",
     mapGoogle: "Google Maps",
@@ -232,9 +234,6 @@
 
     const pvUrl = getPvUrl(row);
     const remuneration = formatMoney(getFieldValue(row, CONFIG.REMUNERATION_FIELD));
-    const description = getFirstText(row, ["description", "notes_tech", "tech_notes", "notes", "problem", "issue"]);
-    const startedAt = row.started_at ? formatDateFR(row.started_at) : "";
-    const completedAt = row.completed_at ? formatDateFR(row.completed_at) : "";
 
     const showStart = !isStarted && !isDone && !isCanceled;
     const showFlow = isStarted && !isDone && !isCanceled;
@@ -254,7 +253,7 @@
       <div class="ti-actions">
         <a class="ti-btn ti-btn--ghost ${phoneNormalized ? "" : "is-disabled"}" data-action="call" ${phoneNormalized ? `href="tel:${phoneNormalized}"` : ""}>${STR.callCTA}</a>
         <button class="ti-btn ti-btn--ghost ${address ? "" : "is-disabled"}" data-action="map" ${address ? "" : "disabled"}>${STR.mapCTA}</button>
-        ${pvUrl ? `<a class="ti-btn ti-btn--ghost" href="${pvUrl}" target="_blank" rel="noopener" download>${STR.pvCTA}</a>` : ""}
+        ${pvUrl ? `<button class="ti-btn ti-btn--ghost" data-action="pv">${STR.pvCTA}</button>` : ""}
         <button class="ti-btn ti-btn--ghost" data-action="toggle-details">${STR.detailsCTA}</button>
         ${showStart ? `<button class="ti-btn ti-btn--start" data-action="start">${STR.startCTA}</button>` : ""}
         ${showFlow ? `<button class="ti-btn ti-btn--primary" data-action="toggle-flow">${STR.flowCTA}</button>` : ""}
@@ -269,15 +268,7 @@
           ${infoRow("Adresse", address)}
           ${infoRow("Telephone", phoneReadable)}
           ${infoRow("Remuneration", remuneration)}
-          ${infoRow("Demarree", startedAt)}
-          ${infoRow("Terminee", completedAt)}
-          ${infoRow("Contact", pickFirst(row, ["contact_name", "client_contact", "contact"]))}
-          ${infoRow("Telephone contact", pickFirst(row, ["contact_phone", "client_phone", "phone_contact"]))}
-          ${infoRow("Email contact", pickFirst(row, ["contact_email", "client_email", "email_contact"]))}
-          ${infoRow("Consignes", description)}
-          ${infoRow("Acces", buildAccessInfo(row))}
-          ${infoRow("Materiel", buildEquipmentInfo(row))}
-          ${pvUrl ? infoRow("PV vierge", `<a class="ti-link" href="${pvUrl}" target="_blank" rel="noopener">${STR.pvCTA}</a>`, true) : ""}
+          ${pvUrl ? infoRow("PV vierge", `<button class="ti-link" data-action="pv">${STR.pvCTA}</button>`, true) : ""}
         </div>
       </div>
 
@@ -288,6 +279,7 @@
     const flowBtn = card.querySelector('[data-action="toggle-flow"]');
     const startBtn = card.querySelector('[data-action="start"]');
     const mapBtn = card.querySelector('[data-action="map"]');
+    const pvBtn = card.querySelector('[data-action="pv"]');
     const detailsPanel = card.querySelector(".ti-details");
     const flowPanel = card.querySelector(".ti-flow");
 
@@ -318,11 +310,17 @@
       mapBtn.addEventListener("click", () => openMapSheet(address));
     }
 
+    if (pvBtn) {
+      pvBtn.addEventListener("click", () => openPv(row));
+    }
+
     return card;
   }
 
   function renderFlow(container, row) {
     const id = row.id;
+    const requiresSignature = getFlag(row.requires_signature, CONFIG.REQUIRE_SIGNATURE_DEFAULT);
+    const requiresPhotos = getFlag(row.requires_photos, CONFIG.REQUIRE_PHOTOS_DEFAULT);
 
     state.checklist[id] = state.checklist[id] || getChecklist(row).map(() => false);
     state.notes[id] = state.notes[id] || "";
@@ -335,126 +333,126 @@
     state.resolution[id] = state.resolution[id] || "";
     state.observations[id] = state.observations[id] || "";
 
-    const step = getStep(id);
-    const pvUrl = getPvUrl(row);
+    const steps = getFlowSteps(requiresSignature);
+    const current = getStep(id, steps.length);
 
     container.innerHTML = `
       <div class="ti-steps">
-        <div class="ti-step" data-step="1">1. Arrivee</div>
-        <div class="ti-step" data-step="2">2. Diagnostic</div>
-        <div class="ti-step" data-step="3">3. Resolution</div>
-        <div class="ti-step" data-step="4">4. Validation</div>
+        ${steps.map((s, i) => `<div class="ti-step ${i+1 < current ? "is-done" : i+1 === current ? "is-active" : ""}">${i+1}. ${s.label}</div>`).join("")}
       </div>
 
-      <div class="ti-flow-section" data-flow="1">
+      <div class="ti-flow-section" data-flow="arrive">
         <div class="ti-flow-title">Informations & PV</div>
         <div class="ti-flow-info">
           ${infoRow("Adresse", row.address || "")}
           ${infoRow("Date", formatDateFR(row.start_at) || "")}
           ${infoRow("Telephone", formatPhoneReadable(row.support_phone || "") || "")}
-          ${pvUrl ? infoRow("PV vierge", `<a class="ti-link" href="${pvUrl}" target="_blank" rel="noopener">${STR.pvCTA}</a>`, true) : ""}
+          ${getPvUrl(row) ? infoRow("PV vierge", `<button class="ti-link" data-action="pv">${STR.pvCTA}</button>`, true) : ""}
         </div>
         <button class="ti-btn ti-btn--primary" data-action="arrive">${STR.arriveCTA}</button>
       </div>
 
-      <div class="ti-flow-section" data-flow="2">
+      <div class="ti-flow-section" data-flow="diagnostic">
         <div class="ti-flow-title">${STR.diagnosticLabel}</div>
         <textarea class="ti-textarea" data-field="diagnostic" rows="4" placeholder="Decris le diagnostic...">${escapeHTML(state.diagnostic[id])}</textarea>
-        <button class="ti-btn ti-btn--primary" data-action="next-diagnostic">${STR.nextCTA}</button>
+        <button class="ti-btn ti-btn--primary" data-action="next-diagnostic">${STR.continueCTA}</button>
       </div>
 
-      <div class="ti-flow-section" data-flow="3">
+      <div class="ti-flow-section" data-flow="resolution">
         <div class="ti-flow-title">${STR.resolutionLabel}</div>
         <textarea class="ti-textarea" data-field="resolution" rows="4" placeholder="Decris la resolution...">${escapeHTML(state.resolution[id])}</textarea>
-        <button class="ti-btn ti-btn--primary" data-action="next-resolution">${STR.nextCTA}</button>
+        <button class="ti-btn ti-btn--primary" data-action="next-resolution">${STR.continueCTA}</button>
       </div>
 
-      <div class="ti-flow-section" data-flow="4">
-        <div class="ti-flow-title">Validation</div>
-
-        <div class="ti-block">
-          <div class="ti-label">${STR.checklistLabel}</div>
-          <div class="ti-checklist" data-checklist></div>
+      <div class="ti-flow-section" data-flow="photos">
+        <div class="ti-flow-title">${STR.photosLabel}</div>
+        <div class="ti-hint">${STR.photosHint}</div>
+        <div class="ti-photo-actions">
+          <button class="ti-btn ti-btn--ghost ti-btn--xs" data-action="photo-camera">Prendre une photo</button>
+          <button class="ti-btn ti-btn--ghost ti-btn--xs" data-action="photo-gallery">Ajouter depuis galerie</button>
+          <input type="file" class="ti-file" data-camera accept="image/*" capture="environment" />
+          <input type="file" class="ti-file" data-gallery accept="image/*" multiple />
         </div>
+        <div class="ti-previews" data-previews></div>
+        <button class="ti-btn ti-btn--primary" data-action="next-photos">${STR.continueCTA}</button>
+      </div>
 
-        <div class="ti-block">
-          <div class="ti-label">${STR.photosLabel}</div>
-          <div class="ti-hint">${STR.photosHint}</div>
-          <div class="ti-photo-actions">
-            <button class="ti-btn ti-btn--ghost ti-btn--xs" data-action="photo-camera">Prendre une photo</button>
-            <button class="ti-btn ti-btn--ghost ti-btn--xs" data-action="photo-gallery">Ajouter depuis galerie</button>
-            <input type="file" class="ti-file" data-camera accept="image/*" capture="environment" />
-            <input type="file" class="ti-file" data-gallery accept="image/*" multiple />
-          </div>
-          <div class="ti-previews" data-previews></div>
+      <div class="ti-flow-section" data-flow="products">
+        <div class="ti-flow-title">Produits / Depenses</div>
+        <div class="ti-products" data-products></div>
+        <button type="button" class="ti-btn ti-btn--ghost ti-btn--xs" data-action="add-product">Ajouter un produit</button>
+        <div class="ti-products-total" data-products-total></div>
+        <button class="ti-btn ti-btn--primary" data-action="next-products">${STR.continueCTA}</button>
+      </div>
+
+      ${requiresSignature ? `
+      <div class="ti-flow-section" data-flow="signature">
+        <div class="ti-flow-title">${STR.signatureLabel}</div>
+        <div class="ti-hint">${STR.signatureHint}</div>
+        <div class="ti-signature">
+          <canvas class="ti-signature-canvas"></canvas>
+          <button type="button" class="ti-btn ti-btn--ghost ti-btn--xs" data-action="sig-clear">${STR.signatureClear}</button>
         </div>
+        <button class="ti-btn ti-btn--primary" data-action="next-signature">${STR.continueCTA}</button>
+      </div>
+      ` : ""}
 
-        <div class="ti-block">
-          <div class="ti-label">Produits / Depenses</div>
-          <div class="ti-products" data-products></div>
-          <button type="button" class="ti-btn ti-btn--ghost ti-btn--xs" data-action="add-product">Ajouter un produit</button>
-          <div class="ti-products-total" data-products-total></div>
-        </div>
-
-        ${getFlag(row.requires_signature, CONFIG.REQUIRE_SIGNATURE_DEFAULT) ? `
-          <div class="ti-block">
-            <div class="ti-label">${STR.signatureLabel} *</div>
-            <div class="ti-hint">${STR.signatureHint}</div>
-            <div class="ti-signature">
-              <canvas class="ti-signature-canvas"></canvas>
-              <button type="button" class="ti-btn ti-btn--ghost ti-btn--xs" data-action="sig-clear">${STR.signatureClear}</button>
-            </div>
-          </div>
-        ` : ""}
-
+      <div class="ti-flow-section" data-flow="observations">
+        <div class="ti-flow-title">${STR.notesLabel}</div>
+        <textarea class="ti-textarea" data-field="observations" rows="4" placeholder="Observations libres...">${escapeHTML(state.observations[id])}</textarea>
         <div class="ti-block">
           <div class="ti-label">${STR.signedPvLabel}</div>
           <div class="ti-hint">${STR.signedPvHint}</div>
           <input type="file" class="ti-file" data-signed-pv accept="application/pdf,image/*" />
         </div>
+        <button class="ti-btn ti-btn--primary" data-action="next-observations">${STR.continueCTA}</button>
+      </div>
 
+      <div class="ti-flow-section" data-flow="validate">
+        <div class="ti-flow-title">Validation</div>
         <div class="ti-block">
-          <div class="ti-label">${STR.notesLabel}</div>
-          <textarea class="ti-textarea" data-field="observations" rows="4" placeholder="Observations libres...">${escapeHTML(state.observations[id])}</textarea>
+          <div class="ti-label">${STR.checklistLabel}</div>
+          <div class="ti-checklist" data-checklist></div>
         </div>
-
-        <div class="ti-validate-actions">
-          <button class="ti-btn ti-btn--primary" data-action="confirm-validate">${STR.validateCTA}</button>
-        </div>
+        <button class="ti-btn ti-btn--primary" data-action="confirm-validate">${STR.validateCTA}</button>
       </div>
     `;
 
-    const sections = Array.from(container.querySelectorAll("[data-flow]"));
-    sections.forEach((s) => s.hidden = true);
-    showFlowStep(container, step);
+    // Hide all sections, show only current
+    container.querySelectorAll("[data-flow]").forEach((el) => el.hidden = true);
+    showFlowStep(container, steps[current - 1].key);
 
-    container.querySelectorAll("[data-step]").forEach((el) => {
-      const s = Number(el.dataset.step);
-      el.classList.toggle("is-done", s < step);
-      el.classList.toggle("is-active", s === step);
+    // Bind PV button
+    container.querySelectorAll("[data-action='pv']").forEach((b) => b.addEventListener("click", () => openPv(row)));
+
+    // Diagnostic / Resolution
+    const diag = container.querySelector("[data-field='diagnostic']");
+    const reso = container.querySelector("[data-field='resolution']");
+    const obs = container.querySelector("[data-field='observations']");
+    if (diag) diag.addEventListener("input", () => state.diagnostic[id] = diag.value);
+    if (reso) reso.addEventListener("input", () => state.resolution[id] = reso.value);
+    if (obs) obs.addEventListener("input", () => state.observations[id] = obs.value);
+
+    // Arrivee
+    const arriveBtn = container.querySelector("[data-action='arrive']");
+    if (arriveBtn) arriveBtn.addEventListener("click", () => {
+      markArrived(row);
+      goNext(container, steps, id);
     });
 
-    const checklistWrap = container.querySelector("[data-checklist]");
-    const list = getChecklist(row);
-    checklistWrap.innerHTML = "";
-    list.forEach((label, idx) => {
-      const item = document.createElement("label");
-      item.className = "ti-check";
-      item.innerHTML = `
-        <input type="checkbox" data-check-index="${idx}" ${state.checklist[id][idx] ? "checked" : ""} />
-        <span>${escapeHTML(label)}</span>
-      `;
-      checklistWrap.appendChild(item);
+    const nextDiag = container.querySelector("[data-action='next-diagnostic']");
+    if (nextDiag) nextDiag.addEventListener("click", () => {
+      if (!state.diagnostic[id].trim()) return showToast("warn", STR.toastNeedDiagnostic);
+      goNext(container, steps, id);
     });
 
-    checklistWrap.addEventListener("change", (e) => {
-      const el = e.target;
-      if (el && el.matches("input[type='checkbox']")) {
-        const i = Number(el.dataset.checkIndex);
-        state.checklist[id][i] = el.checked;
-      }
+    const nextRes = container.querySelector("[data-action='next-resolution']");
+    if (nextRes) nextRes.addEventListener("click", () => {
+      if (!state.resolution[id].trim()) return showToast("warn", STR.toastNeedResolution);
+      goNext(container, steps, id);
     });
 
+    // Photos
     const previews = container.querySelector("[data-previews]");
     renderPreviews(id, previews, state.files[id]);
 
@@ -463,85 +461,129 @@
     const btnCamera = container.querySelector("[data-action='photo-camera']");
     const btnGallery = container.querySelector("[data-action='photo-gallery']");
 
-    btnCamera.addEventListener("click", () => cameraInput.click());
-    btnGallery.addEventListener("click", () => galleryInput.click());
+    if (btnCamera) btnCamera.addEventListener("click", () => cameraInput.click());
+    if (btnGallery) btnGallery.addEventListener("click", () => galleryInput.click());
 
-    cameraInput.addEventListener("change", () => {
+    if (cameraInput) cameraInput.addEventListener("change", () => {
       appendFiles(id, cameraInput.files, previews);
       cameraInput.value = "";
     });
 
-    galleryInput.addEventListener("change", () => {
+    if (galleryInput) galleryInput.addEventListener("change", () => {
       appendFiles(id, galleryInput.files, previews);
       galleryInput.value = "";
     });
 
+    const nextPhotos = container.querySelector("[data-action='next-photos']");
+    if (nextPhotos) nextPhotos.addEventListener("click", () => {
+      if (requiresPhotos && (!state.files[id] || state.files[id].length === 0)) {
+        return showToast("warn", STR.toastNeedPhotos);
+      }
+      goNext(container, steps, id);
+    });
+
+    // Products
     const productsWrap = container.querySelector("[data-products]");
     const addProductBtn = container.querySelector('[data-action="add-product"]');
+
     ensureProductsLoaded(id).then(() => {
       renderProducts(productsWrap, id);
     });
 
-    addProductBtn.addEventListener("click", () => {
+    if (addProductBtn) addProductBtn.addEventListener("click", () => {
       state.products[id].push(createEmptyProduct());
       renderProducts(productsWrap, id);
     });
 
-    const diag = container.querySelector("[data-field='diagnostic']");
-    const reso = container.querySelector("[data-field='resolution']");
-    const obs = container.querySelector("[data-field='observations']");
-    diag.addEventListener("input", () => state.diagnostic[id] = diag.value);
-    reso.addEventListener("input", () => state.resolution[id] = reso.value);
-    obs.addEventListener("input", () => state.observations[id] = obs.value);
-
-    const arriveBtn = container.querySelector("[data-action='arrive']");
-    arriveBtn.addEventListener("click", () => {
-      markArrived(row);
-      setStep(id, 2);
-      showFlowStep(container, 2);
+    const nextProducts = container.querySelector("[data-action='next-products']");
+    if (nextProducts) nextProducts.addEventListener("click", () => {
+      if (!validateProducts(id).ok) return showToast("warn", STR.toastProductsInvalid);
+      goNext(container, steps, id);
     });
 
-    const nextDiag = container.querySelector("[data-action='next-diagnostic']");
-    nextDiag.addEventListener("click", () => {
-      if (!state.diagnostic[id].trim()) return showToast("warn", STR.toastNeedDiagnostic);
-      setStep(id, 3);
-      showFlowStep(container, 3);
-    });
-
-    const nextRes = container.querySelector("[data-action='next-resolution']");
-    nextRes.addEventListener("click", () => {
-      if (!state.resolution[id].trim()) return showToast("warn", STR.toastNeedResolution);
-      setStep(id, 4);
-      showFlowStep(container, 4);
-    });
-
-    if (getFlag(row.requires_signature, CONFIG.REQUIRE_SIGNATURE_DEFAULT)) {
+    // Signature
+    if (requiresSignature) {
       const canvas = container.querySelector(".ti-signature-canvas");
       const clearBtn = container.querySelector('[data-action="sig-clear"]');
       setupSignatureCanvas(canvas, id);
-      clearBtn.addEventListener("click", () => clearSignature(canvas, id));
+      if (clearBtn) clearBtn.addEventListener("click", () => clearSignature(canvas, id));
+
+      const nextSig = container.querySelector("[data-action='next-signature']");
+      if (nextSig) nextSig.addEventListener("click", () => {
+        if (!state.signatures[id].hasSignature) return showToast("warn", STR.toastNeedSignature);
+        goNext(container, steps, id);
+      });
     }
 
+    // Signed PV
     const signedPvInput = container.querySelector("[data-signed-pv]");
-    signedPvInput.addEventListener("change", () => {
+    if (signedPvInput) signedPvInput.addEventListener("change", () => {
       state.signedPv[id] = signedPvInput.files?.[0] || null;
     });
 
+    const nextObs = container.querySelector("[data-action='next-observations']");
+    if (nextObs) nextObs.addEventListener("click", () => {
+      goNext(container, steps, id);
+    });
+
+    // Checklist in validate step
+    const checklistWrap = container.querySelector("[data-checklist]");
+    const list = getChecklist(row);
+    if (checklistWrap) {
+      checklistWrap.innerHTML = "";
+      list.forEach((label, idx) => {
+        const item = document.createElement("label");
+        item.className = "ti-check";
+        item.innerHTML = `
+          <input type="checkbox" data-check-index="${idx}" ${state.checklist[id][idx] ? "checked" : ""} />
+          <span>${escapeHTML(label)}</span>
+        `;
+        checklistWrap.appendChild(item);
+      });
+      checklistWrap.addEventListener("change", (e) => {
+        const el = e.target;
+        if (el && el.matches("input[type='checkbox']")) {
+          const i = Number(el.dataset.checkIndex);
+          state.checklist[id][i] = el.checked;
+        }
+      });
+    }
+
     const confirmBtn = container.querySelector('[data-action="confirm-validate"]');
-    confirmBtn.addEventListener("click", async () => {
+    if (confirmBtn) confirmBtn.addEventListener("click", async () => {
       if (!confirm(STR.confirmValidate)) return;
       await validateIntervention(container, row);
     });
   }
 
-  function showFlowStep(container, step) {
-    container.querySelectorAll("[data-flow]").forEach((el) => {
-      el.hidden = Number(el.dataset.flow) !== step;
+  function getFlowSteps(requiresSignature) {
+    const steps = [
+      { key: "arrive", label: "Arrivee" },
+      { key: "diagnostic", label: "Diagnostic" },
+      { key: "resolution", label: "Resolution" },
+      { key: "photos", label: "Photos" },
+      { key: "products", label: "Produits" }
+    ];
+    if (requiresSignature) steps.push({ key: "signature", label: "Signature" });
+    steps.push({ key: "observations", label: "Observations" });
+    steps.push({ key: "validate", label: "Validation" });
+    return steps;
+  }
+
+  function goNext(container, steps, id) {
+    const current = getStep(id, steps.length);
+    const next = Math.min(current + 1, steps.length);
+    setStep(id, next);
+    showFlowStep(container, steps[next - 1].key);
+    container.querySelectorAll(".ti-step").forEach((el, idx) => {
+      el.classList.toggle("is-done", idx + 1 < next);
+      el.classList.toggle("is-active", idx + 1 === next);
     });
-    container.querySelectorAll("[data-step]").forEach((el) => {
-      const s = Number(el.dataset.step);
-      el.classList.toggle("is-done", s < step);
-      el.classList.toggle("is-active", s === step);
+  }
+
+  function showFlowStep(container, key) {
+    container.querySelectorAll("[data-flow]").forEach((el) => {
+      el.hidden = el.dataset.flow !== key;
     });
   }
 
@@ -607,13 +649,12 @@
     const photosOk = !requiresPhotos || (state.files[id] && state.files[id].length > 0);
     const signatureOk = !requiresSignature || state.signatures[id].hasSignature;
 
-    const productsValidation = validateProducts(id);
-    if (!productsValidation.ok) {
+    if (!checklistOk || !photosOk || !signatureOk) return;
+
+    if (!validateProducts(id).ok) {
       showToast("warn", STR.toastProductsInvalid);
       return;
     }
-
-    if (!checklistOk || !photosOk || !signatureOk) return;
 
     const btn = container.querySelector('[data-action="confirm-validate"]');
     btn.disabled = true;
@@ -654,12 +695,6 @@
       let statusUpdated = true;
       if (CONFIG.ENABLE_STATUS_UPDATE) {
         statusUpdated = await updateIntervention(id, completedAt, row, observationsText, signedPvUpload);
-      }
-
-      const idx = state.items.findIndex((x) => x.id === id);
-      if (idx > -1) {
-        state.items[idx].status = CONFIG.STATUS_DONE;
-        if (hasField(row, "completed_at")) state.items[idx].completed_at = completedAt;
       }
 
       if (statusUpdated) showToast("success", STR.toastSaved);
@@ -968,6 +1003,78 @@
       }));
   }
 
+  async function updateIntervention(id, completedAt, row, observationsText, signedPv) {
+    const payload = { status: CONFIG.STATUS_DONE };
+    if (hasField(row, "completed_at")) payload.completed_at = completedAt;
+
+    const obsField = findExistingField(row, ["observations", "tech_observations", "report_notes", "notes_tech"]);
+    if (obsField) payload[obsField] = observationsText;
+
+    if (signedPv) {
+      const pvField = findExistingField(row, [CONFIG.SIGNED_PV_URL_FIELD, "pv_signed_url"]);
+      const pvPathField = findExistingField(row, [CONFIG.SIGNED_PV_PATH_FIELD, "pv_signed_path"]);
+      if (pvField && signedPv.url) payload[pvField] = signedPv.url;
+      if (pvPathField && signedPv.path) payload[pvPathField] = signedPv.path;
+    }
+
+    const { error } = await supabase
+      .from("interventions")
+      .update(payload)
+      .eq("id", id);
+
+    if (error) {
+      console.error("Update error", error);
+      return false;
+    }
+    return true;
+  }
+
+  async function openPv(row) {
+    const src = getPvSource(row);
+    if (!src) return;
+
+    if (src.url) {
+      window.open(src.url, "_blank");
+      return;
+    }
+
+    if (src.path) {
+      const signed = await supabase.storage.from(CONFIG.STORAGE_BUCKET).createSignedUrl(src.path, 300);
+      if (!signed.error && signed.data?.signedUrl) {
+        window.open(signed.data.signedUrl, "_blank");
+        return;
+      }
+      const pub = supabase.storage.from(CONFIG.STORAGE_BUCKET).getPublicUrl(src.path);
+      if (pub?.data?.publicUrl) window.open(pub.data.publicUrl, "_blank");
+    }
+  }
+
+  function getPvSource(row) {
+    const keys = [
+      CONFIG.PV_URL_FIELD,
+      CONFIG.PV_PATH_FIELD,
+      "pv_url",
+      "pv",
+      "pv_file",
+      "pv_blank",
+      "pv_path"
+    ];
+
+    for (const k of keys) {
+      const v = row?.[k];
+      if (!v) continue;
+      if (typeof v === "string") {
+        if (/^https?:\/\//i.test(v)) return { url: v };
+        return { path: v };
+      }
+      if (typeof v === "object") {
+        if (v.url) return { url: v.url };
+        if (v.path) return { path: v.path };
+      }
+    }
+    return null;
+  }
+
   function buildObservations(row, parts) {
     const lines = [];
     lines.push(`Intervention: ${row.title || ""}`);
@@ -996,32 +1103,6 @@
     }
 
     return lines.join("\n");
-  }
-
-  async function updateIntervention(id, completedAt, row, observationsText, signedPv) {
-    const payload = { status: CONFIG.STATUS_DONE };
-    if (hasField(row, "completed_at")) payload.completed_at = completedAt;
-
-    const obsField = findExistingField(row, ["observations", "tech_observations", "report_notes", "notes_tech"]);
-    if (obsField) payload[obsField] = observationsText;
-
-    if (signedPv) {
-      const pvField = findExistingField(row, [CONFIG.SIGNED_PV_URL_FIELD, "pv_signed_url"]);
-      const pvPathField = findExistingField(row, [CONFIG.SIGNED_PV_PATH_FIELD, "pv_signed_path"]);
-      if (pvField && signedPv.url) payload[pvField] = signedPv.url;
-      if (pvPathField && signedPv.path) payload[pvPathField] = signedPv.path;
-    }
-
-    const { error } = await supabase
-      .from("interventions")
-      .update(payload)
-      .eq("id", id);
-
-    if (error) {
-      console.error("Update error", error);
-      return false;
-    }
-    return true;
   }
 
   function renderShell(rootEl) {
@@ -1346,36 +1427,6 @@
     return `https://www.google.com/maps/dir/?api=1&destination=${q}`;
   }
 
-  function getPvUrl(row) {
-    const keys = [
-      CONFIG.PV_URL_FIELD,
-      "pv_url",
-      "pv",
-      "pv_file",
-      "pv_blank",
-      CONFIG.PV_PATH_FIELD,
-      "pv_path"
-    ];
-
-    for (const k of keys) {
-      const v = row?.[k];
-      if (!v) continue;
-      if (typeof v === "string") {
-        if (/^https?:\/\//i.test(v)) return v;
-        const { data } = supabase.storage.from(CONFIG.STORAGE_BUCKET).getPublicUrl(String(v));
-        return data?.publicUrl || "";
-      }
-      if (typeof v === "object") {
-        if (v.url) return v.url;
-        if (v.path) {
-          const { data } = supabase.storage.from(CONFIG.STORAGE_BUCKET).getPublicUrl(String(v.path));
-          return data?.publicUrl || "";
-        }
-      }
-    }
-    return "";
-  }
-
   function formatMoney(value) {
     if (value === null || value === undefined || value === "") return "";
     const num = Number(value);
@@ -1387,66 +1438,6 @@
     if (!row || !key) return "";
     const v = row[key];
     return (v === null || v === undefined) ? "" : v;
-  }
-
-  function getFirstText(row, keys) {
-    for (const k of keys) {
-      const v = row?.[k];
-      if (v !== null && v !== undefined && String(v).trim() !== "") return String(v);
-    }
-    return "";
-  }
-
-  function pickFirst(row, keys) {
-    for (const k of keys) {
-      const v = row?.[k];
-      if (v !== null && v !== undefined && String(v).trim() !== "") return String(v);
-    }
-    return "";
-  }
-
-  function buildAccessInfo(row) {
-    const parts = [];
-    const pairs = [
-      ["access_instructions", "Consignes acces"],
-      ["access_code", "Code acces"],
-      ["digicode", "Digicode"],
-      ["door_code", "Code porte"],
-      ["intercom", "Interphone"],
-      ["floor", "Etage"],
-      ["building", "Batiment"],
-      ["parking", "Parking"]
-    ];
-
-    pairs.forEach(([key, label]) => {
-      const val = row?.[key];
-      if (val !== null && val !== undefined && String(val).trim() !== "") {
-        parts.push(`${label}: ${String(val).trim()}`);
-      }
-    });
-
-    return parts.join(" | ");
-  }
-
-  function buildEquipmentInfo(row) {
-    const parts = [];
-    const pairs = [
-      ["equipment", "Materiel"],
-      ["device", "Appareil"],
-      ["brand", "Marque"],
-      ["model", "Modele"],
-      ["serial", "Serie"],
-      ["serial_number", "Serie"]
-    ];
-
-    pairs.forEach(([key, label]) => {
-      const val = row?.[key];
-      if (val !== null && val !== undefined && String(val).trim() !== "") {
-        parts.push(`${label}: ${String(val).trim()}`);
-      }
-    });
-
-    return parts.join(" | ");
   }
 
   function infoRow(label, value, isHtml = false) {
@@ -1541,8 +1532,9 @@
     catch (_) {}
   }
 
-  function getStep(id) {
-    return Number(state.steps[id] || 1);
+  function getStep(id, max) {
+    const v = Number(state.steps[id] || 1);
+    return Math.max(1, Math.min(v, max));
   }
 
   function setStep(id, step) {
@@ -1551,19 +1543,9 @@
   }
 
   function syncActiveId() {
-    if (!state.activeId) return;
-    const row = state.items.find((r) => String(r.id) === String(state.activeId));
-    if (!row || isDoneStatus(String(row.status || "").toLowerCase()) || String(row.status || "").toLowerCase() === "canceled") {
-      setActiveId(null);
-    }
-  }
-
-  function showToast(type, message) {
-    const el = document.createElement("div");
-    el.className = `ti-toast ti-toast--${type}`;
-    el.textContent = message;
-    els.toasts.appendChild(el);
-    setTimeout(() => el.remove(), 3200);
+    const inProgress = state.items.find((r) => String(r.status || "").toLowerCase() === CONFIG.STATUS_IN_PROGRESS);
+    if (inProgress) setActiveId(inProgress.id);
+    else setActiveId(null);
   }
 
   function applyConfigOverrides(rootEl) {
