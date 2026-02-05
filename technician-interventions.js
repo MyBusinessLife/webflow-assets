@@ -9,6 +9,8 @@
     DETAIL_PAGE_PATH: "/extranet/intervention",
     STORAGE_BUCKET: "interventions-files",
     REPORTS_TABLE: "intervention_reports",
+    EXPENSES_TABLE: "intervention_expenses",
+    PRODUCTS_TABLE: "products",
 
     STATUS_DONE: "done",
     STATUS_IN_PROGRESS: "in_progress",
@@ -23,12 +25,17 @@
     REMUNERATION_FIELD: "tech_fee",
     CURRENCY: "EUR",
 
+    ACTIVE_STORAGE_KEY: "mbl-active-intervention",
+
     DEFAULT_CHECKLIST: [
-      "Arrive sur site et confirme le contact",
-      "Realise l'intervention",
-      "Teste le fonctionnement",
-      "Nettoie la zone",
-      "Explique au client les consignes"
+      "Confirmer le contact sur place",
+      "Photos avant intervention",
+      "Diagnostic / verification",
+      "Realisation de l'intervention",
+      "Tests de fonctionnement",
+      "Explication au client",
+      "Photos apres intervention",
+      "Nettoyage de la zone"
     ]
   };
 
@@ -74,11 +81,16 @@
     toastError: "Une erreur est survenue",
     toastStart: "Intervention demarree",
     toastStartError: "Impossible de demarrer",
+    toastReportMissing: "Rapport non enregistre (table manquante)",
+    toastExpensesMissing: "Produits non enregistres (table manquante)",
+    toastProductsInvalid: "Produits incomplets. Verifie les quantites et prix.",
     mapChooseTitle: "Choisir une app",
     mapPlans: "Plans",
     mapGoogle: "Google Maps",
     mapWaze: "Waze",
-    mapCancel: "Annuler"
+    mapCancel: "Annuler",
+    focusTitle: "Intervention en cours",
+    focusBody: "Termine l'intervention en cours pour acceder aux autres."
   };
 
   const root = findRoot();
@@ -107,7 +119,12 @@
     checklist: {},
     notes: {},
     signatures: {},
-    userId: null
+    userId: null,
+    activeId: loadActiveId(),
+    products: {},
+    productsLoaded: {},
+    catalog: [],
+    catalogLoaded: false
   };
 
   init();
@@ -127,8 +144,10 @@
     showSkeleton(els.list);
     try {
       state.userId = authData.user.id;
+      loadCatalog();
       const data = await fetchAssignments(state.userId);
       state.items = normalizeAssignments(data);
+      syncActiveId();
       renderList();
     } catch (e) {
       renderError(els.list);
@@ -156,16 +175,30 @@
   }
 
   function renderList() {
-    const filtered = filterItems(state.items);
-    els.count.textContent = String(filtered.length);
+    syncActiveId();
 
-    if (!filtered.length) {
+    const focus = !!state.activeId;
+    root.classList.toggle("ti-focus-mode", focus);
+    els.focus.hidden = !focus;
+    if (focus) {
+      els.focusTitle.textContent = STR.focusTitle;
+      els.focusBody.textContent = STR.focusBody;
+    }
+    setControlsDisabled(focus);
+
+    const listData = focus
+      ? state.items.filter((row) => String(row.id) === String(state.activeId))
+      : filterItems(state.items);
+
+    els.count.textContent = String(listData.length);
+
+    if (!listData.length) {
       renderEmpty(els.list);
       return;
     }
 
     els.list.innerHTML = "";
-    filtered.forEach((row) => {
+    listData.forEach((row) => {
       const card = buildCard(row);
       els.list.appendChild(card);
     });
@@ -231,6 +264,9 @@
           ${infoRow("Remuneration", remuneration)}
           ${infoRow("Demarree", startedAt)}
           ${infoRow("Terminee", completedAt)}
+          ${infoRow("Contact", pickFirst(row, ["contact_name", "client_contact", "contact"]))}
+          ${infoRow("Telephone contact", pickFirst(row, ["contact_phone", "client_phone", "phone_contact"]))}
+          ${infoRow("Email contact", pickFirst(row, ["contact_email", "client_email", "email_contact"]))}
           ${infoRow("Consignes", description)}
           ${infoRow("Acces", buildAccessInfo(row))}
           ${infoRow("Materiel", buildEquipmentInfo(row))}
@@ -290,13 +326,16 @@
     state.files[id] = state.files[id] || [];
     state.previews[id] = state.previews[id] || [];
     state.signatures[id] = state.signatures[id] || { canvas: null, hasSignature: false };
+    state.products[id] = state.products[id] || [];
 
     container.innerHTML = `
-      <div class="ti-validate-head">
-        <div>
-          <div class="ti-validate-title">${STR.validateTitle}</div>
-          <div class="ti-validate-sub">${escapeHTML(row.title || "Intervention")}</div>
-        </div>
+      <div class="ti-steps">
+        <div class="ti-step" data-step="start">1. Demarrage</div>
+        <div class="ti-step" data-step="checklist">2. Checklist</div>
+        <div class="ti-step" data-step="photos">3. Photos</div>
+        <div class="ti-step" data-step="products">4. Produits</div>
+        <div class="ti-step" data-step="signature">5. Signature</div>
+        <div class="ti-step" data-step="finish">6. Validation</div>
       </div>
 
       ${requiresChecklist ? `
@@ -311,6 +350,13 @@
         <div class="ti-hint">${STR.photosHint}</div>
         <input type="file" class="ti-file" accept="image/*" multiple />
         <div class="ti-previews" data-previews></div>
+      </div>
+
+      <div class="ti-block">
+        <div class="ti-label">Produits / Depenses</div>
+        <div class="ti-products" data-products></div>
+        <button type="button" class="ti-btn ti-btn--ghost ti-btn--xs" data-action="add-product">Ajouter un produit</button>
+        <div class="ti-products-total" data-products-total></div>
       </div>
 
       <div class="ti-block">
@@ -365,6 +411,19 @@
       updateValidateButton(container, row);
     });
 
+    const productsWrap = container.querySelector("[data-products]");
+    const addProductBtn = container.querySelector('[data-action="add-product"]');
+    ensureProductsLoaded(id).then(() => {
+      renderProducts(productsWrap, id);
+      updateValidateButton(container, row);
+    });
+
+    addProductBtn.addEventListener("click", () => {
+      state.products[id].push(createEmptyProduct());
+      renderProducts(productsWrap, id);
+      updateValidateButton(container, row);
+    });
+
     const textarea = container.querySelector(".ti-textarea");
     textarea.value = state.notes[id] || "";
     textarea.addEventListener("input", () => {
@@ -396,7 +455,6 @@
 
     const startedAt = new Date().toISOString();
     const payload = { status: CONFIG.STATUS_IN_PROGRESS };
-
     if (hasField(row, "started_at")) payload.started_at = startedAt;
 
     const res = await supabase
@@ -410,6 +468,8 @@
       btn.textContent = STR.startCTA;
       return;
     }
+
+    setActiveId(row.id);
 
     const idx = state.items.findIndex((x) => x.id === row.id);
     if (idx > -1) {
@@ -436,6 +496,12 @@
     const photosOk = !requiresPhotos || (state.files[id] && state.files[id].length > 0);
     const signatureOk = !requiresSignature || state.signatures[id].hasSignature;
 
+    const productsValidation = validateProducts(id);
+    if (!productsValidation.ok) {
+      showToast("warn", STR.toastProductsInvalid);
+      return;
+    }
+
     if (!checklistOk || !photosOk || !signatureOk) return;
 
     const btn = container.querySelector('[data-action="confirm-validate"]');
@@ -455,11 +521,13 @@
         notes: state.notes[id] || "",
         photos: photoUploads,
         signature: signatureUpload,
+        products: cleanProducts(state.products[id] || []),
         completed_at: completedAt
       };
 
       const reportOk = await saveReport(reportPayload);
-      if (!reportOk) throw new Error("Report not saved");
+
+      const expensesOk = await saveExpenses(id);
 
       let statusUpdated = true;
       if (CONFIG.ENABLE_STATUS_UPDATE) {
@@ -478,6 +546,10 @@
         showToast("warn", STR.toastSavedPartial);
       }
 
+      if (!reportOk) showToast("warn", STR.toastReportMissing);
+      if (!expensesOk) showToast("warn", STR.toastExpensesMissing);
+
+      setActiveId(null);
       renderList();
     } catch (e) {
       console.error(e);
@@ -488,75 +560,226 @@
     }
   }
 
-  async function uploadPhotos(interventionId, files) {
-    if (!files || !files.length) return [];
-
-    const bucket = CONFIG.STORAGE_BUCKET;
-    const uploads = await Promise.all(files.map(async (file) => {
-      const ext = getFileExtension(file.name);
-      const name = `${Date.now()}_${randomId()}.${ext || "jpg"}`;
-      const path = `interventions/${interventionId}/${name}`;
-
-      const { error } = await supabase
-        .storage
-        .from(bucket)
-        .upload(path, file, { cacheControl: "3600", upsert: false });
-
-      if (error) throw error;
-
-      const { data } = supabase
-        .storage
-        .from(bucket)
-        .getPublicUrl(path);
-
-      return {
-        path,
-        url: data?.publicUrl || null,
-        name: file.name,
-        size: file.size,
-        type: file.type || null
-      };
-    }));
-
-    return uploads;
-  }
-
-  async function uploadSignature(interventionId) {
-    const sig = state.signatures[interventionId];
-    if (!sig || !sig.canvas || !sig.hasSignature) return null;
-
-    const blob = await new Promise((resolve) => sig.canvas.toBlob(resolve, "image/png"));
-    if (!blob) return null;
-
-    const bucket = CONFIG.STORAGE_BUCKET;
-    const name = `signature_${Date.now()}_${randomId()}.png`;
-    const path = `interventions/${interventionId}/${name}`;
-
-    const { error } = await supabase
-      .storage
-      .from(bucket)
-      .upload(path, blob, { cacheControl: "3600", upsert: false });
-
-    if (error) throw error;
-
-    const { data } = supabase
-      .storage
-      .from(bucket)
-      .getPublicUrl(path);
-
-    return { path, url: data?.publicUrl || null };
-  }
-
   async function saveReport(payload) {
     const { error } = await supabase
       .from(CONFIG.REPORTS_TABLE)
       .upsert(payload, { onConflict: "intervention_id,user_id" });
 
     if (error) {
-      console.error("Report error", error);
+      if (isTableMissing(error)) return false;
       return false;
     }
     return true;
+  }
+
+  async function saveExpenses(interventionId) {
+    const rows = cleanProducts(state.products[interventionId] || []);
+    if (!rows.length) return true;
+
+    const del = await supabase
+      .from(CONFIG.EXPENSES_TABLE)
+      .delete()
+      .eq("intervention_id", interventionId)
+      .eq("user_id", state.userId);
+
+    if (del.error && isTableMissing(del.error)) return false;
+
+    const payload = rows.map((r) => ({
+      intervention_id: interventionId,
+      user_id: state.userId,
+      label: r.name,
+      quantity: r.qty,
+      unit_price: r.unitPrice,
+      total: r.total,
+      paid_by_tech: r.paidByTech,
+      note: r.note || null
+    }));
+
+    const ins = await supabase.from(CONFIG.EXPENSES_TABLE).insert(payload);
+    if (ins.error && isTableMissing(ins.error)) return false;
+    return !ins.error;
+  }
+
+  async function ensureProductsLoaded(interventionId) {
+    if (state.productsLoaded[interventionId]) return;
+    state.productsLoaded[interventionId] = true;
+
+    try {
+      const res = await supabase
+        .from(CONFIG.EXPENSES_TABLE)
+        .select("*")
+        .eq("intervention_id", interventionId)
+        .eq("user_id", state.userId);
+
+      if (res.error) return;
+
+      if (Array.isArray(res.data) && res.data.length) {
+        state.products[interventionId] = res.data.map((r) => ({
+          name: r.label || r.name || "",
+          qty: Number(r.quantity || 1),
+          unitPrice: Number(r.unit_price || r.price || 0),
+          paidByTech: !!r.paid_by_tech,
+          note: r.note || ""
+        }));
+      }
+    } catch (_) {}
+  }
+
+  function renderProducts(container, interventionId) {
+    container.dataset.interventionId = interventionId;
+    const items = state.products[interventionId] || [];
+
+    if (!items.length) {
+      container.innerHTML = `<div class="ti-products-empty">Aucun produit ajoute</div>`;
+    } else {
+      container.innerHTML = items
+        .map((item, idx) => productRowTemplate(item, idx))
+        .join("");
+    }
+
+    const total = computeProductsTotal(items);
+    const totalPaidByTech = computeProductsTotal(items, true);
+
+    const totalEl = container.closest(".ti-block").querySelector("[data-products-total]");
+    totalEl.textContent = `Total: ${formatMoney(total)} | A rembourser: ${formatMoney(totalPaidByTech)}`;
+
+    if (container.dataset.bound === "1") return;
+    container.dataset.bound = "1";
+
+    container.addEventListener("input", (e) => {
+      const rowEl = e.target.closest("[data-product-row]");
+      if (!rowEl) return;
+
+      const index = Number(rowEl.dataset.index);
+      const field = e.target.dataset.field;
+      const id = container.dataset.interventionId;
+      const arr = state.products[id] || [];
+
+      if (!arr[index]) return;
+
+      if (field === "paidByTech") {
+        arr[index].paidByTech = e.target.checked;
+      } else if (field === "qty") {
+        arr[index].qty = toNumber(e.target.value);
+      } else if (field === "unitPrice") {
+        arr[index].unitPrice = toNumber(e.target.value);
+      } else if (field === "name") {
+        arr[index].name = e.target.value;
+        const catalog = findCatalogItem(arr[index].name);
+        if (catalog && !arr[index].unitPrice) {
+          arr[index].unitPrice = Number(catalog.price || 0);
+          const priceInput = rowEl.querySelector('[data-field="unitPrice"]');
+          if (priceInput) priceInput.value = arr[index].unitPrice || "";
+        }
+      } else if (field === "note") {
+        arr[index].note = e.target.value;
+      }
+
+      renderProducts(container, id);
+    });
+
+    container.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-action='remove-product']");
+      if (!btn) return;
+
+      const index = Number(btn.dataset.index);
+      const id = container.dataset.interventionId;
+      const arr = state.products[id] || [];
+      arr.splice(index, 1);
+      renderProducts(container, id);
+    });
+  }
+
+  function productRowTemplate(item, idx) {
+    const total = computeLineTotal(item);
+    return `
+      <div class="ti-product-row" data-product-row data-index="${idx}">
+        <input class="ti-input" list="ti-products-list" data-field="name" placeholder="Produit / piece" value="${escapeHTML(item.name || "")}" />
+        <input class="ti-input ti-input--xs" data-field="qty" type="number" min="1" step="1" placeholder="Qté" value="${item.qty || ""}" />
+        <input class="ti-input ti-input--xs" data-field="unitPrice" type="number" min="0" step="0.01" placeholder="Prix" value="${item.unitPrice || ""}" />
+        <div class="ti-product-total">${formatMoney(total)}</div>
+        <label class="ti-check-inline">
+          <input type="checkbox" data-field="paidByTech" ${item.paidByTech ? "checked" : ""} />
+          Paye par tech
+        </label>
+        <input class="ti-input" data-field="note" placeholder="Note" value="${escapeHTML(item.note || "")}" />
+        <button class="ti-btn ti-btn--ghost ti-btn--xs" data-action="remove-product" data-index="${idx}">Supprimer</button>
+      </div>
+    `;
+  }
+
+  function computeLineTotal(item) {
+    const qty = toNumber(item.qty);
+    const price = toNumber(item.unitPrice);
+    return qty * price;
+  }
+
+  function computeProductsTotal(items, onlyPaidByTech = false) {
+    return (items || []).reduce((acc, it) => {
+      if (onlyPaidByTech && !it.paidByTech) return acc;
+      return acc + computeLineTotal(it);
+    }, 0);
+  }
+
+  function validateProducts(interventionId) {
+    const items = state.products[interventionId] || [];
+    for (const it of items) {
+      const hasAny = (it.name || it.qty || it.unitPrice || it.note);
+      if (!hasAny) continue;
+      if (!it.name || toNumber(it.qty) <= 0 || toNumber(it.unitPrice) < 0) {
+        return { ok: false };
+      }
+    }
+    return { ok: true };
+  }
+
+  function cleanProducts(items) {
+    return (items || [])
+      .filter((it) => it.name && toNumber(it.qty) > 0)
+      .map((it) => ({
+        name: it.name,
+        qty: toNumber(it.qty),
+        unitPrice: toNumber(it.unitPrice),
+        total: computeLineTotal(it),
+        paidByTech: !!it.paidByTech,
+        note: it.note || ""
+      }));
+  }
+
+  async function loadCatalog() {
+    if (state.catalogLoaded) return;
+    state.catalogLoaded = true;
+
+    const res = await supabase
+      .from(CONFIG.PRODUCTS_TABLE)
+      .select("id, name, title, label, price, unit_price, cost")
+      .limit(500);
+
+    if (res.error) return;
+
+    const mapped = (res.data || [])
+      .map((r) => ({
+        name: r.name || r.title || r.label,
+        price: r.price ?? r.unit_price ?? r.cost ?? null
+      }))
+      .filter((r) => r.name);
+
+    state.catalog = mapped;
+    renderCatalogList();
+  }
+
+  function renderCatalogList() {
+    const list = root.querySelector("#ti-products-list");
+    if (!list) return;
+    list.innerHTML = state.catalog
+      .map((p) => `<option value="${escapeHTML(p.name)}"></option>`)
+      .join("");
+  }
+
+  function findCatalogItem(name) {
+    if (!name) return null;
+    const n = String(name).trim().toLowerCase();
+    return state.catalog.find((p) => String(p.name).trim().toLowerCase() === n) || null;
   }
 
   async function updateIntervention(id, completedAt, row) {
@@ -577,6 +800,7 @@
 
   function renderShell(rootEl) {
     rootEl.innerHTML = `
+      <datalist id="ti-products-list"></datalist>
       <div class="ti-shell">
         <div class="ti-header">
           <div>
@@ -587,6 +811,11 @@
             <div class="ti-stat-value" data-ti-count>0</div>
             <div class="ti-stat-label">${STR.countLabel}</div>
           </div>
+        </div>
+
+        <div class="ti-focus" data-ti-focus hidden>
+          <div class="ti-focus-title" data-ti-focus-title>${STR.focusTitle}</div>
+          <div class="ti-focus-body" data-ti-focus-body>${STR.focusBody}</div>
         </div>
 
         <div class="ti-controls">
@@ -624,9 +853,13 @@
     const toasts = rootEl.querySelector("[data-ti-toasts]");
     const sheet = rootEl.querySelector("[data-ti-sheet]");
     const sheetClose = Array.from(rootEl.querySelectorAll("[data-ti-sheet-close]"));
+    const focus = rootEl.querySelector("[data-ti-focus]");
+    const focusTitle = rootEl.querySelector("[data-ti-focus-title]");
+    const focusBody = rootEl.querySelector("[data-ti-focus-body]");
 
     filters.forEach((btn) => {
       btn.addEventListener("click", () => {
+        if (btn.disabled) return;
         filters.forEach((b) => b.classList.remove("is-active"));
         btn.classList.add("is-active");
         state.filter = btn.dataset.tiFilter;
@@ -635,6 +868,7 @@
     });
 
     search.addEventListener("input", () => {
+      if (search.disabled) return;
       state.search = search.value || "";
       renderList();
     });
@@ -649,7 +883,15 @@
       el.addEventListener("click", closeMapSheet);
     });
 
-    return { list, count, toasts, sheet };
+    return { list, count, toasts, sheet, search, filters, focus, focusTitle, focusBody };
+  }
+
+  function setControlsDisabled(disabled) {
+    els.search.disabled = disabled;
+    els.filters.forEach((f) => {
+      f.disabled = disabled;
+      f.classList.toggle("is-disabled", disabled);
+    });
   }
 
   function openMapSheet(address) {
@@ -745,10 +987,33 @@
     const checklistOk = !requiresChecklist || state.checklist[id].every(Boolean);
     const photosOk = !requiresPhotos || (state.files[id] && state.files[id].length > 0);
     const signatureOk = !requiresSignature || state.signatures[id].hasSignature;
+    const productsOk = validateProducts(id).ok;
 
     const btn = container.querySelector('[data-action="confirm-validate"]');
     if (!btn) return;
-    btn.disabled = !(startedOk && checklistOk && photosOk && signatureOk);
+    btn.disabled = !(startedOk && checklistOk && photosOk && signatureOk && productsOk);
+
+    updateSteps(container, {
+      startedOk,
+      checklistOk,
+      photosOk,
+      productsOk,
+      signatureOk
+    });
+  }
+
+  function updateSteps(container, stateFlags) {
+    const set = (step, ok) => {
+      const el = container.querySelector(`[data-step="${step}"]`);
+      if (!el) return;
+      el.classList.toggle("is-done", !!ok);
+    };
+    set("start", stateFlags.startedOk);
+    set("checklist", stateFlags.checklistOk);
+    set("photos", stateFlags.photosOk);
+    set("products", stateFlags.productsOk);
+    set("signature", stateFlags.signatureOk);
+    set("finish", stateFlags.startedOk && stateFlags.checklistOk && stateFlags.photosOk && stateFlags.productsOk && stateFlags.signatureOk);
   }
 
   function renderPreviews(id, container, files) {
@@ -953,6 +1218,14 @@
     return "";
   }
 
+  function pickFirst(row, keys) {
+    for (const k of keys) {
+      const v = row?.[k];
+      if (v !== null && v !== undefined && String(v).trim() !== "") return String(v);
+    }
+    return "";
+  }
+
   function buildAccessInfo(row) {
     const parts = [];
     const pairs = [
@@ -1045,11 +1318,44 @@
     return parts.length > 1 ? parts.pop().toLowerCase() : "";
   }
 
+  function toNumber(v) {
+    const n = Number(v);
+    return Number.isNaN(n) ? 0 : n;
+  }
+
+  function isTableMissing(error) {
+    const msg = String(error?.message || "");
+    return msg.includes("Could not find the table") || String(error?.code || "") === "PGRST205";
+  }
+
+  function loadActiveId() {
+    try { return localStorage.getItem(CONFIG.ACTIVE_STORAGE_KEY) || null; }
+    catch (_) { return null; }
+  }
+
+  function setActiveId(id) {
+    state.activeId = id || null;
+    try {
+      if (id) localStorage.setItem(CONFIG.ACTIVE_STORAGE_KEY, String(id));
+      else localStorage.removeItem(CONFIG.ACTIVE_STORAGE_KEY);
+    } catch (_) {}
+  }
+
+  function syncActiveId() {
+    if (!state.activeId) return;
+    const row = state.items.find((r) => String(r.id) === String(state.activeId));
+    if (!row || isDoneStatus(String(row.status || "").toLowerCase()) || String(row.status || "").toLowerCase() === "canceled") {
+      setActiveId(null);
+    }
+  }
+
   function applyConfigOverrides(rootEl) {
     const d = rootEl.dataset;
     if (d.detailPath) CONFIG.DETAIL_PAGE_PATH = d.detailPath;
     if (d.storageBucket) CONFIG.STORAGE_BUCKET = d.storageBucket;
     if (d.reportsTable) CONFIG.REPORTS_TABLE = d.reportsTable;
+    if (d.expensesTable) CONFIG.EXPENSES_TABLE = d.expensesTable;
+    if (d.productsTable) CONFIG.PRODUCTS_TABLE = d.productsTable;
     if (d.statusDone) CONFIG.STATUS_DONE = d.statusDone;
     if (d.statusInProgress) CONFIG.STATUS_IN_PROGRESS = d.statusInProgress;
     if (d.requireChecklist) CONFIG.REQUIRE_CHECKLIST_DEFAULT = d.requireChecklist === "true";
@@ -1074,350 +1380,92 @@
     style.textContent = `
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Space+Grotesk:wght@500;700&display=swap');
 
-.ti-shell {
-  font-family: "Manrope", sans-serif;
-  background: radial-gradient(1200px 600px at 10% -10%, #e3f2ff 0%, #f6f7fb 55%, #f6f7fb 100%);
-  color: #0f172a;
-  padding: 20px;
-  border-radius: 18px;
-}
-.ti-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  gap: 16px;
-  margin-bottom: 16px;
-}
-.ti-eyebrow {
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #64748b;
-  margin-bottom: 6px;
-}
-.ti-h1 {
-  font-family: "Space Grotesk", sans-serif;
-  font-size: 26px;
-  font-weight: 700;
-}
-.ti-stat {
-  background: #0f172a;
-  color: #f8fafc;
-  padding: 10px 14px;
-  border-radius: 14px;
-  text-align: center;
-}
-.ti-stat-value {
-  font-size: 20px;
-  font-weight: 700;
-}
-.ti-stat-label {
-  font-size: 11px;
-  text-transform: uppercase;
-  opacity: 0.8;
-  letter-spacing: 0.08em;
-}
-.ti-controls {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 10px;
-  margin-bottom: 16px;
-}
-.ti-filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.ti-chip {
-  border: 1px solid #cbd5f5;
-  background: #fff;
-  color: #1e293b;
-  padding: 8px 12px;
-  border-radius: 999px;
-  font-size: 13px;
-  cursor: pointer;
-}
-.ti-chip.is-active {
-  background: #0ea5e9;
-  border-color: #0ea5e9;
-  color: #fff;
-}
-.ti-search input {
-  width: 100%;
-  border: 1px solid #cbd5f5;
-  border-radius: 12px;
-  padding: 10px 12px;
-  font-size: 14px;
-}
-.ti-list {
-  display: grid;
-  gap: 14px;
-}
-.ti-card {
-  background: #fff;
-  border-radius: 16px;
-  padding: 16px;
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
-  display: grid;
-  gap: 12px;
-}
-.ti-card-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: flex-start;
-}
-.ti-title {
-  font-size: 16px;
-  font-weight: 600;
-}
-.ti-meta {
-  margin-top: 6px;
-  display: grid;
-  gap: 4px;
-  font-size: 12px;
-  color: #64748b;
-}
-.ti-meta-item {
-  display: block;
-}
-.ti-badge {
-  font-size: 11px;
-  padding: 6px 10px;
-  border-radius: 999px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-.ti-badge--success { background: #dcfce7; color: #166534; }
-.ti-badge--warning { background: #fef9c3; color: #854d0e; }
-.ti-badge--danger { background: #fee2e2; color: #991b1b; }
-.ti-badge--info { background: #e0f2fe; color: #075985; }
-.ti-badge--neutral { background: #e2e8f0; color: #1e293b; }
-.ti-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.ti-btn {
-  border: none;
-  padding: 8px 12px;
-  border-radius: 10px;
-  font-size: 13px;
-  cursor: pointer;
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.ti-btn--ghost {
-  background: #f1f5f9;
-  color: #0f172a;
-}
-.ti-btn--primary {
-  background: #0ea5e9;
-  color: #fff;
-}
-.ti-btn--start {
-  background: #0f766e;
-  color: #fff;
-}
-.ti-btn.is-disabled {
-  opacity: 0.4;
-  pointer-events: none;
-}
-.ti-details {
-  background: #f8fafc;
-  border-radius: 12px;
-  padding: 12px;
-}
-.ti-grid {
-  display: grid;
-  gap: 8px;
-}
-.ti-label {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: #64748b;
-  margin-bottom: 6px;
-}
-.ti-value {
-  font-size: 14px;
-}
-.ti-link {
-  color: #0ea5e9;
-  text-decoration: none;
-  font-weight: 600;
-}
-.ti-validate {
-  border-top: 1px dashed #e2e8f0;
-  padding-top: 12px;
-}
-.ti-validate-title {
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-.ti-validate-sub {
-  font-size: 12px;
-  color: #64748b;
-}
-.ti-block {
-  margin-top: 12px;
-  display: grid;
-  gap: 8px;
-}
-.ti-checklist {
-  display: grid;
-  gap: 6px;
-}
-.ti-check {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  font-size: 14px;
-}
-.ti-file {
-  width: 100%;
-}
-.ti-previews {
-  display: grid;
-  gap: 10px;
-}
-.ti-preview {
-  display: grid;
-  gap: 6px;
-}
-.ti-preview img {
-  width: 100%;
-  border-radius: 12px;
-  object-fit: cover;
-}
-.ti-preview-meta {
-  font-size: 11px;
-  color: #64748b;
-}
-.ti-textarea {
-  width: 100%;
-  border: 1px solid #cbd5f5;
-  border-radius: 12px;
-  padding: 10px;
-  font-size: 14px;
-}
-.ti-signature {
-  border: 1px solid #cbd5f5;
-  border-radius: 12px;
-  padding: 10px;
-  display: grid;
-  gap: 8px;
-}
-.ti-signature-canvas {
-  width: 100%;
-  height: 160px;
-  background: #fff;
-  border-radius: 10px;
-}
-.ti-btn--xs {
-  padding: 6px 10px;
-  font-size: 12px;
-  justify-self: start;
-}
-.ti-validate-actions {
-  margin-top: 10px;
-}
-.ti-skeleton {
-  height: 140px;
-  border-radius: 16px;
-  background: linear-gradient(90deg, #edf2f7 0%, #f8fafc 50%, #edf2f7 100%);
-  animation: shimmer 1.4s infinite;
-}
-@keyframes shimmer {
-  0% { background-position: -200px 0; }
-  100% { background-position: 200px 0; }
-}
-.ti-empty {
-  background: #fff;
-  padding: 20px;
-  border-radius: 16px;
-  text-align: center;
-  color: #475569;
-}
-.ti-empty-title {
-  font-weight: 600;
-}
-.ti-toasts {
-  position: sticky;
-  bottom: 16px;
-  display: grid;
-  gap: 8px;
-  margin-top: 16px;
-}
-.ti-toast {
-  background: #0f172a;
-  color: #fff;
-  padding: 10px 14px;
-  border-radius: 12px;
-  font-size: 13px;
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.2);
-}
-.ti-toast--success { background: #16a34a; }
-.ti-toast--warn { background: #f59e0b; }
-.ti-toast--error { background: #dc2626; }
-.ti-sheet {
-  position: fixed;
-  inset: 0;
-  z-index: 9999;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-}
-.ti-sheet[hidden] {
-  display: none;
-}
-.ti-sheet-backdrop {
-  position: absolute;
-  inset: 0;
-  background: rgba(15, 23, 42, 0.45);
-}
-.ti-sheet-panel {
-  position: relative;
-  width: min(480px, 92vw);
-  background: #fff;
-  border-radius: 16px;
-  padding: 16px;
-  margin: 0 12px 12px;
-  display: grid;
-  gap: 10px;
-  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.2);
-}
-.ti-sheet-title {
-  font-weight: 700;
-  font-size: 14px;
-  color: #0f172a;
-}
-.ti-sheet-btn {
-  width: 100%;
-  text-align: left;
-  padding: 12px 14px;
-  border-radius: 12px;
-  border: 1px solid #e2e8f0;
-  background: #f8fafc;
-  font-size: 14px;
-  cursor: pointer;
-}
-.ti-sheet-cancel {
-  background: #0f172a;
-  color: #fff;
-  border-color: #0f172a;
-  text-align: center;
-}
-body.ti-sheet-open {
-  overflow: hidden;
+.ti-shell { font-family:"Manrope",sans-serif; background:radial-gradient(1200px 600px at 10% -10%, #e3f2ff 0%, #f6f7fb 55%, #f6f7fb 100%); color:#0f172a; padding:20px; border-radius:18px; }
+.ti-header { display:flex; justify-content:space-between; align-items:flex-end; gap:16px; margin-bottom:16px; }
+.ti-eyebrow { font-size:12px; letter-spacing:0.08em; text-transform:uppercase; color:#64748b; margin-bottom:6px; }
+.ti-h1 { font-family:"Space Grotesk",sans-serif; font-size:26px; font-weight:700; }
+.ti-stat { background:#0f172a; color:#f8fafc; padding:10px 14px; border-radius:14px; text-align:center; }
+.ti-stat-value { font-size:20px; font-weight:700; }
+.ti-stat-label { font-size:11px; text-transform:uppercase; opacity:0.8; letter-spacing:0.08em; }
+.ti-focus { background:#fff7ed; border:1px solid #fed7aa; padding:12px 14px; border-radius:12px; margin-bottom:14px; }
+.ti-focus-title { font-weight:700; }
+.ti-focus-body { font-size:13px; color:#9a3412; }
+.ti-controls { display:grid; grid-template-columns:1fr; gap:10px; margin-bottom:16px; }
+.ti-filters { display:flex; flex-wrap:wrap; gap:8px; }
+.ti-chip { border:1px solid #cbd5f5; background:#fff; color:#1e293b; padding:8px 12px; border-radius:999px; font-size:13px; cursor:pointer; }
+.ti-chip.is-active { background:#0ea5e9; border-color:#0ea5e9; color:#fff; }
+.ti-chip.is-disabled { opacity:0.5; cursor:not-allowed; }
+.ti-search input { width:100%; border:1px solid #cbd5f5; border-radius:12px; padding:10px 12px; font-size:14px; }
+.ti-list { display:grid; gap:14px; }
+.ti-card { background:#fff; border-radius:16px; padding:16px; box-shadow:0 10px 30px rgba(15,23,42,0.08); display:grid; gap:12px; }
+.ti-card-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
+.ti-title { font-size:16px; font-weight:600; }
+.ti-meta { margin-top:6px; display:grid; gap:4px; font-size:12px; color:#64748b; }
+.ti-meta-item { display:block; }
+.ti-badge { font-size:11px; padding:6px 10px; border-radius:999px; font-weight:600; white-space:nowrap; }
+.ti-badge--success { background:#dcfce7; color:#166534; }
+.ti-badge--warning { background:#fef9c3; color:#854d0e; }
+.ti-badge--danger { background:#fee2e2; color:#991b1b; }
+.ti-badge--info { background:#e0f2fe; color:#075985; }
+.ti-badge--neutral { background:#e2e8f0; color:#1e293b; }
+.ti-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.ti-btn { border:none; padding:8px 12px; border-radius:10px; font-size:13px; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; gap:6px; }
+.ti-btn--ghost { background:#f1f5f9; color:#0f172a; }
+.ti-btn--primary { background:#0ea5e9; color:#fff; }
+.ti-btn--start { background:#0f766e; color:#fff; }
+.ti-btn--xs { padding:6px 10px; font-size:12px; }
+.ti-btn.is-disabled { opacity:0.4; pointer-events:none; }
+.ti-details { background:#f8fafc; border-radius:12px; padding:12px; }
+.ti-grid { display:grid; gap:8px; }
+.ti-label { font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:#64748b; margin-bottom:6px; }
+.ti-value { font-size:14px; }
+.ti-link { color:#0ea5e9; text-decoration:none; font-weight:600; }
+.ti-validate { border-top:1px dashed #e2e8f0; padding-top:12px; }
+.ti-steps { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-bottom:10px; font-size:12px; }
+.ti-step { background:#f1f5f9; padding:6px 8px; border-radius:8px; text-align:center; }
+.ti-step.is-done { background:#dcfce7; color:#166534; font-weight:600; }
+.ti-block { margin-top:12px; display:grid; gap:8px; }
+.ti-checklist { display:grid; gap:6px; }
+.ti-check { display:flex; gap:8px; align-items:center; font-size:14px; }
+.ti-file { width:100%; }
+.ti-previews { display:grid; gap:10px; }
+.ti-preview { display:grid; gap:6px; }
+.ti-preview img { width:100%; border-radius:12px; object-fit:cover; }
+.ti-preview-meta { font-size:11px; color:#64748b; }
+.ti-textarea { width:100%; border:1px solid #cbd5f5; border-radius:12px; padding:10px; font-size:14px; }
+.ti-signature { border:1px solid #cbd5f5; border-radius:12px; padding:10px; display:grid; gap:8px; }
+.ti-signature-canvas { width:100%; height:160px; background:#fff; border-radius:10px; }
+.ti-skeleton { height:140px; border-radius:16px; background:linear-gradient(90deg, #edf2f7 0%, #f8fafc 50%, #edf2f7 100%); animation:shimmer 1.4s infinite; }
+@keyframes shimmer { 0% { background-position:-200px 0; } 100% { background-position:200px 0; } }
+.ti-empty { background:#fff; padding:20px; border-radius:16px; text-align:center; color:#475569; }
+.ti-empty-title { font-weight:600; }
+.ti-toasts { position:sticky; bottom:16px; display:grid; gap:8px; margin-top:16px; }
+.ti-toast { background:#0f172a; color:#fff; padding:10px 14px; border-radius:12px; font-size:13px; box-shadow:0 10px 30px rgba(15,23,42,0.2); }
+.ti-toast--success { background:#16a34a; }
+.ti-toast--warn { background:#f59e0b; }
+.ti-toast--error { background:#dc2626; }
+.ti-sheet { position:fixed; inset:0; z-index:9999; display:flex; align-items:flex-end; justify-content:center; }
+.ti-sheet[hidden] { display:none; }
+.ti-sheet-backdrop { position:absolute; inset:0; background:rgba(15,23,42,0.45); }
+.ti-sheet-panel { position:relative; width:min(480px,92vw); background:#fff; border-radius:16px; padding:16px; margin:0 12px 12px; display:grid; gap:10px; box-shadow:0 20px 60px rgba(15,23,42,0.2); }
+.ti-sheet-title { font-weight:700; font-size:14px; color:#0f172a; }
+.ti-sheet-btn { width:100%; text-align:left; padding:12px 14px; border-radius:12px; border:1px solid #e2e8f0; background:#f8fafc; font-size:14px; cursor:pointer; }
+.ti-sheet-cancel { background:#0f172a; color:#fff; border-color:#0f172a; text-align:center; }
+body.ti-sheet-open { overflow:hidden; }
+.ti-products { display:grid; gap:8px; }
+.ti-products-empty { font-size:12px; color:#64748b; }
+.ti-product-row { display:grid; grid-template-columns:1.6fr 0.6fr 0.8fr 0.7fr 1fr 1.2fr auto; gap:6px; align-items:center; }
+.ti-input { border:1px solid #cbd5f5; border-radius:10px; padding:8px; font-size:13px; }
+.ti-input--xs { width:100%; }
+.ti-product-total { font-weight:600; font-size:13px; }
+.ti-check-inline { display:flex; align-items:center; gap:6px; font-size:12px; }
+.ti-products-total { font-size:12px; color:#475569; margin-top:4px; }
+@media (max-width: 820px) {
+  .ti-product-row { grid-template-columns:1fr 1fr; }
+  .ti-product-total, .ti-check-inline, .ti-btn--xs { grid-column: span 2; }
 }
 @media (min-width: 768px) {
-  .ti-controls {
-    grid-template-columns: 1fr 280px;
-    align-items: center;
-  }
+  .ti-controls { grid-template-columns:1fr 280px; align-items:center; }
 }
     `;
     document.head.appendChild(style);
