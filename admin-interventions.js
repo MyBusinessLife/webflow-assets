@@ -27,8 +27,9 @@ window.Webflow.push(async function () {
   ];
 
   const COMP_STATUS_SUGGESTIONS = [
-    "pending",
-    "validated",
+    "earned",
+    "approved",
+    "invoiced",
     "paid",
     "canceled"
   ];
