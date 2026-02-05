@@ -718,8 +718,8 @@ window.Webflow.push(async function () {
       else goStep(currentStep + 1);
     });
 
-    modal.querySelector(".add-exp-product").addEventListener("click", () => addExpenseRow({ type:"product" }));
-    modal.querySelector(".add-exp-extra").addEventListener("click", () => addExpenseRow({ type:"extra" }));
+    modal.querySelector(".add-exp-product").addEventListener("click", () => addExpenseRow({ type:"material" }));
+    modal.querySelector(".add-exp-extra").addEventListener("click", () => addExpenseRow({ type:"other" }));
 
     modal.querySelector(".f-techs").addEventListener("change", () => {
       renderCompRows();
@@ -974,10 +974,12 @@ window.Webflow.push(async function () {
     row.innerHTML = `
       <div>
         <select class="e-type">
-          <option value="product">Produit</option>
+          <option value="material">Produit</option>
           <option value="travel">Frais déplacement</option>
-          <option value="extra">Frais</option>
+          <option value="subcontract">Sous-traitance</option>
+          <option value="other">Autre frais</option>
         </select>
+
         <select class="e-product" style="margin-top:6px; display:none;">
           ${productsOptionsHtml()}
         </select>
@@ -1164,6 +1166,11 @@ window.Webflow.push(async function () {
       signedWrap.appendChild(chip);
     }
   }
+
+  function saveDraft() {
+    // version simple (ou tu peux supprimer complètement l'appel si tu veux)
+  }
+
 
   // =========================
   // SUBMIT
