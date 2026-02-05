@@ -22,21 +22,13 @@
 
     PV_URL_FIELD: "pv_blank_url",
     PV_PATH_FIELD: "pv_blank_path",
+    SIGNED_PV_URL_FIELD: "pv_signed_url",
+    SIGNED_PV_PATH_FIELD: "pv_signed_path",
     REMUNERATION_FIELD: "tech_fee",
     CURRENCY: "EUR",
 
     ACTIVE_STORAGE_KEY: "mbl-active-intervention",
-
-    DEFAULT_CHECKLIST: [
-      "Confirmer le contact sur place",
-      "Photos avant intervention",
-      "Diagnostic / verification",
-      "Realisation de l'intervention",
-      "Tests de fonctionnement",
-      "Explication au client",
-      "Photos apres intervention",
-      "Nettoyage de la zone"
-    ]
+    STEPS_STORAGE_KEY: "mbl-intervention-steps"
   };
 
   let supabase = window.__MBL_SUPABASE__ || window.__techSupabase;
@@ -61,20 +53,26 @@
     emptyBody: "Tu n'as pas d'interventions assignees pour le moment.",
     errorTitle: "Erreur de chargement",
     errorBody: "Impossible de recuperer les interventions. Reessaye plus tard.",
-    validateTitle: "Validation de l'intervention",
-    validateCTA: "Valider l'intervention",
     detailsCTA: "Fiche",
     callCTA: "Appeler",
     mapCTA: "Itineraire",
     pvCTA: "PV vierge",
     startCTA: "Demarrer",
-    notesLabel: "Notes de fin",
+    flowCTA: "Parcours",
+    arriveCTA: "Arrive sur place",
+    nextCTA: "Continuer",
+    validateCTA: "Valider l'intervention",
+    notesLabel: "Observations",
+    diagnosticLabel: "Diagnostic",
+    resolutionLabel: "Resolution",
     photosLabel: "Photos",
     photosHint: "Ajoute 1 ou plusieurs photos",
     checklistLabel: "Checklist",
     signatureLabel: "Signature client",
     signatureHint: "Signe dans la zone ci-dessous",
     signatureClear: "Effacer",
+    signedPvLabel: "PV signe",
+    signedPvHint: "Ajoute un PV signe (PDF ou photo)",
     confirmValidate: "Confirmer la validation ?",
     toastSaved: "Intervention validee",
     toastSavedPartial: "Validation enregistree mais statut non mis a jour",
@@ -84,6 +82,8 @@
     toastReportMissing: "Rapport non enregistre (table manquante)",
     toastExpensesMissing: "Produits non enregistres (table manquante)",
     toastProductsInvalid: "Produits incomplets. Verifie les quantites et prix.",
+    toastNeedDiagnostic: "Renseigne le diagnostic",
+    toastNeedResolution: "Renseigne la resolution",
     mapChooseTitle: "Choisir une app",
     mapPlans: "Plans",
     mapGoogle: "Google Maps",
@@ -119,8 +119,13 @@
     checklist: {},
     notes: {},
     signatures: {},
+    signedPv: {},
+    diagnostic: {},
+    resolution: {},
+    observations: {},
     userId: null,
     activeId: loadActiveId(),
+    steps: loadSteps(),
     products: {},
     productsLoaded: {},
     catalog: [],
@@ -202,6 +207,8 @@
       const card = buildCard(row);
       els.list.appendChild(card);
     });
+
+    renderStickyBar(listData[0]);
   }
 
   function buildCard(row) {
@@ -230,7 +237,7 @@
     const completedAt = row.completed_at ? formatDateFR(row.completed_at) : "";
 
     const showStart = !isStarted && !isDone && !isCanceled;
-    const showValidate = isStarted && !isDone && !isCanceled;
+    const showFlow = isStarted && !isDone && !isCanceled;
 
     card.innerHTML = `
       <div class="ti-card-head">
@@ -250,7 +257,7 @@
         ${pvUrl ? `<a class="ti-btn ti-btn--ghost" href="${pvUrl}" target="_blank" rel="noopener" download>${STR.pvCTA}</a>` : ""}
         <button class="ti-btn ti-btn--ghost" data-action="toggle-details">${STR.detailsCTA}</button>
         ${showStart ? `<button class="ti-btn ti-btn--start" data-action="start">${STR.startCTA}</button>` : ""}
-        ${showValidate ? `<button class="ti-btn ti-btn--primary" data-action="toggle-validate">${STR.validateCTA}</button>` : ""}
+        ${showFlow ? `<button class="ti-btn ti-btn--primary" data-action="toggle-flow">${STR.flowCTA}</button>` : ""}
       </div>
 
       <div class="ti-details" hidden>
@@ -274,15 +281,15 @@
         </div>
       </div>
 
-      <div class="ti-validate" hidden></div>
+      <div class="ti-flow" hidden></div>
     `;
 
     const detailsBtn = card.querySelector('[data-action="toggle-details"]');
-    const validateBtn = card.querySelector('[data-action="toggle-validate"]');
+    const flowBtn = card.querySelector('[data-action="toggle-flow"]');
     const startBtn = card.querySelector('[data-action="start"]');
     const mapBtn = card.querySelector('[data-action="map"]');
     const detailsPanel = card.querySelector(".ti-details");
-    const validatePanel = card.querySelector(".ti-validate");
+    const flowPanel = card.querySelector(".ti-flow");
 
     if (detailsBtn) {
       detailsBtn.addEventListener("click", () => {
@@ -290,21 +297,21 @@
       });
     }
 
-    if (validateBtn) {
-      validateBtn.addEventListener("click", () => {
-        if (!validatePanel.dataset.ready) {
-          renderValidation(validatePanel, row);
-          validatePanel.dataset.ready = "1";
+    if (flowBtn) {
+      flowBtn.addEventListener("click", () => {
+        if (!flowPanel.dataset.ready) {
+          renderFlow(flowPanel, row);
+          flowPanel.dataset.ready = "1";
         }
-        validatePanel.hidden = !validatePanel.hidden;
-        if (!validatePanel.hidden) {
-          validatePanel.scrollIntoView({ behavior: "smooth", block: "start" });
+        flowPanel.hidden = !flowPanel.hidden;
+        if (!flowPanel.hidden) {
+          flowPanel.scrollIntoView({ behavior: "smooth", block: "start" });
         }
       });
     }
 
     if (startBtn) {
-      startBtn.addEventListener("click", () => startIntervention(row, startBtn));
+      startBtn.addEventListener("click", () => startIntervention(row, startBtn, flowPanel));
     }
 
     if (mapBtn && !mapBtn.disabled) {
@@ -314,142 +321,231 @@
     return card;
   }
 
-  function renderValidation(container, row) {
+  function renderFlow(container, row) {
     const id = row.id;
-    const checklist = getChecklist(row);
-    const requiresChecklist = getFlag(row.requires_checklist, CONFIG.REQUIRE_CHECKLIST_DEFAULT);
-    const requiresPhotos = getFlag(row.requires_photos, CONFIG.REQUIRE_PHOTOS_DEFAULT);
-    const requiresSignature = getFlag(row.requires_signature, CONFIG.REQUIRE_SIGNATURE_DEFAULT);
 
-    state.checklist[id] = state.checklist[id] || checklist.map(() => false);
+    state.checklist[id] = state.checklist[id] || getChecklist(row).map(() => false);
     state.notes[id] = state.notes[id] || "";
     state.files[id] = state.files[id] || [];
     state.previews[id] = state.previews[id] || [];
     state.signatures[id] = state.signatures[id] || { canvas: null, hasSignature: false };
+    state.signedPv[id] = state.signedPv[id] || null;
     state.products[id] = state.products[id] || [];
+    state.diagnostic[id] = state.diagnostic[id] || "";
+    state.resolution[id] = state.resolution[id] || "";
+    state.observations[id] = state.observations[id] || "";
+
+    const step = getStep(id);
+    const pvUrl = getPvUrl(row);
 
     container.innerHTML = `
       <div class="ti-steps">
-        <div class="ti-step" data-step="start">1. Demarrage</div>
-        <div class="ti-step" data-step="checklist">2. Checklist</div>
-        <div class="ti-step" data-step="photos">3. Photos</div>
-        <div class="ti-step" data-step="products">4. Produits</div>
-        <div class="ti-step" data-step="signature">5. Signature</div>
-        <div class="ti-step" data-step="finish">6. Validation</div>
+        <div class="ti-step" data-step="1">1. Arrivee</div>
+        <div class="ti-step" data-step="2">2. Diagnostic</div>
+        <div class="ti-step" data-step="3">3. Resolution</div>
+        <div class="ti-step" data-step="4">4. Validation</div>
       </div>
 
-      ${requiresChecklist ? `
+      <div class="ti-flow-section" data-flow="1">
+        <div class="ti-flow-title">Informations & PV</div>
+        <div class="ti-flow-info">
+          ${infoRow("Adresse", row.address || "")}
+          ${infoRow("Date", formatDateFR(row.start_at) || "")}
+          ${infoRow("Telephone", formatPhoneReadable(row.support_phone || "") || "")}
+          ${pvUrl ? infoRow("PV vierge", `<a class="ti-link" href="${pvUrl}" target="_blank" rel="noopener">${STR.pvCTA}</a>`, true) : ""}
+        </div>
+        <button class="ti-btn ti-btn--primary" data-action="arrive">${STR.arriveCTA}</button>
+      </div>
+
+      <div class="ti-flow-section" data-flow="2">
+        <div class="ti-flow-title">${STR.diagnosticLabel}</div>
+        <textarea class="ti-textarea" data-field="diagnostic" rows="4" placeholder="Decris le diagnostic...">${escapeHTML(state.diagnostic[id])}</textarea>
+        <button class="ti-btn ti-btn--primary" data-action="next-diagnostic">${STR.nextCTA}</button>
+      </div>
+
+      <div class="ti-flow-section" data-flow="3">
+        <div class="ti-flow-title">${STR.resolutionLabel}</div>
+        <textarea class="ti-textarea" data-field="resolution" rows="4" placeholder="Decris la resolution...">${escapeHTML(state.resolution[id])}</textarea>
+        <button class="ti-btn ti-btn--primary" data-action="next-resolution">${STR.nextCTA}</button>
+      </div>
+
+      <div class="ti-flow-section" data-flow="4">
+        <div class="ti-flow-title">Validation</div>
+
         <div class="ti-block">
           <div class="ti-label">${STR.checklistLabel}</div>
           <div class="ti-checklist" data-checklist></div>
         </div>
-      ` : ""}
 
-      <div class="ti-block">
-        <div class="ti-label">${STR.photosLabel}${requiresPhotos ? " *" : ""}</div>
-        <div class="ti-hint">${STR.photosHint}</div>
-        <input type="file" class="ti-file" accept="image/*" multiple />
-        <div class="ti-previews" data-previews></div>
-      </div>
-
-      <div class="ti-block">
-        <div class="ti-label">Produits / Depenses</div>
-        <div class="ti-products" data-products></div>
-        <button type="button" class="ti-btn ti-btn--ghost ti-btn--xs" data-action="add-product">Ajouter un produit</button>
-        <div class="ti-products-total" data-products-total></div>
-      </div>
-
-      <div class="ti-block">
-        <div class="ti-label">${STR.notesLabel}</div>
-        <textarea class="ti-textarea" rows="3" placeholder="Ajouter un commentaire..."></textarea>
-      </div>
-
-      ${requiresSignature ? `
         <div class="ti-block">
-          <div class="ti-label">${STR.signatureLabel} *</div>
-          <div class="ti-hint">${STR.signatureHint}</div>
-          <div class="ti-signature">
-            <canvas class="ti-signature-canvas"></canvas>
-            <button type="button" class="ti-btn ti-btn--ghost ti-btn--xs" data-action="sig-clear">${STR.signatureClear}</button>
+          <div class="ti-label">${STR.photosLabel}</div>
+          <div class="ti-hint">${STR.photosHint}</div>
+          <div class="ti-photo-actions">
+            <button class="ti-btn ti-btn--ghost ti-btn--xs" data-action="photo-camera">Prendre une photo</button>
+            <button class="ti-btn ti-btn--ghost ti-btn--xs" data-action="photo-gallery">Ajouter depuis galerie</button>
+            <input type="file" class="ti-file" data-camera accept="image/*" capture="environment" />
+            <input type="file" class="ti-file" data-gallery accept="image/*" multiple />
           </div>
+          <div class="ti-previews" data-previews></div>
         </div>
-      ` : ""}
 
-      <div class="ti-validate-actions">
-        <button class="ti-btn ti-btn--primary" data-action="confirm-validate">${STR.validateCTA}</button>
+        <div class="ti-block">
+          <div class="ti-label">Produits / Depenses</div>
+          <div class="ti-products" data-products></div>
+          <button type="button" class="ti-btn ti-btn--ghost ti-btn--xs" data-action="add-product">Ajouter un produit</button>
+          <div class="ti-products-total" data-products-total></div>
+        </div>
+
+        ${getFlag(row.requires_signature, CONFIG.REQUIRE_SIGNATURE_DEFAULT) ? `
+          <div class="ti-block">
+            <div class="ti-label">${STR.signatureLabel} *</div>
+            <div class="ti-hint">${STR.signatureHint}</div>
+            <div class="ti-signature">
+              <canvas class="ti-signature-canvas"></canvas>
+              <button type="button" class="ti-btn ti-btn--ghost ti-btn--xs" data-action="sig-clear">${STR.signatureClear}</button>
+            </div>
+          </div>
+        ` : ""}
+
+        <div class="ti-block">
+          <div class="ti-label">${STR.signedPvLabel}</div>
+          <div class="ti-hint">${STR.signedPvHint}</div>
+          <input type="file" class="ti-file" data-signed-pv accept="application/pdf,image/*" />
+        </div>
+
+        <div class="ti-block">
+          <div class="ti-label">${STR.notesLabel}</div>
+          <textarea class="ti-textarea" data-field="observations" rows="4" placeholder="Observations libres...">${escapeHTML(state.observations[id])}</textarea>
+        </div>
+
+        <div class="ti-validate-actions">
+          <button class="ti-btn ti-btn--primary" data-action="confirm-validate">${STR.validateCTA}</button>
+        </div>
       </div>
     `;
 
-    const checklistWrap = container.querySelector("[data-checklist]");
-    if (checklistWrap) {
-      checklist.forEach((label, idx) => {
-        const item = document.createElement("label");
-        item.className = "ti-check";
-        item.innerHTML = `
-          <input type="checkbox" data-check-index="${idx}" ${state.checklist[id][idx] ? "checked" : ""} />
-          <span>${escapeHTML(label)}</span>
-        `;
-        checklistWrap.appendChild(item);
-      });
-      checklistWrap.addEventListener("change", (e) => {
-        const el = e.target;
-        if (el && el.matches("input[type='checkbox']")) {
-          const i = Number(el.dataset.checkIndex);
-          state.checklist[id][i] = el.checked;
-          updateValidateButton(container, row);
-        }
-      });
-    }
+    const sections = Array.from(container.querySelectorAll("[data-flow]"));
+    sections.forEach((s) => s.hidden = true);
+    showFlowStep(container, step);
 
-    const fileInput = container.querySelector(".ti-file");
+    container.querySelectorAll("[data-step]").forEach((el) => {
+      const s = Number(el.dataset.step);
+      el.classList.toggle("is-done", s < step);
+      el.classList.toggle("is-active", s === step);
+    });
+
+    const checklistWrap = container.querySelector("[data-checklist]");
+    const list = getChecklist(row);
+    checklistWrap.innerHTML = "";
+    list.forEach((label, idx) => {
+      const item = document.createElement("label");
+      item.className = "ti-check";
+      item.innerHTML = `
+        <input type="checkbox" data-check-index="${idx}" ${state.checklist[id][idx] ? "checked" : ""} />
+        <span>${escapeHTML(label)}</span>
+      `;
+      checklistWrap.appendChild(item);
+    });
+
+    checklistWrap.addEventListener("change", (e) => {
+      const el = e.target;
+      if (el && el.matches("input[type='checkbox']")) {
+        const i = Number(el.dataset.checkIndex);
+        state.checklist[id][i] = el.checked;
+      }
+    });
+
     const previews = container.querySelector("[data-previews]");
-    fileInput.addEventListener("change", () => {
-      clearPreviews(id, previews);
-      const files = Array.from(fileInput.files || []);
-      state.files[id] = files;
-      renderPreviews(id, previews, files);
-      updateValidateButton(container, row);
+    renderPreviews(id, previews, state.files[id]);
+
+    const cameraInput = container.querySelector("[data-camera]");
+    const galleryInput = container.querySelector("[data-gallery]");
+    const btnCamera = container.querySelector("[data-action='photo-camera']");
+    const btnGallery = container.querySelector("[data-action='photo-gallery']");
+
+    btnCamera.addEventListener("click", () => cameraInput.click());
+    btnGallery.addEventListener("click", () => galleryInput.click());
+
+    cameraInput.addEventListener("change", () => {
+      appendFiles(id, cameraInput.files, previews);
+      cameraInput.value = "";
+    });
+
+    galleryInput.addEventListener("change", () => {
+      appendFiles(id, galleryInput.files, previews);
+      galleryInput.value = "";
     });
 
     const productsWrap = container.querySelector("[data-products]");
     const addProductBtn = container.querySelector('[data-action="add-product"]');
     ensureProductsLoaded(id).then(() => {
       renderProducts(productsWrap, id);
-      updateValidateButton(container, row);
     });
 
     addProductBtn.addEventListener("click", () => {
       state.products[id].push(createEmptyProduct());
       renderProducts(productsWrap, id);
-      updateValidateButton(container, row);
     });
 
-    const textarea = container.querySelector(".ti-textarea");
-    textarea.value = state.notes[id] || "";
-    textarea.addEventListener("input", () => {
-      state.notes[id] = textarea.value;
+    const diag = container.querySelector("[data-field='diagnostic']");
+    const reso = container.querySelector("[data-field='resolution']");
+    const obs = container.querySelector("[data-field='observations']");
+    diag.addEventListener("input", () => state.diagnostic[id] = diag.value);
+    reso.addEventListener("input", () => state.resolution[id] = reso.value);
+    obs.addEventListener("input", () => state.observations[id] = obs.value);
+
+    const arriveBtn = container.querySelector("[data-action='arrive']");
+    arriveBtn.addEventListener("click", () => {
+      markArrived(row);
+      setStep(id, 2);
+      showFlowStep(container, 2);
     });
 
-    if (requiresSignature) {
+    const nextDiag = container.querySelector("[data-action='next-diagnostic']");
+    nextDiag.addEventListener("click", () => {
+      if (!state.diagnostic[id].trim()) return showToast("warn", STR.toastNeedDiagnostic);
+      setStep(id, 3);
+      showFlowStep(container, 3);
+    });
+
+    const nextRes = container.querySelector("[data-action='next-resolution']");
+    nextRes.addEventListener("click", () => {
+      if (!state.resolution[id].trim()) return showToast("warn", STR.toastNeedResolution);
+      setStep(id, 4);
+      showFlowStep(container, 4);
+    });
+
+    if (getFlag(row.requires_signature, CONFIG.REQUIRE_SIGNATURE_DEFAULT)) {
       const canvas = container.querySelector(".ti-signature-canvas");
       const clearBtn = container.querySelector('[data-action="sig-clear"]');
       setupSignatureCanvas(canvas, id);
-      clearBtn.addEventListener("click", () => {
-        clearSignature(canvas, id);
-        updateValidateButton(container, row);
-      });
+      clearBtn.addEventListener("click", () => clearSignature(canvas, id));
     }
+
+    const signedPvInput = container.querySelector("[data-signed-pv]");
+    signedPvInput.addEventListener("change", () => {
+      state.signedPv[id] = signedPvInput.files?.[0] || null;
+    });
 
     const confirmBtn = container.querySelector('[data-action="confirm-validate"]');
     confirmBtn.addEventListener("click", async () => {
       if (!confirm(STR.confirmValidate)) return;
       await validateIntervention(container, row);
     });
-
-    updateValidateButton(container, row);
   }
 
-  async function startIntervention(row, btn) {
+  function showFlowStep(container, step) {
+    container.querySelectorAll("[data-flow]").forEach((el) => {
+      el.hidden = Number(el.dataset.flow) !== step;
+    });
+    container.querySelectorAll("[data-step]").forEach((el) => {
+      const s = Number(el.dataset.step);
+      el.classList.toggle("is-done", s < step);
+      el.classList.toggle("is-active", s === step);
+    });
+  }
+
+  async function startIntervention(row, btn, flowPanel) {
     btn.disabled = true;
     btn.textContent = "Demarrage...";
 
@@ -470,6 +566,7 @@
     }
 
     setActiveId(row.id);
+    setStep(row.id, 1);
 
     const idx = state.items.findIndex((x) => x.id === row.id);
     if (idx > -1) {
@@ -479,15 +576,29 @@
 
     showToast("success", STR.toastStart);
     renderList();
+
+    if (flowPanel) {
+      flowPanel.hidden = false;
+      if (!flowPanel.dataset.ready) {
+        renderFlow(flowPanel, row);
+        flowPanel.dataset.ready = "1";
+      }
+    }
+  }
+
+  async function markArrived(row) {
+    const arrivedAt = new Date().toISOString();
+    const payload = {};
+    if (hasField(row, "arrived_at")) payload.arrived_at = arrivedAt;
+
+    if (Object.keys(payload).length) {
+      await supabase.from("interventions").update(payload).eq("id", row.id);
+    }
   }
 
   async function validateIntervention(container, row) {
-    if (!isStartedStatus(row.status) && !row.started_at) {
-      showToast("warn", "Demarre d'abord l'intervention");
-      return;
-    }
-
     const id = row.id;
+
     const requiresChecklist = getFlag(row.requires_checklist, CONFIG.REQUIRE_CHECKLIST_DEFAULT);
     const requiresPhotos = getFlag(row.requires_photos, CONFIG.REQUIRE_PHOTOS_DEFAULT);
     const requiresSignature = getFlag(row.requires_signature, CONFIG.REQUIRE_SIGNATURE_DEFAULT);
@@ -512,26 +623,37 @@
       const completedAt = new Date().toISOString();
 
       const photoUploads = await uploadPhotos(id, state.files[id] || []);
-      const signatureUpload = requiresSignature ? await uploadSignature(id) : null;
+      const signedPvUpload = await uploadSignedPv(id, state.signedPv[id]);
+
+      const observationsText = buildObservations(row, {
+        diagnostic: state.diagnostic[id],
+        resolution: state.resolution[id],
+        products: cleanProducts(state.products[id] || []),
+        photos: photoUploads,
+        signedPv: signedPvUpload,
+        notes: state.observations[id]
+      });
 
       const reportPayload = {
         intervention_id: id,
         user_id: state.userId,
         checklist: state.checklist[id],
-        notes: state.notes[id] || "",
+        diagnostic: state.diagnostic[id] || "",
+        resolution: state.resolution[id] || "",
+        observations: observationsText,
+        notes: state.observations[id] || "",
         photos: photoUploads,
-        signature: signatureUpload,
         products: cleanProducts(state.products[id] || []),
+        signed_pv: signedPvUpload,
         completed_at: completedAt
       };
 
       const reportOk = await saveReport(reportPayload);
-
       const expensesOk = await saveExpenses(id);
 
       let statusUpdated = true;
       if (CONFIG.ENABLE_STATUS_UPDATE) {
-        statusUpdated = await updateIntervention(id, completedAt, row);
+        statusUpdated = await updateIntervention(id, completedAt, row, observationsText, signedPvUpload);
       }
 
       const idx = state.items.findIndex((x) => x.id === id);
@@ -540,16 +662,14 @@
         if (hasField(row, "completed_at")) state.items[idx].completed_at = completedAt;
       }
 
-      if (statusUpdated) {
-        showToast("success", STR.toastSaved);
-      } else {
-        showToast("warn", STR.toastSavedPartial);
-      }
+      if (statusUpdated) showToast("success", STR.toastSaved);
+      else showToast("warn", STR.toastSavedPartial);
 
       if (!reportOk) showToast("warn", STR.toastReportMissing);
       if (!expensesOk) showToast("warn", STR.toastExpensesMissing);
 
       setActiveId(null);
+      setStep(id, 1);
       renderList();
     } catch (e) {
       console.error(e);
@@ -558,6 +678,68 @@
       btn.disabled = false;
       btn.textContent = STR.validateCTA;
     }
+  }
+
+  async function uploadPhotos(interventionId, files) {
+    if (!files || !files.length) return [];
+
+    const bucket = CONFIG.STORAGE_BUCKET;
+    const uploads = await Promise.all(files.map(async (file) => {
+      const ext = getFileExtension(file.name);
+      const name = `${Date.now()}_${randomId()}.${ext || "jpg"}`;
+      const path = `interventions/${interventionId}/${name}`;
+
+      const { error } = await supabase
+        .storage
+        .from(bucket)
+        .upload(path, file, { cacheControl: "3600", upsert: false });
+
+      if (error) throw error;
+
+      const { data } = supabase
+        .storage
+        .from(bucket)
+        .getPublicUrl(path);
+
+      return {
+        path,
+        url: data?.publicUrl || null,
+        name: file.name,
+        size: file.size,
+        type: file.type || null
+      };
+    }));
+
+    return uploads;
+  }
+
+  async function uploadSignedPv(interventionId, file) {
+    if (!file) return null;
+
+    const bucket = CONFIG.STORAGE_BUCKET;
+    const ext = getFileExtension(file.name);
+    const name = `pv_signed_${Date.now()}_${randomId()}.${ext || "pdf"}`;
+    const path = `interventions/${interventionId}/${name}`;
+
+    const { error } = await supabase
+      .storage
+      .from(bucket)
+      .upload(path, file, { cacheControl: "3600", upsert: true });
+
+    if (error) return null;
+
+    const { data } = supabase
+      .storage
+      .from(bucket)
+      .getPublicUrl(path);
+
+    return {
+      path,
+      url: data?.publicUrl || null,
+      name: file.name,
+      size: file.size,
+      type: file.type || null
+    };
   }
 
   async function saveReport(payload) {
@@ -623,6 +805,42 @@
         }));
       }
     } catch (_) {}
+  }
+
+  async function loadCatalog() {
+    if (state.catalogLoaded) return;
+    state.catalogLoaded = true;
+
+    const res = await supabase
+      .from(CONFIG.PRODUCTS_TABLE)
+      .select("*")
+      .limit(500);
+
+    if (res.error) return;
+
+    const mapped = (res.data || [])
+      .map((r) => ({
+        name: r.name || r.title || r.label,
+        price: r.price ?? r.unit_price ?? r.cost ?? null
+      }))
+      .filter((r) => r.name);
+
+    state.catalog = mapped;
+    renderCatalogList();
+  }
+
+  function renderCatalogList() {
+    const list = root.querySelector("#ti-products-list");
+    if (!list) return;
+    list.innerHTML = state.catalog
+      .map((p) => `<option value="${escapeHTML(p.name)}"></option>`)
+      .join("");
+  }
+
+  function findCatalogItem(name) {
+    if (!name) return null;
+    const n = String(name).trim().toLowerCase();
+    return state.catalog.find((p) => String(p.name).trim().toLowerCase() === n) || null;
   }
 
   function renderProducts(container, interventionId) {
@@ -708,6 +926,10 @@
     `;
   }
 
+  function createEmptyProduct() {
+    return { name: "", qty: 1, unitPrice: 0, paidByTech: false, note: "" };
+  }
+
   function computeLineTotal(item) {
     const qty = toNumber(item.qty);
     const price = toNumber(item.unitPrice);
@@ -746,45 +968,49 @@
       }));
   }
 
-  async function loadCatalog() {
-    if (state.catalogLoaded) return;
-    state.catalogLoaded = true;
+  function buildObservations(row, parts) {
+    const lines = [];
+    lines.push(`Intervention: ${row.title || ""}`);
+    if (row.client_name) lines.push(`Client: ${row.client_name}`);
+    if (parts.diagnostic) lines.push(`\n[Diagnostic]\n${parts.diagnostic}`);
+    if (parts.resolution) lines.push(`\n[Resolution]\n${parts.resolution}`);
 
-    const res = await supabase
-      .from(CONFIG.PRODUCTS_TABLE)
-      .select("id, name, title, label, price, unit_price, cost")
-      .limit(500);
+    if (parts.products && parts.products.length) {
+      lines.push("\n[Produits]");
+      parts.products.forEach((p) => {
+        const paid = p.paidByTech ? " (paye par tech)" : "";
+        lines.push(`- ${p.name} x${p.qty} @ ${formatMoney(p.unitPrice)} = ${formatMoney(p.total)}${paid}`);
+      });
+    }
 
-    if (res.error) return;
+    if (parts.photos && parts.photos.length) {
+      lines.push(`\n[Photos] ${parts.photos.length} photo(s) jointes`);
+    }
 
-    const mapped = (res.data || [])
-      .map((r) => ({
-        name: r.name || r.title || r.label,
-        price: r.price ?? r.unit_price ?? r.cost ?? null
-      }))
-      .filter((r) => r.name);
+    if (parts.signedPv) {
+      lines.push(`\n[PV signe] ${parts.signedPv.url || parts.signedPv.path}`);
+    }
 
-    state.catalog = mapped;
-    renderCatalogList();
+    if (parts.notes) {
+      lines.push(`\n[Observations]\n${parts.notes}`);
+    }
+
+    return lines.join("\n");
   }
 
-  function renderCatalogList() {
-    const list = root.querySelector("#ti-products-list");
-    if (!list) return;
-    list.innerHTML = state.catalog
-      .map((p) => `<option value="${escapeHTML(p.name)}"></option>`)
-      .join("");
-  }
-
-  function findCatalogItem(name) {
-    if (!name) return null;
-    const n = String(name).trim().toLowerCase();
-    return state.catalog.find((p) => String(p.name).trim().toLowerCase() === n) || null;
-  }
-
-  async function updateIntervention(id, completedAt, row) {
+  async function updateIntervention(id, completedAt, row, observationsText, signedPv) {
     const payload = { status: CONFIG.STATUS_DONE };
     if (hasField(row, "completed_at")) payload.completed_at = completedAt;
+
+    const obsField = findExistingField(row, ["observations", "tech_observations", "report_notes", "notes_tech"]);
+    if (obsField) payload[obsField] = observationsText;
+
+    if (signedPv) {
+      const pvField = findExistingField(row, [CONFIG.SIGNED_PV_URL_FIELD, "pv_signed_url"]);
+      const pvPathField = findExistingField(row, [CONFIG.SIGNED_PV_PATH_FIELD, "pv_signed_path"]);
+      if (pvField && signedPv.url) payload[pvField] = signedPv.url;
+      if (pvPathField && signedPv.path) payload[pvPathField] = signedPv.path;
+    }
 
     const { error } = await supabase
       .from("interventions")
@@ -833,6 +1059,8 @@
         <div class="ti-list" data-ti-list></div>
         <div class="ti-toasts" data-ti-toasts></div>
 
+        <div class="ti-sticky" data-ti-sticky></div>
+
         <div class="ti-sheet" data-ti-sheet hidden>
           <div class="ti-sheet-backdrop" data-ti-sheet-close></div>
           <div class="ti-sheet-panel">
@@ -856,6 +1084,7 @@
     const focus = rootEl.querySelector("[data-ti-focus]");
     const focusTitle = rootEl.querySelector("[data-ti-focus-title]");
     const focusBody = rootEl.querySelector("[data-ti-focus-body]");
+    const sticky = rootEl.querySelector("[data-ti-sticky]");
 
     filters.forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -883,7 +1112,29 @@
       el.addEventListener("click", closeMapSheet);
     });
 
-    return { list, count, toasts, sheet, search, filters, focus, focusTitle, focusBody };
+    return { list, count, toasts, sheet, search, filters, focus, focusTitle, focusBody, sticky };
+  }
+
+  function renderStickyBar(row) {
+    if (!row || !state.activeId) {
+      els.sticky.innerHTML = "";
+      els.sticky.hidden = true;
+      return;
+    }
+
+    const phone = normalizePhone(row.support_phone);
+    const address = row.address ? String(row.address).trim() : "";
+
+    els.sticky.hidden = false;
+    els.sticky.innerHTML = `
+      <div class="ti-sticky-inner">
+        <a class="ti-btn ti-btn--primary ${phone ? "" : "is-disabled"}" ${phone ? `href="tel:${phone}"` : ""}>${STR.callCTA}</a>
+        <button class="ti-btn ti-btn--ghost ${address ? "" : "is-disabled"}" data-action="map-sticky">${STR.mapCTA}</button>
+      </div>
+    `;
+
+    const mapBtn = els.sticky.querySelector("[data-action='map-sticky']");
+    if (mapBtn && address) mapBtn.addEventListener("click", () => openMapSheet(address));
   }
 
   function setControlsDisabled(disabled) {
@@ -977,52 +1228,18 @@
     `;
   }
 
-  function updateValidateButton(container, row) {
-    const id = row.id;
-    const requiresChecklist = getFlag(row.requires_checklist, CONFIG.REQUIRE_CHECKLIST_DEFAULT);
-    const requiresPhotos = getFlag(row.requires_photos, CONFIG.REQUIRE_PHOTOS_DEFAULT);
-    const requiresSignature = getFlag(row.requires_signature, CONFIG.REQUIRE_SIGNATURE_DEFAULT);
-    const startedOk = isStartedStatus(row.status) || !!row.started_at;
-
-    const checklistOk = !requiresChecklist || state.checklist[id].every(Boolean);
-    const photosOk = !requiresPhotos || (state.files[id] && state.files[id].length > 0);
-    const signatureOk = !requiresSignature || state.signatures[id].hasSignature;
-    const productsOk = validateProducts(id).ok;
-
-    const btn = container.querySelector('[data-action="confirm-validate"]');
-    if (!btn) return;
-    btn.disabled = !(startedOk && checklistOk && photosOk && signatureOk && productsOk);
-
-    updateSteps(container, {
-      startedOk,
-      checklistOk,
-      photosOk,
-      productsOk,
-      signatureOk
-    });
-  }
-
-  function updateSteps(container, stateFlags) {
-    const set = (step, ok) => {
-      const el = container.querySelector(`[data-step="${step}"]`);
-      if (!el) return;
-      el.classList.toggle("is-done", !!ok);
-    };
-    set("start", stateFlags.startedOk);
-    set("checklist", stateFlags.checklistOk);
-    set("photos", stateFlags.photosOk);
-    set("products", stateFlags.productsOk);
-    set("signature", stateFlags.signatureOk);
-    set("finish", stateFlags.startedOk && stateFlags.checklistOk && stateFlags.photosOk && stateFlags.productsOk && stateFlags.signatureOk);
+  function appendFiles(id, fileList, previews) {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    state.files[id] = (state.files[id] || []).concat(files);
+    renderPreviews(id, previews, state.files[id]);
   }
 
   function renderPreviews(id, container, files) {
+    container.innerHTML = "";
     if (!files || !files.length) return;
-    const urls = [];
     files.forEach((file) => {
       const url = URL.createObjectURL(file);
-      urls.push(url);
-
       const item = document.createElement("div");
       item.className = "ti-preview";
       item.innerHTML = `
@@ -1031,76 +1248,20 @@
       `;
       container.appendChild(item);
     });
-    state.previews[id] = urls;
-  }
-
-  function clearPreviews(id, container) {
-    const urls = state.previews[id] || [];
-    urls.forEach((u) => URL.revokeObjectURL(u));
-    state.previews[id] = [];
-    container.innerHTML = "";
-  }
-
-  function setupSignatureCanvas(canvas, id) {
-    const ratio = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = Math.max(1, Math.floor(rect.width * ratio));
-    canvas.height = Math.max(1, Math.floor(160 * ratio));
-    canvas.style.height = "160px";
-    const ctx = canvas.getContext("2d");
-    ctx.lineWidth = 2 * ratio;
-    ctx.lineCap = "round";
-    ctx.strokeStyle = "#0f172a";
-
-    let drawing = false;
-
-    const getPos = (e) => {
-      const r = canvas.getBoundingClientRect();
-      return {
-        x: (e.clientX - r.left) * ratio,
-        y: (e.clientY - r.top) * ratio
-      };
-    };
-
-    canvas.addEventListener("pointerdown", (e) => {
-      drawing = true;
-      const p = getPos(e);
-      ctx.beginPath();
-      ctx.moveTo(p.x, p.y);
-      state.signatures[id].hasSignature = true;
-    });
-
-    canvas.addEventListener("pointermove", (e) => {
-      if (!drawing) return;
-      const p = getPos(e);
-      ctx.lineTo(p.x, p.y);
-      ctx.stroke();
-    });
-
-    const end = () => (drawing = false);
-    canvas.addEventListener("pointerup", end);
-    canvas.addEventListener("pointerleave", end);
-
-    state.signatures[id].canvas = canvas;
-  }
-
-  function clearSignature(canvas, id) {
-    const ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    state.signatures[id].hasSignature = false;
-  }
-
-  function showToast(type, message) {
-    const el = document.createElement("div");
-    el.className = `ti-toast ti-toast--${type}`;
-    el.textContent = message;
-    els.toasts.appendChild(el);
-    setTimeout(() => el.remove(), 3200);
   }
 
   function getChecklist(row) {
     if (Array.isArray(row.checklist) && row.checklist.length) return row.checklist;
-    return CONFIG.DEFAULT_CHECKLIST;
+    return [
+      "Confirmer le contact sur place",
+      "Photos avant intervention",
+      "Diagnostic / verification",
+      "Realisation de l'intervention",
+      "Tests de fonctionnement",
+      "Explication au client",
+      "Photos apres intervention",
+      "Nettoyage de la zone"
+    ];
   }
 
   function getFlag(value, fallback) {
@@ -1186,13 +1347,31 @@
   }
 
   function getPvUrl(row) {
-    const direct = getFieldValue(row, CONFIG.PV_URL_FIELD);
-    if (direct) return String(direct);
+    const keys = [
+      CONFIG.PV_URL_FIELD,
+      "pv_url",
+      "pv",
+      "pv_file",
+      "pv_blank",
+      CONFIG.PV_PATH_FIELD,
+      "pv_path"
+    ];
 
-    const path = getFieldValue(row, CONFIG.PV_PATH_FIELD);
-    if (path) {
-      const { data } = supabase.storage.from(CONFIG.STORAGE_BUCKET).getPublicUrl(String(path));
-      return data?.publicUrl || "";
+    for (const k of keys) {
+      const v = row?.[k];
+      if (!v) continue;
+      if (typeof v === "string") {
+        if (/^https?:\/\//i.test(v)) return v;
+        const { data } = supabase.storage.from(CONFIG.STORAGE_BUCKET).getPublicUrl(String(v));
+        return data?.publicUrl || "";
+      }
+      if (typeof v === "object") {
+        if (v.url) return v.url;
+        if (v.path) {
+          const { data } = supabase.storage.from(CONFIG.STORAGE_BUCKET).getPublicUrl(String(v.path));
+          return data?.publicUrl || "";
+        }
+      }
     }
     return "";
   }
@@ -1286,6 +1465,13 @@
     return row && Object.prototype.hasOwnProperty.call(row, key);
   }
 
+  function findExistingField(row, keys) {
+    for (const k of keys) {
+      if (hasField(row, k)) return k;
+    }
+    return "";
+  }
+
   function escapeHTML(str) {
     return String(str || "")
       .replace(/&/g, "&amp;")
@@ -1341,12 +1527,43 @@
     } catch (_) {}
   }
 
+  function loadSteps() {
+    try {
+      const raw = localStorage.getItem(CONFIG.STEPS_STORAGE_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function saveSteps() {
+    try { localStorage.setItem(CONFIG.STEPS_STORAGE_KEY, JSON.stringify(state.steps)); }
+    catch (_) {}
+  }
+
+  function getStep(id) {
+    return Number(state.steps[id] || 1);
+  }
+
+  function setStep(id, step) {
+    state.steps[id] = step;
+    saveSteps();
+  }
+
   function syncActiveId() {
     if (!state.activeId) return;
     const row = state.items.find((r) => String(r.id) === String(state.activeId));
     if (!row || isDoneStatus(String(row.status || "").toLowerCase()) || String(row.status || "").toLowerCase() === "canceled") {
       setActiveId(null);
     }
+  }
+
+  function showToast(type, message) {
+    const el = document.createElement("div");
+    el.className = `ti-toast ti-toast--${type}`;
+    el.textContent = message;
+    els.toasts.appendChild(el);
+    setTimeout(() => el.remove(), 3200);
   }
 
   function applyConfigOverrides(rootEl) {
@@ -1363,14 +1580,10 @@
     if (d.requireSignature) CONFIG.REQUIRE_SIGNATURE_DEFAULT = d.requireSignature === "true";
     if (d.pvUrlField) CONFIG.PV_URL_FIELD = d.pvUrlField;
     if (d.pvPathField) CONFIG.PV_PATH_FIELD = d.pvPathField;
+    if (d.signedPvUrlField) CONFIG.SIGNED_PV_URL_FIELD = d.signedPvUrlField;
+    if (d.signedPvPathField) CONFIG.SIGNED_PV_PATH_FIELD = d.signedPvPathField;
     if (d.remunerationField) CONFIG.REMUNERATION_FIELD = d.remunerationField;
     if (d.currency) CONFIG.CURRENCY = d.currency;
-    if (d.checklist) {
-      try {
-        const parsed = JSON.parse(d.checklist);
-        if (Array.isArray(parsed)) CONFIG.DEFAULT_CHECKLIST = parsed;
-      } catch (_) {}
-    }
   }
 
   function injectStyles() {
@@ -1380,93 +1593,94 @@
     style.textContent = `
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Space+Grotesk:wght@500;700&display=swap');
 
-.ti-shell { font-family:"Manrope",sans-serif; background:radial-gradient(1200px 600px at 10% -10%, #e3f2ff 0%, #f6f7fb 55%, #f6f7fb 100%); color:#0f172a; padding:20px; border-radius:18px; }
-.ti-header { display:flex; justify-content:space-between; align-items:flex-end; gap:16px; margin-bottom:16px; }
-.ti-eyebrow { font-size:12px; letter-spacing:0.08em; text-transform:uppercase; color:#64748b; margin-bottom:6px; }
-.ti-h1 { font-family:"Space Grotesk",sans-serif; font-size:26px; font-weight:700; }
-.ti-stat { background:#0f172a; color:#f8fafc; padding:10px 14px; border-radius:14px; text-align:center; }
-.ti-stat-value { font-size:20px; font-weight:700; }
-.ti-stat-label { font-size:11px; text-transform:uppercase; opacity:0.8; letter-spacing:0.08em; }
-.ti-focus { background:#fff7ed; border:1px solid #fed7aa; padding:12px 14px; border-radius:12px; margin-bottom:14px; }
-.ti-focus-title { font-weight:700; }
-.ti-focus-body { font-size:13px; color:#9a3412; }
-.ti-controls { display:grid; grid-template-columns:1fr; gap:10px; margin-bottom:16px; }
-.ti-filters { display:flex; flex-wrap:wrap; gap:8px; }
-.ti-chip { border:1px solid #cbd5f5; background:#fff; color:#1e293b; padding:8px 12px; border-radius:999px; font-size:13px; cursor:pointer; }
-.ti-chip.is-active { background:#0ea5e9; border-color:#0ea5e9; color:#fff; }
-.ti-chip.is-disabled { opacity:0.5; cursor:not-allowed; }
-.ti-search input { width:100%; border:1px solid #cbd5f5; border-radius:12px; padding:10px 12px; font-size:14px; }
-.ti-list { display:grid; gap:14px; }
-.ti-card { background:#fff; border-radius:16px; padding:16px; box-shadow:0 10px 30px rgba(15,23,42,0.08); display:grid; gap:12px; }
-.ti-card-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
-.ti-title { font-size:16px; font-weight:600; }
-.ti-meta { margin-top:6px; display:grid; gap:4px; font-size:12px; color:#64748b; }
-.ti-meta-item { display:block; }
-.ti-badge { font-size:11px; padding:6px 10px; border-radius:999px; font-weight:600; white-space:nowrap; }
-.ti-badge--success { background:#dcfce7; color:#166534; }
-.ti-badge--warning { background:#fef9c3; color:#854d0e; }
-.ti-badge--danger { background:#fee2e2; color:#991b1b; }
-.ti-badge--info { background:#e0f2fe; color:#075985; }
-.ti-badge--neutral { background:#e2e8f0; color:#1e293b; }
-.ti-actions { display:flex; flex-wrap:wrap; gap:8px; }
-.ti-btn { border:none; padding:8px 12px; border-radius:10px; font-size:13px; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; gap:6px; }
-.ti-btn--ghost { background:#f1f5f9; color:#0f172a; }
-.ti-btn--primary { background:#0ea5e9; color:#fff; }
-.ti-btn--start { background:#0f766e; color:#fff; }
-.ti-btn--xs { padding:6px 10px; font-size:12px; }
-.ti-btn.is-disabled { opacity:0.4; pointer-events:none; }
-.ti-details { background:#f8fafc; border-radius:12px; padding:12px; }
-.ti-grid { display:grid; gap:8px; }
-.ti-label { font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:#64748b; margin-bottom:6px; }
-.ti-value { font-size:14px; }
-.ti-link { color:#0ea5e9; text-decoration:none; font-weight:600; }
-.ti-validate { border-top:1px dashed #e2e8f0; padding-top:12px; }
-.ti-steps { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-bottom:10px; font-size:12px; }
-.ti-step { background:#f1f5f9; padding:6px 8px; border-radius:8px; text-align:center; }
-.ti-step.is-done { background:#dcfce7; color:#166534; font-weight:600; }
-.ti-block { margin-top:12px; display:grid; gap:8px; }
-.ti-checklist { display:grid; gap:6px; }
-.ti-check { display:flex; gap:8px; align-items:center; font-size:14px; }
-.ti-file { width:100%; }
-.ti-previews { display:grid; gap:10px; }
-.ti-preview { display:grid; gap:6px; }
-.ti-preview img { width:100%; border-radius:12px; object-fit:cover; }
-.ti-preview-meta { font-size:11px; color:#64748b; }
-.ti-textarea { width:100%; border:1px solid #cbd5f5; border-radius:12px; padding:10px; font-size:14px; }
-.ti-signature { border:1px solid #cbd5f5; border-radius:12px; padding:10px; display:grid; gap:8px; }
-.ti-signature-canvas { width:100%; height:160px; background:#fff; border-radius:10px; }
-.ti-skeleton { height:140px; border-radius:16px; background:linear-gradient(90deg, #edf2f7 0%, #f8fafc 50%, #edf2f7 100%); animation:shimmer 1.4s infinite; }
-@keyframes shimmer { 0% { background-position:-200px 0; } 100% { background-position:200px 0; } }
-.ti-empty { background:#fff; padding:20px; border-radius:16px; text-align:center; color:#475569; }
-.ti-empty-title { font-weight:600; }
-.ti-toasts { position:sticky; bottom:16px; display:grid; gap:8px; margin-top:16px; }
-.ti-toast { background:#0f172a; color:#fff; padding:10px 14px; border-radius:12px; font-size:13px; box-shadow:0 10px 30px rgba(15,23,42,0.2); }
-.ti-toast--success { background:#16a34a; }
-.ti-toast--warn { background:#f59e0b; }
-.ti-toast--error { background:#dc2626; }
-.ti-sheet { position:fixed; inset:0; z-index:9999; display:flex; align-items:flex-end; justify-content:center; }
-.ti-sheet[hidden] { display:none; }
-.ti-sheet-backdrop { position:absolute; inset:0; background:rgba(15,23,42,0.45); }
-.ti-sheet-panel { position:relative; width:min(480px,92vw); background:#fff; border-radius:16px; padding:16px; margin:0 12px 12px; display:grid; gap:10px; box-shadow:0 20px 60px rgba(15,23,42,0.2); }
-.ti-sheet-title { font-weight:700; font-size:14px; color:#0f172a; }
-.ti-sheet-btn { width:100%; text-align:left; padding:12px 14px; border-radius:12px; border:1px solid #e2e8f0; background:#f8fafc; font-size:14px; cursor:pointer; }
-.ti-sheet-cancel { background:#0f172a; color:#fff; border-color:#0f172a; text-align:center; }
-body.ti-sheet-open { overflow:hidden; }
-.ti-products { display:grid; gap:8px; }
-.ti-products-empty { font-size:12px; color:#64748b; }
-.ti-product-row { display:grid; grid-template-columns:1.6fr 0.6fr 0.8fr 0.7fr 1fr 1.2fr auto; gap:6px; align-items:center; }
-.ti-input { border:1px solid #cbd5f5; border-radius:10px; padding:8px; font-size:13px; }
-.ti-input--xs { width:100%; }
-.ti-product-total { font-weight:600; font-size:13px; }
-.ti-check-inline { display:flex; align-items:center; gap:6px; font-size:12px; }
-.ti-products-total { font-size:12px; color:#475569; margin-top:4px; }
-@media (max-width: 820px) {
-  .ti-product-row { grid-template-columns:1fr 1fr; }
-  .ti-product-total, .ti-check-inline, .ti-btn--xs { grid-column: span 2; }
-}
-@media (min-width: 768px) {
-  .ti-controls { grid-template-columns:1fr 280px; align-items:center; }
-}
+.ti-shell{font-family:"Manrope",sans-serif;background:radial-gradient(1200px 600px at 10% -10%, #e3f2ff 0%, #f6f7fb 55%, #f6f7fb 100%);color:#0f172a;padding:20px;border-radius:18px}
+.ti-header{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:16px}
+.ti-eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#64748b;margin-bottom:6px}
+.ti-h1{font-family:"Space Grotesk",sans-serif;font-size:26px;font-weight:700}
+.ti-stat{background:#0f172a;color:#f8fafc;padding:10px 14px;border-radius:14px;text-align:center}
+.ti-stat-value{font-size:20px;font-weight:700}
+.ti-stat-label{font-size:11px;text-transform:uppercase;opacity:.8;letter-spacing:.08em}
+.ti-focus{background:#fff7ed;border:1px solid #fed7aa;padding:12px 14px;border-radius:12px;margin-bottom:14px}
+.ti-focus-title{font-weight:700}
+.ti-focus-body{font-size:13px;color:#9a3412}
+.ti-controls{display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:16px}
+.ti-filters{display:flex;flex-wrap:wrap;gap:8px}
+.ti-chip{border:1px solid #cbd5f5;background:#fff;color:#1e293b;padding:8px 12px;border-radius:999px;font-size:13px;cursor:pointer}
+.ti-chip.is-active{background:#0ea5e9;border-color:#0ea5e9;color:#fff}
+.ti-chip.is-disabled{opacity:.5;cursor:not-allowed}
+.ti-search input{width:100%;border:1px solid #cbd5f5;border-radius:12px;padding:10px 12px;font-size:14px}
+.ti-list{display:grid;gap:14px}
+.ti-card{background:#fff;border-radius:16px;padding:16px;box-shadow:0 10px 30px rgba(15,23,42,.08);display:grid;gap:12px}
+.ti-card-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.ti-title{font-size:16px;font-weight:600}
+.ti-meta{margin-top:6px;display:grid;gap:4px;font-size:12px;color:#64748b}
+.ti-meta-item{display:block}
+.ti-badge{font-size:11px;padding:6px 10px;border-radius:999px;font-weight:600;white-space:nowrap}
+.ti-badge--success{background:#dcfce7;color:#166534}
+.ti-badge--warning{background:#fef9c3;color:#854d0e}
+.ti-badge--danger{background:#fee2e2;color:#991b1b}
+.ti-badge--info{background:#e0f2fe;color:#075985}
+.ti-badge--neutral{background:#e2e8f0;color:#1e293b}
+.ti-actions{display:flex;flex-wrap:wrap;gap:8px}
+.ti-btn{border:none;padding:8px 12px;border-radius:10px;font-size:13px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
+.ti-btn--ghost{background:#f1f5f9;color:#0f172a}
+.ti-btn--primary{background:#0ea5e9;color:#fff}
+.ti-btn--start{background:#0f766e;color:#fff}
+.ti-btn--xs{padding:6px 10px;font-size:12px}
+.ti-btn.is-disabled{opacity:.4;pointer-events:none}
+.ti-details{background:#f8fafc;border-radius:12px;padding:12px}
+.ti-grid{display:grid;gap:8px}
+.ti-label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#64748b;margin-bottom:6px}
+.ti-value{font-size:14px}
+.ti-link{color:#0ea5e9;text-decoration:none;font-weight:600}
+.ti-flow{border-top:1px dashed #e2e8f0;padding-top:12px}
+.ti-steps{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px;font-size:12px}
+.ti-step{background:#f1f5f9;padding:6px 8px;border-radius:8px;text-align:center}
+.ti-step.is-done{background:#dcfce7;color:#166534;font-weight:600}
+.ti-step.is-active{background:#e0f2fe;color:#075985;font-weight:600}
+.ti-flow-section{display:grid;gap:10px}
+.ti-flow-title{font-weight:700}
+.ti-block{margin-top:12px;display:grid;gap:8px}
+.ti-checklist{display:grid;gap:6px}
+.ti-check{display:flex;gap:8px;align-items:center;font-size:14px}
+.ti-file{width:100%}
+.ti-previews{display:grid;gap:10px}
+.ti-preview{display:grid;gap:6px}
+.ti-preview img{width:100%;border-radius:12px;object-fit:cover}
+.ti-preview-meta{font-size:11px;color:#64748b}
+.ti-textarea{width:100%;border:1px solid #cbd5f5;border-radius:12px;padding:10px;font-size:14px}
+.ti-signature{border:1px solid #cbd5f5;border-radius:12px;padding:10px;display:grid;gap:8px}
+.ti-signature-canvas{width:100%;height:160px;background:#fff;border-radius:10px}
+.ti-products{display:grid;gap:8px}
+.ti-products-empty{font-size:12px;color:#64748b}
+.ti-product-row{display:grid;grid-template-columns:1.6fr .6fr .8fr .7fr 1fr 1.2fr auto;gap:6px;align-items:center}
+.ti-input{border:1px solid #cbd5f5;border-radius:10px;padding:8px;font-size:13px}
+.ti-input--xs{width:100%}
+.ti-product-total{font-weight:600;font-size:13px}
+.ti-check-inline{display:flex;align-items:center;gap:6px;font-size:12px}
+.ti-products-total{font-size:12px;color:#475569;margin-top:4px}
+.ti-photo-actions{display:flex;gap:8px;flex-wrap:wrap}
+.ti-skeleton{height:140px;border-radius:16px;background:linear-gradient(90deg,#edf2f7 0%,#f8fafc 50%,#edf2f7 100%);animation:shimmer 1.4s infinite}
+@keyframes shimmer{0%{background-position:-200px 0}100%{background-position:200px 0}}
+.ti-empty{background:#fff;padding:20px;border-radius:16px;text-align:center;color:#475569}
+.ti-empty-title{font-weight:600}
+.ti-toasts{position:sticky;bottom:16px;display:grid;gap:8px;margin-top:16px}
+.ti-toast{background:#0f172a;color:#fff;padding:10px 14px;border-radius:12px;font-size:13px;box-shadow:0 10px 30px rgba(15,23,42,.2)}
+.ti-toast--success{background:#16a34a}
+.ti-toast--warn{background:#f59e0b}
+.ti-toast--error{background:#dc2626}
+.ti-sheet{position:fixed;inset:0;z-index:9999;display:flex;align-items:flex-end;justify-content:center}
+.ti-sheet[hidden]{display:none}
+.ti-sheet-backdrop{position:absolute;inset:0;background:rgba(15,23,42,.45)}
+.ti-sheet-panel{position:relative;width:min(480px,92vw);background:#fff;border-radius:16px;padding:16px;margin:0 12px 12px;display:grid;gap:10px;box-shadow:0 20px 60px rgba(15,23,42,.2)}
+.ti-sheet-title{font-weight:700;font-size:14px;color:#0f172a}
+.ti-sheet-btn{width:100%;text-align:left;padding:12px 14px;border-radius:12px;border:1px solid #e2e8f0;background:#f8fafc;font-size:14px;cursor:pointer}
+.ti-sheet-cancel{background:#0f172a;color:#fff;border-color:#0f172a;text-align:center}
+body.ti-sheet-open{overflow:hidden}
+.ti-sticky{position:sticky;bottom:12px;z-index:5}
+.ti-sticky-inner{display:flex;gap:8px;justify-content:center;background:#0f172a;color:#fff;padding:10px;border-radius:14px}
+@media (max-width:820px){.ti-product-row{grid-template-columns:1fr 1fr}.ti-product-total,.ti-check-inline,.ti-btn--xs{grid-column:span 2}}
+@media (min-width:768px){.ti-controls{grid-template-columns:1fr 280px;align-items:center}}
     `;
     document.head.appendChild(style);
   }
