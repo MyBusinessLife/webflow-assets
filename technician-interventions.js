@@ -7,10 +7,10 @@
     SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpyamRoZGVjaGNkbHlncGdhb2VzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc3NzczMzQsImV4cCI6MjA4MzM1MzMzNH0.E13XKKpIjB1auVtTmgBgV7jxmvS-EOv52t0mT1neKXE",
 
     DETAIL_PAGE_PATH: "/extranet/intervention",
-    STORAGE_BUCKET: "intervention-photos",
+    STORAGE_BUCKET: "interventions-files",
     REPORTS_TABLE: "intervention_reports",
 
-    STATUS_DONE: "completed",
+    STATUS_DONE: "done",
     STATUS_IN_PROGRESS: "in_progress",
     ENABLE_STATUS_UPDATE: true,
 
@@ -134,6 +134,7 @@
         checklist,
         requires_signature,
         requires_photos,
+        requires_checklist,
         completed_at
       )
     `;
@@ -415,6 +416,12 @@
       let statusUpdated = true;
       if (CONFIG.ENABLE_STATUS_UPDATE) {
         statusUpdated = await updateIntervention(id, completedAt);
+      }
+
+      const idx = state.items.findIndex((x) => x.id === id);
+      if (idx > -1) {
+        state.items[idx].status = CONFIG.STATUS_DONE;
+        state.items[idx].completed_at = completedAt;
       }
 
       if (statusUpdated) {
@@ -737,24 +744,26 @@
 
   function getStatusLabel(status) {
     const s = String(status || "").toLowerCase();
-    if (s === "confirmed") return "Confirme";
+    if (s === "planned") return "Planifiee";
+    if (s === "pending") return "En attente";
     if (s === "in_progress") return "En cours";
-    if (s === "completed" || s === "done" || s === "termine") return "Termine";
-    if (s === "canceled" || s === "cancelled") return "Annule";
+    if (s === "confirmed") return "Confirmee";
+    if (s === "done") return "Terminee";
+    if (s === "canceled") return "Annulee";
     return status ? capitalize(status) : "A faire";
   }
 
   function getStatusTone(status) {
     const s = String(status || "").toLowerCase();
-    if (isDoneStatus(s)) return "success";
-    if (s.includes("progress")) return "warning";
-    if (s.includes("cancel")) return "danger";
-    if (s.includes("confirm")) return "info";
+    if (s === "done") return "success";
+    if (s === "in_progress") return "warning";
+    if (s === "confirmed") return "info";
+    if (s === "canceled") return "danger";
     return "neutral";
   }
 
   function isDoneStatus(status) {
-    return ["completed", "done", "termine", "finished"].includes(status);
+    return status === "done";
   }
 
   function formatDateFR(value) {
