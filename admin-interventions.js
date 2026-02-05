@@ -120,6 +120,21 @@ window.Webflow.push(async function () {
     return cents === null ? 0 : cents;
   }
 
+  function cleanNullableText(v) {
+    const s = String(v || "").trim();
+    if (!s) return null;
+    const lower = s.toLowerCase();
+    if (lower === "none" || lower === "null" || lower === "undefined" || lower === "n/a") return null;
+    return s;
+  }
+  
+  function statusLabel(value) {
+    const key = normalizeStatus(value);
+    const conf = STATUS_MAP[key] || STATUS_MAP[key.replace(/\s/g, "_")];
+    return conf ? conf.label : (value || "—");
+  }
+
+
   // =========================
   // LISTING
   // =========================
@@ -879,7 +894,7 @@ window.Webflow.push(async function () {
   function refreshSummary() {
     const modal = ensureModalExists();
     const ref = modal.querySelector(".f-ref").value || "—";
-    const status = modal.querySelector(".f-status").value || "—";
+    const status = statusLabel(modal.querySelector(".f-status").value);
     const client = modal.querySelector(".f-client").value || "—";
     const date = modal.querySelector(".f-start").value ? formatFRDateTime(new Date(modal.querySelector(".f-start").value).toISOString()) : "—";
     const tarifCents = parseEurosToCents(modal.querySelector(".f-tarif").value);
@@ -1282,7 +1297,7 @@ window.Webflow.push(async function () {
 
     const payload = {
       internal_ref: modal.querySelector(".f-ref").value.trim(),
-      status: modal.querySelector(".f-status").value.trim() || null,
+      status: cleanNullableText(modal.querySelector(".f-status").value),
       title: modal.querySelector(".f-title").value.trim() || null,
       monday_item_id: modal.querySelector(".f-monday").value.trim() || null,
       client_name: modal.querySelector(".f-client").value.trim() || null,
@@ -1295,8 +1310,9 @@ window.Webflow.push(async function () {
       infos: modal.querySelector(".f-infos").value.trim() || null,
       observations: modal.querySelector(".f-observations").value.trim() || null,
       tarif: parseEurosToCents(modal.querySelector(".f-tarif").value),
-      pv_status: modal.querySelector(".f-pv-status").value.trim() || null,
-      pv_source: modal.querySelector(".f-pv-source").value.trim() || null,
+      pv_status: cleanNullableText(modal.querySelector(".f-pv-status").value),
+      pv_source: cleanNullableText(modal.querySelector(".f-pv-source").value),
+
     };
 
     if (!payload.internal_ref) {
@@ -1309,7 +1325,7 @@ window.Webflow.push(async function () {
     const compRows = Array.from(modal.querySelectorAll(".comp-row")).map(row => ({
       tech_id: row.dataset.techId,
       amount_cents: parseEurosToCents(row.querySelector(".c-amount").value),
-      status: row.querySelector(".c-status").value.trim() || null,
+      status: cleanNullableText(row.querySelector(".c-status").value),
       currency: row.querySelector(".c-currency").value.trim() || "EUR",
       notes: row.querySelector(".c-notes").value.trim() || null
     })).filter(c => c.tech_id);
