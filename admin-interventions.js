@@ -782,6 +782,60 @@ window.Webflow.push(async function () {
   }
 
   // =========================
+  // CLICK HANDLERS
+  // =========================
+  document.addEventListener("click", async (e) => {
+    const withModifier = e.metaKey || e.ctrlKey || e.shiftKey || e.altKey;
+  
+    // ADD
+    const addBtn = e.target.closest("a.add-intervention, .add-intervention");
+    if (addBtn) {
+      e.preventDefault?.();
+      await openInterventionModal("add");
+      return;
+    }
+  
+    // SHOW (view)
+    const showBtn = e.target.closest("a.show-intervention, .show-intervention");
+    if (showBtn) {
+      if (!(withModifier && showBtn.tagName === "A")) {
+        e.preventDefault?.();
+        const row = showBtn.closest(".intervention-row");
+        const id = row?.dataset?.interventionId;
+        if (id) await openInterventionModal("view", id);
+        return;
+      }
+    }
+  
+    // EDIT
+    const editBtn = e.target.closest("a.update-intervention, .update-intervention");
+    if (editBtn) {
+      if (!(withModifier && editBtn.tagName === "A")) {
+        e.preventDefault?.();
+        const row = editBtn.closest(".intervention-row");
+        const id = row?.dataset?.interventionId;
+        if (id) await openInterventionModal("edit", id);
+        return;
+      }
+    }
+  
+    // DELETE
+    const delBtn = e.target.closest("a.delete-intervention, .delete-intervention");
+    if (delBtn) {
+      e.preventDefault();
+      const row = delBtn.closest(".intervention-row");
+      const id = row?.dataset?.interventionId;
+      const ref = row?.querySelector(".ref-intervention")?.textContent?.trim()
+        || row?.dataset?.reference
+        || "—";
+      if (!id) return;
+      openDeleteModal({ interventionId: id, label: ref });
+      return;
+    }
+  }, true);
+
+
+  // =========================
   // INIT
   // =========================
   await loadInterventions();
