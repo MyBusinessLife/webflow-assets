@@ -1167,6 +1167,11 @@ window.Webflow.push(async function () {
     }
   }
 
+  function saveDraft() {
+    // version simple (ou tu peux supprimer complètement l'appel si tu veux)
+  }
+
+
   // =========================
   // SUBMIT
   // =========================
