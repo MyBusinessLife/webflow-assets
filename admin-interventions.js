@@ -15,6 +15,8 @@ window.Webflow.push(async function () {
     PRODUCTS_TABLE: USER_CFG.PRODUCTS_TABLE || "products",
   };
 
+  const PAGE_INTERVENTION = "/intervention";
+
   const STATUS_OPTIONS = [
     "Planifiée",
     "En attente",
@@ -24,12 +26,63 @@ window.Webflow.push(async function () {
     "Annulée"
   ];
 
+  const STATUS_CANONICAL_DB = {
+    planned: "planned",
+    planifiee: "planned",
+    "planifiée": "planned",
+    pending: "pending",
+    en_attente: "pending",
+    "en attente": "pending",
+    in_progress: "in_progress",
+    inprogress: "in_progress",
+    "in progress": "in_progress",
+    encours: "in_progress",
+    confirmed: "confirmed",
+    done: "done",
+    completed: "done",
+    terminee: "done",
+    "terminée": "done",
+    canceled: "canceled",
+    cancelled: "canceled",
+    annulee: "canceled",
+    "annulée": "canceled",
+  };
+
+  const STATUS_MAP = {
+    planned:     { label: "Planifiée",  cls: "is-planned" },
+    planifiee:   { label: "Planifiée",  cls: "is-planned" },
+    "planifiée": { label: "Planifiée",  cls: "is-planned" },
+    pending:      { label: "En attente", cls: "is-pending" },
+    en_attente:   { label: "En attente", cls: "is-pending" },
+    "en attente": { label: "En attente", cls: "is-pending" },
+    in_progress:   { label: "En cours",   cls: "is-progress" },
+    inprogress:    { label: "En cours",   cls: "is-progress" },
+    "in progress": { label: "En cours",   cls: "is-progress" },
+    encours:       { label: "En cours",   cls: "is-progress" },
+    confirmed:   { label: "Confirmée",  cls: "is-progress" },
+    done:        { label: "Terminée",   cls: "is-done" },
+    completed:   { label: "Terminée",   cls: "is-done" },
+    terminee:    { label: "Terminée",   cls: "is-done" },
+    "terminée":  { label: "Terminée",   cls: "is-done" },
+    canceled:    { label: "Annulée",    cls: "is-canceled" },
+    cancelled:   { label: "Annulée",    cls: "is-canceled" },
+    annulee:     { label: "Annulée",    cls: "is-canceled" },
+    "annulée":   { label: "Annulée",    cls: "is-canceled" },
+  };
+
   const COMP_STATUS_SUGGESTIONS = [
     "earned",
     "approved",
     "invoiced",
     "paid",
     "canceled"
+  ];
+
+  const EXPENSE_TYPES = [
+    { value: "material", label: "Produit", usesProduct: true },
+    { value: "travel", label: "Frais déplacement", usesProduct: false },
+    { value: "subcontract", label: "Sous-traitance", usesProduct: false },
+    { value: "other", label: "Autre frais", usesProduct: false },
   ];
 
   const PV_ORIGIN_DEFAULT = "admin";
@@ -122,28 +175,6 @@ window.Webflow.push(async function () {
     return s;
   }
 
-  const STATUS_MAP = {
-    planned:     { label: "Planifiée",  cls: "is-planned" },
-    planifiee:   { label: "Planifiée",  cls: "is-planned" },
-    "planifiée": { label: "Planifiée",  cls: "is-planned" },
-    pending:      { label: "En attente", cls: "is-pending" },
-    en_attente:   { label: "En attente", cls: "is-pending" },
-    "en attente": { label: "En attente", cls: "is-pending" },
-    in_progress:   { label: "En cours",   cls: "is-progress" },
-    inprogress:    { label: "En cours",   cls: "is-progress" },
-    "in progress": { label: "En cours",   cls: "is-progress" },
-    encours:       { label: "En cours",   cls: "is-progress" },
-    confirmed:   { label: "Confirmée",  cls: "is-progress" },
-    done:        { label: "Terminée",   cls: "is-done" },
-    completed:   { label: "Terminée",   cls: "is-done" },
-    terminee:    { label: "Terminée",   cls: "is-done" },
-    "terminée":  { label: "Terminée",   cls: "is-done" },
-    canceled:    { label: "Annulée",    cls: "is-canceled" },
-    cancelled:   { label: "Annulée",    cls: "is-canceled" },
-    annulee:     { label: "Annulée",    cls: "is-canceled" },
-    "annulée":   { label: "Annulée",    cls: "is-canceled" },
-  };
-
   function normalizeStatus(v) {
     return String(v || "")
       .trim()
@@ -157,6 +188,24 @@ window.Webflow.push(async function () {
     const key = normalizeStatus(value);
     const conf = STATUS_MAP[key] || STATUS_MAP[key.replace(/\s/g, "_")];
     return conf ? conf.label : (value || "—");
+  }
+
+  function toDbStatus(value) {
+    const v = cleanNullableText(value) || "Planifiée";
+    const key = normalizeStatus(v);
+    return STATUS_CANONICAL_DB[key] || "planned";
+  }
+
+  function isProductType(type) {
+    return type === "material";
+  }
+
+  function techInitials(name) {
+    const parts = String(name || "").trim().split(/\s+/);
+    if (!parts.length) return "T";
+    const first = parts[0][0] || "";
+    const last = parts.length > 1 ? parts[parts.length-1][0] : "";
+    return (first + last).toUpperCase();
   }
 
   // =========================
@@ -201,8 +250,16 @@ window.Webflow.push(async function () {
     rowEl.dataset.reference = itv.internal_ref || "";
     rowEl.dataset.client = itv.client_name || "";
     rowEl.dataset.tech = itv.technician_name ?? "";
-    rowEl.dataset.status = itv.status || "";
+    rowEl.dataset.status = statusLabel(itv.status || "");
     rowEl.dataset.datefr = formatFRDateTime(itv.start_at);
+
+    const href = `${PAGE_INTERVENTION}?id=${encodeURIComponent(itv.id || "")}`;
+    const showA = rowEl.querySelector("a.show-intervention");
+    const updateA = rowEl.querySelector("a.update-intervention");
+    const upgradeA = rowEl.querySelector("a.upgrade-intervention");
+    if (showA) showA.href = href;
+    if (updateA) updateA.href = href;
+    if (upgradeA) upgradeA.href = href;
   }
 
   async function loadInterventions() {
@@ -507,8 +564,34 @@ window.Webflow.push(async function () {
         .itv-modal__error { display:none; margin-top:10px; color:#b91c1c; font-weight:600; }
         .itv-actions { display:flex; justify-content:space-between; margin-top:14px; }
         .itv-muted { opacity:.7; font-size:12px; }
-        .itv-draft { font-size:12px; opacity:.7; }
-        .is-view input, .is-view textarea, .is-view select { background:#f8fafc; pointer-events:none; }
+
+        .tech-toolbar { display:flex; gap:10px; align-items:center; }
+        .tech-grid { display:grid; grid-template-columns: repeat(auto-fill,minmax(210px,1fr)); gap:10px; margin-top:10px; }
+        .tech-card { border:1px solid #e5e7eb; background:#fff; padding:10px; border-radius:12px; display:flex; gap:10px; align-items:center; cursor:pointer; }
+        .tech-card.is-selected { border-color:#0f766e; box-shadow:0 0 0 2px rgba(15,118,110,.15); }
+        .tech-avatar { width:36px; height:36px; border-radius:10px; background:#e0f2fe; color:#0f766e; font-weight:800; display:flex; align-items:center; justify-content:center; }
+        .tech-meta { font-size:12px; opacity:.7; }
+
+        .exp-row { display:grid; grid-template-columns: 1.5fr .6fr .7fr .7fr 40px; gap:8px; align-items:center; padding:8px; border:1px dashed #e5e7eb; border-radius:12px; margin-bottom:8px; background:#fff; }
+        .exp-row .exp-main { display:flex; flex-direction:column; gap:6px; }
+        .exp-total-box { display:flex; justify-content:space-between; align-items:center; margin-top:8px; }
+        .exp-total { font-weight:800; }
+
+        .itv-modal.is-readonly .itv-next,
+        .itv-modal.is-readonly .add-exp-product,
+        .itv-modal.is-readonly .add-exp-extra,
+        .itv-modal.is-readonly .e-del,
+        .itv-modal.is-readonly .f-del,
+        .itv-modal.is-readonly .f-file-input,
+        .itv-modal.is-readonly .pv-draft-input,
+        .itv-modal.is-readonly .pv-signed-input {
+          display: none !important;
+        }
+        .itv-modal.is-readonly input,
+        .itv-modal.is-readonly textarea,
+        .itv-modal.is-readonly select {
+          background: #f9fafb;
+        }
       </style>
 
       <div class="itv-modal__overlay"></div>
@@ -534,7 +617,6 @@ window.Webflow.push(async function () {
         </div>
 
         <div class="itv-modal__error"></div>
-        <div class="itv-draft"></div>
 
         <div class="itv-tab" data-tab="infos">
           <div class="itv-grid">
@@ -605,11 +687,12 @@ window.Webflow.push(async function () {
         </div>
 
         <div class="itv-tab" data-tab="techs">
-          <div class="itv-field">
-            <label>Technicien(s)</label>
-            <select class="f-techs" multiple style="min-height:160px;"></select>
-            <div class="itv-muted">Ctrl/Cmd + clic pour sélectionner plusieurs techniciens.</div>
+          <div class="tech-toolbar">
+            <input class="tech-search" type="text" placeholder="Rechercher un technicien..." />
+            <div class="tech-count itv-chip">0 sélectionné</div>
           </div>
+          <div class="tech-list tech-grid"></div>
+          <select class="f-techs" multiple style="display:none;"></select>
         </div>
 
         <div class="itv-tab" data-tab="comps">
@@ -618,21 +701,19 @@ window.Webflow.push(async function () {
             <div>Technicien</div><div>Montant</div><div>Statut</div><div>Devise</div><div></div>
           </div>
           <div class="comp-rows"></div>
-          <div class="itv-muted">Les compensations suivent la liste de techniciens sélectionnés.</div>
+          <div class="itv-muted">Total compensations: <strong class="comp-total">—</strong></div>
         </div>
 
         <div class="itv-tab" data-tab="expenses">
-          <div class="itv-section-title">Produits et frais</div>
-          <div class="itv-table-head">
-            <div>Produit/Libellé</div><div>Qté</div><div>PU</div><div>Total</div><div></div>
-          </div>
+          <div class="itv-section-title">Dépenses</div>
           <div class="exp-rows"></div>
-
-          <div style="display:flex; gap:8px; margin-top:10px;">
-            <button type="button" class="itv-btn secondary add-exp-product">Ajouter un produit</button>
-            <button type="button" class="itv-btn secondary add-exp-extra">Ajouter un frais</button>
+          <div class="exp-total-box">
+            <div class="itv-muted">Total dépenses: <span class="exp-total">—</span></div>
+            <div style="display:flex; gap:8px;">
+              <button type="button" class="itv-btn secondary add-exp-product">Ajouter un produit</button>
+              <button type="button" class="itv-btn secondary add-exp-extra">Ajouter un frais</button>
+            </div>
           </div>
-          <div class="itv-muted">Frais déplacement: choisissez "Frais" + quantité (km) + tarif/km.</div>
         </div>
 
         <div class="itv-tab" data-tab="files">
@@ -699,6 +780,13 @@ window.Webflow.push(async function () {
     modal.querySelectorAll(".itv-close").forEach(btn => btn.addEventListener("click", close));
     modal.querySelector(".itv-modal__overlay").addEventListener("click", close);
 
+    if (!document.__itvModalEscBound) {
+      document.__itvModalEscBound = true;
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") close();
+      });
+    }
+
     modal.querySelectorAll(".itv-step").forEach(btn => {
       btn.addEventListener("click", () => goStep(Number(btn.dataset.step)));
     });
@@ -721,11 +809,6 @@ window.Webflow.push(async function () {
     modal.querySelector(".add-exp-product").addEventListener("click", () => addExpenseRow({ type:"material" }));
     modal.querySelector(".add-exp-extra").addEventListener("click", () => addExpenseRow({ type:"other" }));
 
-    modal.querySelector(".f-techs").addEventListener("change", () => {
-      renderCompRows();
-      updateSummaryView();
-    });
-
     modal.querySelector(".f-file-input").addEventListener("change", (e) => {
       const files = Array.from(e.target.files || []);
       if (!files.length) return;
@@ -746,7 +829,14 @@ window.Webflow.push(async function () {
       renderPvSection();
     });
 
-    modal.querySelector(".itv-modal__panel").addEventListener("input", debounce(saveDraft, 400));
+    modal.querySelector(".tech-search").addEventListener("input", (e) => {
+      renderTechChecklist(e.target.value);
+    });
+
+    modal.querySelector(".itv-modal__panel").addEventListener("input", debounce(() => {
+      updateSummaryView();
+      saveDraft();
+    }, 250));
 
     return modal;
   }
@@ -774,7 +864,12 @@ window.Webflow.push(async function () {
   function setMode(mode) {
     const modal = ensureModalExists();
     modalState.mode = mode;
-    modal.classList.toggle("is-view", mode === "view");
+
+    const isView = mode === "view";
+    modal.classList.toggle("is-readonly", isView);
+    modal.querySelectorAll("input, textarea, select").forEach(el => {
+      el.disabled = isView;
+    });
   }
 
   function showError(msg) {
@@ -796,6 +891,9 @@ window.Webflow.push(async function () {
     const techSelect = modal.querySelector(".f-techs");
     const techNames = Array.from(techSelect.selectedOptions || []).map(o => o.textContent).join(", ") || "—";
 
+    const expTotal = computeExpenseTotalCents();
+    const compTotal = computeCompTotalCents();
+
     modal.querySelector(".s-ref").textContent = ref;
     modal.querySelector(".s-status").textContent = status;
     modal.querySelector(".s-client").textContent = client;
@@ -803,8 +901,23 @@ window.Webflow.push(async function () {
     modal.querySelector(".s-date").textContent = date;
     modal.querySelector(".s-techs").textContent = techNames;
     modal.querySelector(".s-tarif").textContent = formatCents(tarif);
-    modal.querySelector(".s-expenses").textContent = formatCents(computeExpenseTotalCents());
-    modal.querySelector(".s-comps").textContent = formatCents(computeCompTotalCents());
+    modal.querySelector(".s-expenses").textContent = formatCents(expTotal);
+    modal.querySelector(".s-comps").textContent = formatCents(compTotal);
+
+    const expEl = modal.querySelector(".exp-total");
+    const compEl = modal.querySelector(".comp-total");
+    if (expEl) expEl.textContent = formatCents(expTotal);
+    if (compEl) compEl.textContent = formatCents(compTotal);
+
+    updateTechCount();
+  }
+
+  function updateTechCount() {
+    const modal = ensureModalExists();
+    const techSelect = modal.querySelector(".f-techs");
+    const count = Array.from(techSelect.selectedOptions || []).length;
+    const el = modal.querySelector(".tech-count");
+    if (el) el.textContent = `${count} sélectionné${count > 1 ? "s" : ""}`;
   }
 
   function validateStep(step) {
@@ -823,7 +936,64 @@ window.Webflow.push(async function () {
     return null;
   }
 
-  // ✅ Fonction manquante corrigée
+  // =========================
+  // DRAFT
+  // =========================
+  function saveDraft() {
+    if (modalState.mode === "view") return;
+    const modal = ensureModalExists();
+    const key = modalState.mode === "edit" ? `itvDraft:${modalState.id}` : "itvDraft:new";
+    const data = {
+      ref: modal.querySelector(".f-ref").value,
+      status: modal.querySelector(".f-status").value,
+      title: modal.querySelector(".f-title").value,
+      monday: modal.querySelector(".f-monday").value,
+      client: modal.querySelector(".f-client").value,
+      client_ref: modal.querySelector(".f-client-ref").value,
+      phone: modal.querySelector(".f-phone").value,
+      tarif: modal.querySelector(".f-tarif").value,
+      address: modal.querySelector(".f-address").value,
+      start: modal.querySelector(".f-start").value,
+      end: modal.querySelector(".f-end").value,
+      equipment: modal.querySelector(".f-equipment").value,
+      infos: modal.querySelector(".f-infos").value,
+      observations: modal.querySelector(".f-observations").value,
+    };
+    localStorage.setItem(key, JSON.stringify(data));
+  }
+
+  function restoreDraft() {
+    const modal = ensureModalExists();
+    const key = modalState.mode === "edit" ? `itvDraft:${modalState.id}` : "itvDraft:new";
+    const raw = localStorage.getItem(key);
+    if (!raw) return;
+    try {
+      const d = JSON.parse(raw);
+      modal.querySelector(".f-ref").value = d.ref || "";
+      modal.querySelector(".f-status").value = d.status || "";
+      modal.querySelector(".f-title").value = d.title || "";
+      modal.querySelector(".f-monday").value = d.monday || "";
+      modal.querySelector(".f-client").value = d.client || "";
+      modal.querySelector(".f-client-ref").value = d.client_ref || "";
+      modal.querySelector(".f-phone").value = d.phone || "";
+      modal.querySelector(".f-tarif").value = d.tarif || "";
+      modal.querySelector(".f-address").value = d.address || "";
+      modal.querySelector(".f-start").value = d.start || "";
+      modal.querySelector(".f-end").value = d.end || "";
+      modal.querySelector(".f-equipment").value = d.equipment || "";
+      modal.querySelector(".f-infos").value = d.infos || "";
+      modal.querySelector(".f-observations").value = d.observations || "";
+    } catch {}
+  }
+
+  function clearDraft() {
+    const key = modalState.mode === "edit" ? `itvDraft:${modalState.id}` : "itvDraft:new";
+    localStorage.removeItem(key);
+  }
+
+  // =========================
+  // MODAL DATA
+  // =========================
   function clearModalFields() {
     const modal = ensureModalExists();
     modal.querySelector(".f-ref").value = "";
@@ -841,9 +1011,9 @@ window.Webflow.push(async function () {
     modal.querySelector(".f-infos").value = "";
     modal.querySelector(".f-observations").value = "";
     modal.querySelector(".f-file-type").value = "";
-    modal.querySelector(".f-file-input").value = "";
-    modal.querySelector(".pv-draft-input").value = "";
-    modal.querySelector(".pv-signed-input").value = "";
+
+    const techSelect = modal.querySelector(".f-techs");
+    Array.from(techSelect.options || []).forEach(o => (o.selected = false));
 
     modalState.pendingFiles = [];
     modalState.pendingPvDraft = null;
@@ -852,15 +1022,18 @@ window.Webflow.push(async function () {
     modal.querySelector(".files-list").innerHTML = "";
     modal.querySelector(".exp-rows").innerHTML = "";
     modal.querySelector(".comp-rows").innerHTML = "";
+    modal.querySelector(".pending-files").innerHTML = "";
     modal.querySelector(".pv-draft").innerHTML = "";
     modal.querySelector(".pv-signed").innerHTML = "";
-    renderPendingFiles();
+
+    renderTechChecklist();
+    updateSummaryView();
   }
 
   function fillModal(intervention, assigns, compensations, expenses, files, pv) {
     const modal = ensureModalExists();
     modal.querySelector(".f-ref").value = intervention.internal_ref || "";
-    modal.querySelector(".f-status").value = intervention.status || "";
+    modal.querySelector(".f-status").value = statusLabel(intervention.status);
     modal.querySelector(".f-title").value = intervention.title || "";
     modal.querySelector(".f-monday").value = intervention.monday_item_id || "";
     modal.querySelector(".f-client").value = intervention.client_name || "";
@@ -882,6 +1055,7 @@ window.Webflow.push(async function () {
       o.selected = mergedIds.includes(o.value);
     });
 
+    renderTechChecklist();
     renderCompRows(compensations || []);
     renderExpenseRows(expenses || []);
     renderFilesList(files || []);
@@ -891,7 +1065,7 @@ window.Webflow.push(async function () {
   }
 
   // =========================
-  // COMPENSATIONS
+  // TECH UI
   // =========================
   function getSelectedTechs() {
     const modal = ensureModalExists();
@@ -899,19 +1073,92 @@ window.Webflow.push(async function () {
     return Array.from(select.selectedOptions || []).map(o => ({ id: o.value, name: o.textContent }));
   }
 
+  function setTechSelected(id, selected) {
+    const modal = ensureModalExists();
+    const select = modal.querySelector(".f-techs");
+    const opt = Array.from(select.options).find(o => o.value === id);
+    if (opt) opt.selected = selected;
+  }
+
+  function renderTechChecklist(filter = "") {
+    const modal = ensureModalExists();
+    const list = modal.querySelector(".tech-list");
+    if (!list) return;
+
+    const q = norm(filter);
+    const techs = (techsCache || []).filter(t => {
+      if (!q) return true;
+      return norm(techFullName(t)).includes(q);
+    });
+
+    list.innerHTML = "";
+    if (!techs.length) {
+      list.innerHTML = `<div class="itv-muted">Aucun technicien</div>`;
+      updateTechCount();
+      return;
+    }
+
+    const selectedSet = new Set(getSelectedTechs().map(t => t.id));
+
+    techs.forEach((t) => {
+      const name = techFullName(t);
+      const card = document.createElement("label");
+      card.className = "tech-card";
+      if (selectedSet.has(t.id)) card.classList.add("is-selected");
+
+      card.innerHTML = `
+        <input type="checkbox" class="tech-check" ${selectedSet.has(t.id) ? "checked" : ""} />
+        <div class="tech-avatar">${techInitials(name)}</div>
+        <div>
+          <div style="font-weight:800;">${name}</div>
+          <div class="tech-meta">${t.id}</div>
+        </div>
+      `;
+
+      const chk = card.querySelector(".tech-check");
+      chk.disabled = modalState.mode === "view";
+      chk.addEventListener("change", () => {
+        setTechSelected(t.id, chk.checked);
+        card.classList.toggle("is-selected", chk.checked);
+        renderCompRows();
+        updateSummaryView();
+      });
+
+      list.appendChild(card);
+    });
+
+    updateTechCount();
+  }
+
+  // =========================
+  // COMPENSATIONS
+  // =========================
+  function snapshotCompRows() {
+    const modal = ensureModalExists();
+    const rows = Array.from(modal.querySelectorAll(".comp-row"));
+    return rows.map(row => ({
+      tech_id: row.dataset.techId,
+      amount_cents: parseEurosToCents(row.querySelector(".c-amount").value),
+      status: cleanNullableText(row.querySelector(".c-status").value),
+      currency: row.querySelector(".c-currency").value.trim() || "EUR",
+      notes: row.querySelector(".c-notes").value.trim() || null
+    })).filter(c => c.tech_id);
+  }
+
   function renderCompRows(existing = null) {
     const modal = ensureModalExists();
     const wrap = modal.querySelector(".comp-rows");
+
+    if (!existing) existing = snapshotCompRows();
+    const byTech = new Map();
+    (existing || []).forEach(c => {
+      if (c.tech_id) byTech.set(c.tech_id, c);
+    });
 
     let selected = getSelectedTechs();
     if (!selected.length && existing?.length) {
       selected = existing.map(c => ({ id: c.tech_id, name: techNameById(c.tech_id) }));
     }
-
-    const byTech = new Map();
-    (existing || []).forEach(c => {
-      if (c.tech_id) byTech.set(c.tech_id, c);
-    });
 
     wrap.innerHTML = "";
     selected.forEach((t) => {
@@ -960,30 +1207,24 @@ window.Webflow.push(async function () {
     const modal = ensureModalExists();
     const wrap = modal.querySelector(".exp-rows");
     wrap.innerHTML = "";
-    existing.forEach(exp => addExpenseRow(exp));
+    (existing || []).forEach(exp => addExpenseRow(exp));
   }
 
   function addExpenseRow(exp = {}) {
     const modal = ensureModalExists();
     const wrap = modal.querySelector(".exp-rows");
 
-    const type = exp.type || "product";
+    const type = exp.type || "material";
     const row = document.createElement("div");
-    row.className = "itv-row exp-row";
+    row.className = "exp-row";
     row.dataset.expenseId = exp.id || "";
     row.innerHTML = `
-      <div>
+      <div class="exp-main">
         <select class="e-type">
-          <option value="material">Produit</option>
-          <option value="travel">Frais déplacement</option>
-          <option value="subcontract">Sous-traitance</option>
-          <option value="other">Autre frais</option>
+          ${EXPENSE_TYPES.map(t => `<option value="${t.value}">${t.label}</option>`).join("")}
         </select>
-
-        <select class="e-product" style="margin-top:6px; display:none;">
-          ${productsOptionsHtml()}
-        </select>
-        <input class="e-label" type="text" placeholder="Libellé (ex: déplacement 18 km)" style="margin-top:6px; display:none;" />
+        <select class="e-product" style="display:none;">${productsOptionsHtml()}</select>
+        <input class="e-label" type="text" placeholder="Libellé (ex: déplacement 18 km)" style="display:none;" />
       </div>
       <div><input class="e-qty" type="number" min="0" step="1" /></div>
       <div><input class="e-unit" type="text" placeholder="ex: 12,00" /></div>
@@ -1007,7 +1248,7 @@ window.Webflow.push(async function () {
 
     function refresh() {
       const t = typeEl.value;
-      if (t === "product") {
+      if (isProductType(t)) {
         productEl.style.display = "";
         labelEl.style.display = "none";
       } else {
@@ -1015,7 +1256,7 @@ window.Webflow.push(async function () {
         labelEl.style.display = "";
       }
 
-      if (t === "product") {
+      if (isProductType(t)) {
         const pid = productEl.value;
         if (pid && !unitEl.value) {
           const price = productPriceById.get(pid);
@@ -1167,24 +1408,16 @@ window.Webflow.push(async function () {
     }
   }
 
-  function saveDraft() {
-    // version simple (ou tu peux supprimer complètement l'appel si tu veux)
-  }
-
-
   // =========================
   // SUBMIT
   // =========================
   async function submitModal() {
     const modal = ensureModalExists();
-    const rawStatus = cleanNullableText(modal.querySelector(".f-status").value);
-    const safeStatus = rawStatus || "Planifiée";
+    showError("");
 
     const payload = {
       internal_ref: modal.querySelector(".f-ref").value.trim(),
-      status: safeStatus,
-      pv_status: "none",
-      pv_source: null,
+      status: toDbStatus(modal.querySelector(".f-status").value),
 
       title: modal.querySelector(".f-title").value.trim() || null,
       monday_item_id: modal.querySelector(".f-monday").value.trim() || null,
@@ -1203,6 +1436,19 @@ window.Webflow.push(async function () {
     if (!payload.internal_ref) {
       showError("La référence est obligatoire.");
       return;
+    }
+
+    if (modalState.mode === "add") {
+      const { data: exists, error: existsErr } = await supabase
+        .from("interventions")
+        .select("id")
+        .eq("internal_ref", payload.internal_ref)
+        .maybeSingle();
+      if (existsErr) throw new Error(existsErr.message);
+      if (exists) {
+        showError("Cette référence existe déjà. Merci d’en choisir une autre.");
+        return;
+      }
     }
 
     const techIds = getSelectedTechs().map(t => t.id);
@@ -1229,6 +1475,9 @@ window.Webflow.push(async function () {
       let interventionId = modalState.id;
 
       if (modalState.mode === "add") {
+        payload.pv_status = "none";
+        payload.pv_source = null;
+
         const { data, error } = await supabase
           .from("interventions")
           .insert(payload)
@@ -1324,6 +1573,7 @@ window.Webflow.push(async function () {
         modalState.pendingPvSigned = null;
       }
 
+      clearDraft();
       closeModal();
       await loadInterventions();
     } catch (e) {
@@ -1445,13 +1695,26 @@ window.Webflow.push(async function () {
 
     clearModalFields();
 
-    if (mode !== "add") {
-      const bundle = await loadInterventionBundle(id);
-      fillModal(bundle.intervention, bundle.assigns, bundle.compensations, bundle.expenses, bundle.files, bundle.pv);
+    openModal();
+
+    if (mode === "add") {
+      restoreDraft();
+      renderCompRows([]);
+      renderExpenseRows([]);
+      renderFilesList([]);
+      renderPvSection(null);
+      goStep(0);
+      return;
     }
 
-    goStep(mode === "view" ? 6 : 0);
-    openModal();
+    try {
+      const bundle = await loadInterventionBundle(id);
+      fillModal(bundle.intervention, bundle.assigns, bundle.compensations, bundle.expenses, bundle.files, bundle.pv);
+      goStep(mode === "view" ? STEPS.length - 1 : 0);
+    } catch (e) {
+      console.error(e);
+      showError("Erreur chargement intervention: " + e.message);
+    }
   }
 
   // =========================
@@ -1507,4 +1770,5 @@ window.Webflow.push(async function () {
   // INIT
   // =========================
   await loadInterventions();
+  applyFilter(searchInput?.value || "");
 });
