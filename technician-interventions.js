@@ -32,10 +32,9 @@
     ]
   };
 
-  const supabase =
-    window.__MBL_SUPABASE__ ||
-    window.__techSupabase ||
-    window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
+  let supabase = window.__MBL_SUPABASE__ || window.__techSupabase;
+  if (!supabase) {
+    supabase = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
@@ -43,8 +42,8 @@
         storageKey: "mbl-extranet-auth"
       }
     });
-
-  window.__techSupabase = supabase;
+    window.__techSupabase = supabase;
+  }
 
   const STR = {
     title: "Mes interventions",
@@ -94,7 +93,6 @@
   }
 
   applyConfigOverrides(root);
-
   injectStyles();
 
   let mapAddress = "";
@@ -119,7 +117,7 @@
     if (authError || !authData?.user) {
       els.list.innerHTML = `
         <div class="ti-empty">
-          <div class="ti-empty-title">Session expirée</div>
+          <div class="ti-empty-title">Session expiree</div>
           <div class="ti-empty-body">Merci de vous reconnecter.</div>
         </div>
       `;
@@ -138,57 +136,11 @@
   }
 
   async function fetchAssignments(userId) {
-    const baseSelect = `
-      id,
-      interventions:intervention_id (
-        id,
-        client_name,
-        title,
-        status,
-        start_at,
-        support_phone,
-        address
-      )
-    `;
-
-    const extendedSelect = `
-      id,
-      interventions:intervention_id (
-        id,
-        client_name,
-        title,
-        status,
-        start_at,
-        support_phone,
-        address,
-        checklist,
-        requires_signature,
-        requires_photos,
-        requires_checklist,
-        completed_at,
-        started_at,
-        pv_blank_url,
-        pv_blank_path,
-        tech_fee,
-        description,
-        notes_tech,
-        tech_notes
-      )
-    `;
-
-    let res = await supabase
+    const res = await supabase
       .from("intervention_assignees")
-      .select(extendedSelect)
+      .select("id, user_id, intervention_id, interventions:intervention_id(*)")
       .eq("user_id", userId)
       .order("id", { ascending: false });
-
-    if (res.error && isMissingColumnError(res.error)) {
-      res = await supabase
-        .from("intervention_assignees")
-        .select(baseSelect)
-        .eq("user_id", userId)
-        .order("id", { ascending: false });
-    }
 
     if (res.error) throw res.error;
     return res.data || [];
@@ -240,7 +192,7 @@
 
     const pvUrl = getPvUrl(row);
     const remuneration = formatMoney(getFieldValue(row, CONFIG.REMUNERATION_FIELD));
-    const description = getFirstText(row, ["description", "details", "notes_tech", "tech_notes", "notes", "problem"]);
+    const description = getFirstText(row, ["description", "notes_tech", "tech_notes", "notes", "problem", "issue"]);
     const startedAt = row.started_at ? formatDateFR(row.started_at) : "";
     const completedAt = row.completed_at ? formatDateFR(row.completed_at) : "";
 
@@ -270,47 +222,19 @@
 
       <div class="ti-details" hidden>
         <div class="ti-grid">
-          <div class="ti-info">
-            <div class="ti-label">Telephone</div>
-            <div class="ti-value">${phoneReadable || "Non renseigne"}</div>
-          </div>
-          <div class="ti-info">
-            <div class="ti-label">Adresse</div>
-            <div class="ti-value">${address || "Non renseignee"}</div>
-          </div>
-          <div class="ti-info">
-            <div class="ti-label">Statut</div>
-            <div class="ti-value">${escapeHTML(statusLabel)}</div>
-          </div>
-          <div class="ti-info">
-            <div class="ti-label">Date</div>
-            <div class="ti-value">${escapeHTML(dateLabel)}</div>
-          </div>
-          ${remuneration ? `
-          <div class="ti-info">
-            <div class="ti-label">Remuneration</div>
-            <div class="ti-value">${escapeHTML(remuneration)}</div>
-          </div>` : ""}
-          ${startedAt ? `
-          <div class="ti-info">
-            <div class="ti-label">Demarree</div>
-            <div class="ti-value">${escapeHTML(startedAt)}</div>
-          </div>` : ""}
-          ${completedAt ? `
-          <div class="ti-info">
-            <div class="ti-label">Terminee</div>
-            <div class="ti-value">${escapeHTML(completedAt)}</div>
-          </div>` : ""}
-          ${description ? `
-          <div class="ti-info">
-            <div class="ti-label">Details</div>
-            <div class="ti-value">${escapeHTML(description)}</div>
-          </div>` : ""}
-          ${pvUrl ? `
-          <div class="ti-info">
-            <div class="ti-label">PV vierge</div>
-            <div class="ti-value"><a class="ti-link" href="${pvUrl}" target="_blank" rel="noopener">${STR.pvCTA}</a></div>
-          </div>` : ""}
+          ${infoRow("Client", row.client_name)}
+          ${infoRow("Intervention", row.title)}
+          ${infoRow("Statut", statusLabel)}
+          ${infoRow("Date", dateLabel)}
+          ${infoRow("Adresse", address)}
+          ${infoRow("Telephone", phoneReadable)}
+          ${infoRow("Remuneration", remuneration)}
+          ${infoRow("Demarree", startedAt)}
+          ${infoRow("Terminee", completedAt)}
+          ${infoRow("Consignes", description)}
+          ${infoRow("Acces", buildAccessInfo(row))}
+          ${infoRow("Materiel", buildEquipmentInfo(row))}
+          ${pvUrl ? infoRow("PV vierge", `<a class="ti-link" href="${pvUrl}" target="_blank" rel="noopener">${STR.pvCTA}</a>`, true) : ""}
         </div>
       </div>
 
@@ -471,21 +395,17 @@
     btn.textContent = "Demarrage...";
 
     const startedAt = new Date().toISOString();
+    const payload = { status: CONFIG.STATUS_IN_PROGRESS };
 
-    let res = await supabase
+    if (hasField(row, "started_at")) payload.started_at = startedAt;
+
+    const res = await supabase
       .from("interventions")
-      .update({ status: CONFIG.STATUS_IN_PROGRESS, started_at: startedAt })
+      .update(payload)
       .eq("id", row.id);
 
-    if (res.error && isMissingColumnError(res.error)) {
-      res = await supabase
-        .from("interventions")
-        .update({ status: CONFIG.STATUS_IN_PROGRESS })
-        .eq("id", row.id);
-    }
-
     if (res.error) {
-      showToast("error", STR.toastStartError);
+      showToast("error", res.error.message || STR.toastStartError);
       btn.disabled = false;
       btn.textContent = STR.startCTA;
       return;
@@ -494,7 +414,7 @@
     const idx = state.items.findIndex((x) => x.id === row.id);
     if (idx > -1) {
       state.items[idx].status = CONFIG.STATUS_IN_PROGRESS;
-      state.items[idx].started_at = startedAt;
+      if (hasField(row, "started_at")) state.items[idx].started_at = startedAt;
     }
 
     showToast("success", STR.toastStart);
@@ -543,13 +463,13 @@
 
       let statusUpdated = true;
       if (CONFIG.ENABLE_STATUS_UPDATE) {
-        statusUpdated = await updateIntervention(id, completedAt);
+        statusUpdated = await updateIntervention(id, completedAt, row);
       }
 
       const idx = state.items.findIndex((x) => x.id === id);
       if (idx > -1) {
         state.items[idx].status = CONFIG.STATUS_DONE;
-        state.items[idx].completed_at = completedAt;
+        if (hasField(row, "completed_at")) state.items[idx].completed_at = completedAt;
       }
 
       if (statusUpdated) {
@@ -639,10 +559,13 @@
     return true;
   }
 
-  async function updateIntervention(id, completedAt) {
+  async function updateIntervention(id, completedAt, row) {
+    const payload = { status: CONFIG.STATUS_DONE };
+    if (hasField(row, "completed_at")) payload.completed_at = completedAt;
+
     const { error } = await supabase
       .from("interventions")
-      .update({ status: CONFIG.STATUS_DONE, completed_at: completedAt })
+      .update(payload)
       .eq("id", id);
 
     if (error) {
@@ -1030,6 +953,66 @@
     return "";
   }
 
+  function buildAccessInfo(row) {
+    const parts = [];
+    const pairs = [
+      ["access_instructions", "Consignes acces"],
+      ["access_code", "Code acces"],
+      ["digicode", "Digicode"],
+      ["door_code", "Code porte"],
+      ["intercom", "Interphone"],
+      ["floor", "Etage"],
+      ["building", "Batiment"],
+      ["parking", "Parking"]
+    ];
+
+    pairs.forEach(([key, label]) => {
+      const val = row?.[key];
+      if (val !== null && val !== undefined && String(val).trim() !== "") {
+        parts.push(`${label}: ${String(val).trim()}`);
+      }
+    });
+
+    return parts.join(" | ");
+  }
+
+  function buildEquipmentInfo(row) {
+    const parts = [];
+    const pairs = [
+      ["equipment", "Materiel"],
+      ["device", "Appareil"],
+      ["brand", "Marque"],
+      ["model", "Modele"],
+      ["serial", "Serie"],
+      ["serial_number", "Serie"]
+    ];
+
+    pairs.forEach(([key, label]) => {
+      const val = row?.[key];
+      if (val !== null && val !== undefined && String(val).trim() !== "") {
+        parts.push(`${label}: ${String(val).trim()}`);
+      }
+    });
+
+    return parts.join(" | ");
+  }
+
+  function infoRow(label, value, isHtml = false) {
+    if (!value) return "";
+    const safeLabel = escapeHTML(label);
+    const safeValue = isHtml ? value : escapeHTML(value);
+    return `
+      <div class="ti-info">
+        <div class="ti-label">${safeLabel}</div>
+        <div class="ti-value">${safeValue}</div>
+      </div>
+    `;
+  }
+
+  function hasField(row, key) {
+    return row && Object.prototype.hasOwnProperty.call(row, key);
+  }
+
   function escapeHTML(str) {
     return String(str || "")
       .replace(/&/g, "&amp;")
@@ -1060,11 +1043,6 @@
   function getFileExtension(name) {
     const parts = String(name || "").split(".");
     return parts.length > 1 ? parts.pop().toLowerCase() : "";
-  }
-
-  function isMissingColumnError(error) {
-    const msg = String(error?.message || "");
-    return msg.includes("column") && msg.includes("does not exist");
   }
 
   function applyConfigOverrides(rootEl) {
@@ -1103,7 +1081,6 @@
   padding: 20px;
   border-radius: 18px;
 }
-
 .ti-header {
   display: flex;
   justify-content: space-between;
@@ -1111,7 +1088,6 @@
   gap: 16px;
   margin-bottom: 16px;
 }
-
 .ti-eyebrow {
   font-size: 12px;
   letter-spacing: 0.08em;
@@ -1119,13 +1095,11 @@
   color: #64748b;
   margin-bottom: 6px;
 }
-
 .ti-h1 {
   font-family: "Space Grotesk", sans-serif;
   font-size: 26px;
   font-weight: 700;
 }
-
 .ti-stat {
   background: #0f172a;
   color: #f8fafc;
@@ -1133,32 +1107,27 @@
   border-radius: 14px;
   text-align: center;
 }
-
 .ti-stat-value {
   font-size: 20px;
   font-weight: 700;
 }
-
 .ti-stat-label {
   font-size: 11px;
   text-transform: uppercase;
   opacity: 0.8;
   letter-spacing: 0.08em;
 }
-
 .ti-controls {
   display: grid;
   grid-template-columns: 1fr;
   gap: 10px;
   margin-bottom: 16px;
 }
-
 .ti-filters {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
-
 .ti-chip {
   border: 1px solid #cbd5f5;
   background: #fff;
@@ -1168,13 +1137,11 @@
   font-size: 13px;
   cursor: pointer;
 }
-
 .ti-chip.is-active {
   background: #0ea5e9;
   border-color: #0ea5e9;
   color: #fff;
 }
-
 .ti-search input {
   width: 100%;
   border: 1px solid #cbd5f5;
@@ -1182,12 +1149,10 @@
   padding: 10px 12px;
   font-size: 14px;
 }
-
 .ti-list {
   display: grid;
   gap: 14px;
 }
-
 .ti-card {
   background: #fff;
   border-radius: 16px;
@@ -1196,19 +1161,16 @@
   display: grid;
   gap: 12px;
 }
-
 .ti-card-head {
   display: flex;
   justify-content: space-between;
   gap: 12px;
   align-items: flex-start;
 }
-
 .ti-title {
   font-size: 16px;
   font-weight: 600;
 }
-
 .ti-meta {
   margin-top: 6px;
   display: grid;
@@ -1216,11 +1178,9 @@
   font-size: 12px;
   color: #64748b;
 }
-
 .ti-meta-item {
   display: block;
 }
-
 .ti-badge {
   font-size: 11px;
   padding: 6px 10px;
@@ -1228,19 +1188,16 @@
   font-weight: 600;
   white-space: nowrap;
 }
-
 .ti-badge--success { background: #dcfce7; color: #166534; }
 .ti-badge--warning { background: #fef9c3; color: #854d0e; }
 .ti-badge--danger { background: #fee2e2; color: #991b1b; }
 .ti-badge--info { background: #e0f2fe; color: #075985; }
 .ti-badge--neutral { background: #e2e8f0; color: #1e293b; }
-
 .ti-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
-
 .ti-btn {
   border: none;
   padding: 8px 12px;
@@ -1252,38 +1209,31 @@
   align-items: center;
   gap: 6px;
 }
-
 .ti-btn--ghost {
   background: #f1f5f9;
   color: #0f172a;
 }
-
 .ti-btn--primary {
   background: #0ea5e9;
   color: #fff;
 }
-
 .ti-btn--start {
   background: #0f766e;
   color: #fff;
 }
-
 .ti-btn.is-disabled {
   opacity: 0.4;
   pointer-events: none;
 }
-
 .ti-details {
   background: #f8fafc;
   border-radius: 12px;
   padding: 12px;
 }
-
 .ti-grid {
   display: grid;
   gap: 8px;
 }
-
 .ti-label {
   font-size: 11px;
   text-transform: uppercase;
@@ -1291,75 +1241,61 @@
   color: #64748b;
   margin-bottom: 6px;
 }
-
 .ti-value {
   font-size: 14px;
 }
-
 .ti-link {
   color: #0ea5e9;
   text-decoration: none;
   font-weight: 600;
 }
-
 .ti-validate {
   border-top: 1px dashed #e2e8f0;
   padding-top: 12px;
 }
-
 .ti-validate-title {
   font-weight: 600;
   margin-bottom: 4px;
 }
-
 .ti-validate-sub {
   font-size: 12px;
   color: #64748b;
 }
-
 .ti-block {
   margin-top: 12px;
   display: grid;
   gap: 8px;
 }
-
 .ti-checklist {
   display: grid;
   gap: 6px;
 }
-
 .ti-check {
   display: flex;
   gap: 8px;
   align-items: center;
   font-size: 14px;
 }
-
 .ti-file {
   width: 100%;
 }
-
 .ti-previews {
   display: grid;
   gap: 10px;
 }
-
 .ti-preview {
   display: grid;
   gap: 6px;
 }
-
 .ti-preview img {
   width: 100%;
   border-radius: 12px;
   object-fit: cover;
 }
-
 .ti-preview-meta {
   font-size: 11px;
   color: #64748b;
 }
-
 .ti-textarea {
   width: 100%;
   border: 1px solid #cbd5f5;
@@ -1367,7 +1303,6 @@
   padding: 10px;
   font-size: 14px;
 }
-
 .ti-signature {
   border: 1px solid #cbd5f5;
   border-radius: 12px;
@@ -1375,36 +1310,30 @@
   display: grid;
   gap: 8px;
 }
-
 .ti-signature-canvas {
   width: 100%;
   height: 160px;
   background: #fff;
   border-radius: 10px;
 }
-
 .ti-btn--xs {
   padding: 6px 10px;
   font-size: 12px;
   justify-self: start;
 }
-
 .ti-validate-actions {
   margin-top: 10px;
 }
-
 .ti-skeleton {
   height: 140px;
   border-radius: 16px;
   background: linear-gradient(90deg, #edf2f7 0%, #f8fafc 50%, #edf2f7 100%);
   animation: shimmer 1.4s infinite;
 }
-
 @keyframes shimmer {
   0% { background-position: -200px 0; }
   100% { background-position: 200px 0; }
 }
-
 .ti-empty {
   background: #fff;
   padding: 20px;
@@ -1412,11 +1341,9 @@
   text-align: center;
   color: #475569;
 }
-
 .ti-empty-title {
   font-weight: 600;
 }
-
 .ti-toasts {
   position: sticky;
   bottom: 16px;
@@ -1424,7 +1351,6 @@
   gap: 8px;
   margin-top: 16px;
 }
-
 .ti-toast {
   background: #0f172a;
   color: #fff;
@@ -1433,11 +1359,9 @@
   font-size: 13px;
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.2);
 }
-
 .ti-toast--success { background: #16a34a; }
 .ti-toast--warn { background: #f59e0b; }
 .ti-toast--error { background: #dc2626; }
-
 .ti-sheet {
   position: fixed;
   inset: 0;
@@ -1446,17 +1370,14 @@
   align-items: flex-end;
   justify-content: center;
 }
-
 .ti-sheet[hidden] {
   display: none;
 }
-
 .ti-sheet-backdrop {
   position: absolute;
   inset: 0;
   background: rgba(15, 23, 42, 0.45);
 }
-
 .ti-sheet-panel {
   position: relative;
   width: min(480px, 92vw);
@@ -1468,13 +1389,11 @@
   gap: 10px;
   box-shadow: 0 20px 60px rgba(15, 23, 42, 0.2);
 }
-
 .ti-sheet-title {
   font-weight: 700;
   font-size: 14px;
   color: #0f172a;
 }
-
 .ti-sheet-btn {
   width: 100%;
   text-align: left;
@@ -1485,18 +1404,15 @@
   font-size: 14px;
   cursor: pointer;
 }
-
 .ti-sheet-cancel {
   background: #0f172a;
   color: #fff;
   border-color: #0f172a;
   text-align: center;
 }
-
 body.ti-sheet-open {
   overflow: hidden;
 }
-
 @media (min-width: 768px) {
   .ti-controls {
     grid-template-columns: 1fr 280px;
