@@ -290,7 +290,6 @@ window.Webflow.push(async function () {
     const q = norm(qRaw);
     const rows = Array.from(document.querySelectorAll(".intervention-row"));
     if (!rows.length) return;
-
     rows.forEach((row) => {
       const hay = rowSearchText(row);
       row.style.display = (!q || hay.includes(q)) ? "" : "none";
@@ -332,6 +331,11 @@ window.Webflow.push(async function () {
     const first = String(t?.first_name || "").trim();
     const last  = String(t?.last_name || "").trim();
     return [first, last ? last.toUpperCase() : ""].filter(Boolean).join(" ").trim() || "—";
+  }
+
+  function techNameById(id) {
+    const t = (techsCache || []).find(x => x.id === id);
+    return t ? techFullName(t) : id;
   }
 
   async function loadProducts() {
@@ -425,7 +429,7 @@ window.Webflow.push(async function () {
   }
 
   // =========================
-  // MODAL (WIZARD)
+  // MODAL STATE
   // =========================
   let modalState = {
     mode: "view",
@@ -444,8 +448,8 @@ window.Webflow.push(async function () {
       b.classList.toggle("is-active", i === currentStep);
     });
 
-    modal.querySelector(".itv-prev").disabled = currentStep === 0;
-    modal.querySelector(".itv-next").textContent = currentStep === STEPS.length - 1 ? "Enregistrer" : "Suivant";
+    const nextBtn = modal.querySelector(".itv-next");
+    nextBtn.textContent = currentStep === STEPS.length - 1 ? (modalState.mode === "view" ? "Fermer" : "Enregistrer") : "Suivant";
 
     updateSummaryView();
   }
@@ -504,6 +508,7 @@ window.Webflow.push(async function () {
         .itv-actions { display:flex; justify-content:space-between; margin-top:14px; }
         .itv-muted { opacity:.7; font-size:12px; }
         .itv-draft { font-size:12px; opacity:.7; }
+        .is-view input, .is-view textarea, .is-view select { background:#f8fafc; pointer-events:none; }
       </style>
 
       <div class="itv-modal__overlay"></div>
@@ -531,12 +536,138 @@ window.Webflow.push(async function () {
         <div class="itv-modal__error"></div>
         <div class="itv-draft"></div>
 
-        <div class="itv-tab" data-tab="infos"> ... </div>
-        <div class="itv-tab" data-tab="techs"> ... </div>
-        <div class="itv-tab" data-tab="comps"> ... </div>
-        <div class="itv-tab" data-tab="expenses"> ... </div>
-        <div class="itv-tab" data-tab="files"> ... </div>
-        <div class="itv-tab" data-tab="pv"> ... </div>
+        <div class="itv-tab" data-tab="infos">
+          <div class="itv-grid">
+            <div class="itv-field">
+              <label>Référence *</label>
+              <input class="f-ref" type="text" />
+            </div>
+            <div class="itv-field">
+              <label>Statut</label>
+              <input class="f-status" type="text" list="status-list" />
+              <datalist id="status-list">${STATUS_OPTIONS.map(s => `<option value="${s}"></option>`).join("")}</datalist>
+            </div>
+
+            <div class="itv-field">
+              <label>Titre</label>
+              <input class="f-title" type="text" />
+            </div>
+            <div class="itv-field">
+              <label>Monday item id</label>
+              <input class="f-monday" type="text" />
+            </div>
+
+            <div class="itv-field">
+              <label>Client</label>
+              <input class="f-client" type="text" />
+            </div>
+            <div class="itv-field">
+              <label>Référence client</label>
+              <input class="f-client-ref" type="text" />
+            </div>
+
+            <div class="itv-field">
+              <label>Support téléphone</label>
+              <input class="f-phone" type="text" />
+            </div>
+            <div class="itv-field">
+              <label>Tarif (EUR)</label>
+              <input class="f-tarif" type="text" placeholder="ex: 120,00" />
+            </div>
+
+            <div class="itv-field" style="grid-column:1/-1;">
+              <label>Adresse</label>
+              <input class="f-address" type="text" />
+            </div>
+
+            <div class="itv-field">
+              <label>Début</label>
+              <input class="f-start" type="datetime-local" />
+            </div>
+            <div class="itv-field">
+              <label>Fin</label>
+              <input class="f-end" type="datetime-local" />
+            </div>
+
+            <div class="itv-field" style="grid-column:1/-1;">
+              <label>Équipement nécessaire</label>
+              <textarea class="f-equipment" rows="2"></textarea>
+            </div>
+            <div class="itv-field" style="grid-column:1/-1;">
+              <label>Infos</label>
+              <textarea class="f-infos" rows="3"></textarea>
+            </div>
+            <div class="itv-field" style="grid-column:1/-1;">
+              <label>Observations</label>
+              <textarea class="f-observations" rows="3"></textarea>
+            </div>
+          </div>
+        </div>
+
+        <div class="itv-tab" data-tab="techs">
+          <div class="itv-field">
+            <label>Technicien(s)</label>
+            <select class="f-techs" multiple style="min-height:160px;"></select>
+            <div class="itv-muted">Ctrl/Cmd + clic pour sélectionner plusieurs techniciens.</div>
+          </div>
+        </div>
+
+        <div class="itv-tab" data-tab="comps">
+          <div class="itv-section-title">Compensations par technicien</div>
+          <div class="itv-table-head">
+            <div>Technicien</div><div>Montant</div><div>Statut</div><div>Devise</div><div></div>
+          </div>
+          <div class="comp-rows"></div>
+          <div class="itv-muted">Les compensations suivent la liste de techniciens sélectionnés.</div>
+        </div>
+
+        <div class="itv-tab" data-tab="expenses">
+          <div class="itv-section-title">Produits et frais</div>
+          <div class="itv-table-head">
+            <div>Produit/Libellé</div><div>Qté</div><div>PU</div><div>Total</div><div></div>
+          </div>
+          <div class="exp-rows"></div>
+
+          <div style="display:flex; gap:8px; margin-top:10px;">
+            <button type="button" class="itv-btn secondary add-exp-product">Ajouter un produit</button>
+            <button type="button" class="itv-btn secondary add-exp-extra">Ajouter un frais</button>
+          </div>
+          <div class="itv-muted">Frais déplacement: choisissez "Frais" + quantité (km) + tarif/km.</div>
+        </div>
+
+        <div class="itv-tab" data-tab="files">
+          <div class="itv-section-title">Fichiers</div>
+          <div class="files-list"></div>
+
+          <div style="margin-top:10px;">
+            <div class="itv-field">
+              <label>Type de fichier</label>
+              <input class="f-file-type" type="text" placeholder="ex: devis, photo, rapport" />
+            </div>
+            <div class="itv-field">
+              <label>Ajouter fichier(s)</label>
+              <input class="f-file-input" type="file" accept="application/pdf" multiple />
+              <div class="itv-muted">PDF uniquement (bucket). Upload lors de l’enregistrement.</div>
+              <div class="pending-files"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="itv-tab" data-tab="pv">
+          <div class="itv-section-title">PV Draft</div>
+          <div class="pv-draft"></div>
+          <div class="itv-field">
+            <label>Uploader un PV draft</label>
+            <input class="pv-draft-input" type="file" accept="application/pdf" />
+          </div>
+
+          <div class="itv-section-title" style="margin-top:14px;">PV Signé</div>
+          <div class="pv-signed"></div>
+          <div class="itv-field">
+            <label>Uploader un PV signé</label>
+            <input class="pv-signed-input" type="file" accept="application/pdf" />
+          </div>
+        </div>
 
         <div class="itv-tab" data-tab="summary">
           <div class="itv-grid">
@@ -575,11 +706,44 @@ window.Webflow.push(async function () {
     modal.querySelector(".itv-prev").addEventListener("click", () => goStep(currentStep - 1));
 
     modal.querySelector(".itv-next").addEventListener("click", () => {
+      if (modalState.mode === "view") {
+        if (currentStep === STEPS.length - 1) closeModal();
+        else goStep(currentStep + 1);
+        return;
+      }
       const err = validateStep(currentStep);
       if (err) { showError(err); return; }
       showError("");
       if (currentStep === STEPS.length - 1) submitModal();
       else goStep(currentStep + 1);
+    });
+
+    modal.querySelector(".add-exp-product").addEventListener("click", () => addExpenseRow({ type:"product" }));
+    modal.querySelector(".add-exp-extra").addEventListener("click", () => addExpenseRow({ type:"extra" }));
+
+    modal.querySelector(".f-techs").addEventListener("change", () => {
+      renderCompRows();
+      updateSummaryView();
+    });
+
+    modal.querySelector(".f-file-input").addEventListener("change", (e) => {
+      const files = Array.from(e.target.files || []);
+      if (!files.length) return;
+      const type = modal.querySelector(".f-file-type").value.trim() || "document";
+      modalState.pendingFiles.push(...files.map(f => ({ file: f, type })));
+      renderPendingFiles();
+    });
+
+    modal.querySelector(".pv-draft-input").addEventListener("change", (e) => {
+      const file = e.target.files?.[0] || null;
+      modalState.pendingPvDraft = file;
+      renderPvSection();
+    });
+
+    modal.querySelector(".pv-signed-input").addEventListener("change", (e) => {
+      const file = e.target.files?.[0] || null;
+      modalState.pendingPvSigned = file;
+      renderPvSection();
     });
 
     modal.querySelector(".itv-modal__panel").addEventListener("input", debounce(saveDraft, 400));
@@ -605,6 +769,12 @@ window.Webflow.push(async function () {
     if (!modal) return;
     modal.style.display = "none";
     document.body.style.overflow = "";
+  }
+
+  function setMode(mode) {
+    const modal = ensureModalExists();
+    modalState.mode = mode;
+    modal.classList.toggle("is-view", mode === "view");
   }
 
   function showError(msg) {
@@ -653,52 +823,346 @@ window.Webflow.push(async function () {
     return null;
   }
 
-  function saveDraft() {
+  // ✅ Fonction manquante corrigée
+  function clearModalFields() {
     const modal = ensureModalExists();
-    const key = modalState.mode === "edit" ? `itvDraft:${modalState.id}` : "itvDraft:new";
-    const data = {
-      ref: modal.querySelector(".f-ref").value,
-      status: modal.querySelector(".f-status").value,
-      title: modal.querySelector(".f-title").value,
-      monday: modal.querySelector(".f-monday").value,
-      client: modal.querySelector(".f-client").value,
-      client_ref: modal.querySelector(".f-client-ref").value,
-      phone: modal.querySelector(".f-phone").value,
-      tarif: modal.querySelector(".f-tarif").value,
-      address: modal.querySelector(".f-address").value,
-      start: modal.querySelector(".f-start").value,
-      end: modal.querySelector(".f-end").value,
-      equipment: modal.querySelector(".f-equipment").value,
-      infos: modal.querySelector(".f-infos").value,
-      observations: modal.querySelector(".f-observations").value,
-    };
-    localStorage.setItem(key, JSON.stringify(data));
-    modal.querySelector(".itv-draft").textContent = "Brouillon sauvegardé";
+    modal.querySelector(".f-ref").value = "";
+    modal.querySelector(".f-status").value = "Planifiée";
+    modal.querySelector(".f-title").value = "";
+    modal.querySelector(".f-monday").value = "";
+    modal.querySelector(".f-client").value = "";
+    modal.querySelector(".f-client-ref").value = "";
+    modal.querySelector(".f-phone").value = "";
+    modal.querySelector(".f-tarif").value = "";
+    modal.querySelector(".f-address").value = "";
+    modal.querySelector(".f-start").value = "";
+    modal.querySelector(".f-end").value = "";
+    modal.querySelector(".f-equipment").value = "";
+    modal.querySelector(".f-infos").value = "";
+    modal.querySelector(".f-observations").value = "";
+    modal.querySelector(".f-file-type").value = "";
+    modal.querySelector(".f-file-input").value = "";
+    modal.querySelector(".pv-draft-input").value = "";
+    modal.querySelector(".pv-signed-input").value = "";
+
+    modalState.pendingFiles = [];
+    modalState.pendingPvDraft = null;
+    modalState.pendingPvSigned = null;
+
+    modal.querySelector(".files-list").innerHTML = "";
+    modal.querySelector(".exp-rows").innerHTML = "";
+    modal.querySelector(".comp-rows").innerHTML = "";
+    modal.querySelector(".pv-draft").innerHTML = "";
+    modal.querySelector(".pv-signed").innerHTML = "";
+    renderPendingFiles();
   }
 
-  function restoreDraft() {
+  function fillModal(intervention, assigns, compensations, expenses, files, pv) {
     const modal = ensureModalExists();
-    const key = modalState.mode === "edit" ? `itvDraft:${modalState.id}` : "itvDraft:new";
-    const raw = localStorage.getItem(key);
-    if (!raw) return;
-    try {
-      const d = JSON.parse(raw);
-      modal.querySelector(".f-ref").value = d.ref || "";
-      modal.querySelector(".f-status").value = d.status || "";
-      modal.querySelector(".f-title").value = d.title || "";
-      modal.querySelector(".f-monday").value = d.monday || "";
-      modal.querySelector(".f-client").value = d.client || "";
-      modal.querySelector(".f-client-ref").value = d.client_ref || "";
-      modal.querySelector(".f-phone").value = d.phone || "";
-      modal.querySelector(".f-tarif").value = d.tarif || "";
-      modal.querySelector(".f-address").value = d.address || "";
-      modal.querySelector(".f-start").value = d.start || "";
-      modal.querySelector(".f-end").value = d.end || "";
-      modal.querySelector(".f-equipment").value = d.equipment || "";
-      modal.querySelector(".f-infos").value = d.infos || "";
-      modal.querySelector(".f-observations").value = d.observations || "";
-      modal.querySelector(".itv-draft").textContent = "Brouillon restauré";
-    } catch {}
+    modal.querySelector(".f-ref").value = intervention.internal_ref || "";
+    modal.querySelector(".f-status").value = intervention.status || "";
+    modal.querySelector(".f-title").value = intervention.title || "";
+    modal.querySelector(".f-monday").value = intervention.monday_item_id || "";
+    modal.querySelector(".f-client").value = intervention.client_name || "";
+    modal.querySelector(".f-client-ref").value = intervention.client_ref || "";
+    modal.querySelector(".f-phone").value = intervention.support_phone || "";
+    modal.querySelector(".f-tarif").value = centsToEurosInput(intervention.tarif);
+    modal.querySelector(".f-address").value = intervention.address || "";
+    modal.querySelector(".f-start").value = toLocalInputValue(intervention.start_at);
+    modal.querySelector(".f-end").value = toLocalInputValue(intervention.end_at);
+    modal.querySelector(".f-equipment").value = intervention.equipment_needed || "";
+    modal.querySelector(".f-infos").value = intervention.infos || "";
+    modal.querySelector(".f-observations").value = intervention.observations || "";
+
+    const techSelect = modal.querySelector(".f-techs");
+    const assignIds = (assigns || []).map(a => a.user_id);
+    const compTechIds = (compensations || []).map(c => c.tech_id).filter(Boolean);
+    const mergedIds = Array.from(new Set([...assignIds, ...compTechIds]));
+    Array.from(techSelect.options || []).forEach(o => {
+      o.selected = mergedIds.includes(o.value);
+    });
+
+    renderCompRows(compensations || []);
+    renderExpenseRows(expenses || []);
+    renderFilesList(files || []);
+    renderPvSection(pv || null);
+
+    updateSummaryView();
+  }
+
+  // =========================
+  // COMPENSATIONS
+  // =========================
+  function getSelectedTechs() {
+    const modal = ensureModalExists();
+    const select = modal.querySelector(".f-techs");
+    return Array.from(select.selectedOptions || []).map(o => ({ id: o.value, name: o.textContent }));
+  }
+
+  function renderCompRows(existing = null) {
+    const modal = ensureModalExists();
+    const wrap = modal.querySelector(".comp-rows");
+
+    let selected = getSelectedTechs();
+    if (!selected.length && existing?.length) {
+      selected = existing.map(c => ({ id: c.tech_id, name: techNameById(c.tech_id) }));
+    }
+
+    const byTech = new Map();
+    (existing || []).forEach(c => {
+      if (c.tech_id) byTech.set(c.tech_id, c);
+    });
+
+    wrap.innerHTML = "";
+    selected.forEach((t) => {
+      const comp = byTech.get(t.id) || {};
+      const row = document.createElement("div");
+      row.className = "itv-row comp-row";
+      row.dataset.techId = t.id;
+      row.innerHTML = `
+        <div>
+          <div style="font-weight:700;">${t.name}</div>
+          <small>${t.id}</small>
+        </div>
+        <div><input class="c-amount" type="text" placeholder="ex: 50,00" value="${centsToEurosInput(comp.amount_cents)}" /></div>
+        <div><input class="c-status" type="text" list="comp-status-list" value="${comp.status || ""}" /></div>
+        <div><input class="c-currency" type="text" placeholder="EUR" value="${comp.currency || "EUR"}" /></div>
+        <div></div>
+        <div style="grid-column:1/-1;">
+          <input class="c-notes" type="text" placeholder="Notes" value="${comp.notes || ""}" />
+        </div>
+      `;
+      wrap.appendChild(row);
+    });
+
+    const datalist = document.getElementById("comp-status-list");
+    if (!datalist) {
+      const dl = document.createElement("datalist");
+      dl.id = "comp-status-list";
+      dl.innerHTML = COMP_STATUS_SUGGESTIONS.map(s => `<option value="${s}"></option>`).join("");
+      document.body.appendChild(dl);
+    }
+  }
+
+  function computeCompTotalCents() {
+    const modal = ensureModalExists();
+    const rows = Array.from(modal.querySelectorAll(".comp-row"));
+    return rows.reduce((sum, row) => {
+      const amount = parseEurosToCents(row.querySelector(".c-amount")?.value);
+      return sum + (amount || 0);
+    }, 0);
+  }
+
+  // =========================
+  // EXPENSES
+  // =========================
+  function renderExpenseRows(existing = []) {
+    const modal = ensureModalExists();
+    const wrap = modal.querySelector(".exp-rows");
+    wrap.innerHTML = "";
+    existing.forEach(exp => addExpenseRow(exp));
+  }
+
+  function addExpenseRow(exp = {}) {
+    const modal = ensureModalExists();
+    const wrap = modal.querySelector(".exp-rows");
+
+    const type = exp.type || "product";
+    const row = document.createElement("div");
+    row.className = "itv-row exp-row";
+    row.dataset.expenseId = exp.id || "";
+    row.innerHTML = `
+      <div>
+        <select class="e-type">
+          <option value="product">Produit</option>
+          <option value="travel">Frais déplacement</option>
+          <option value="extra">Frais</option>
+        </select>
+        <select class="e-product" style="margin-top:6px; display:none;">
+          ${productsOptionsHtml()}
+        </select>
+        <input class="e-label" type="text" placeholder="Libellé (ex: déplacement 18 km)" style="margin-top:6px; display:none;" />
+      </div>
+      <div><input class="e-qty" type="number" min="0" step="1" /></div>
+      <div><input class="e-unit" type="text" placeholder="ex: 12,00" /></div>
+      <div class="amount">—</div>
+      <div><button type="button" class="itv-btn secondary e-del">✕</button></div>
+    `;
+    wrap.appendChild(row);
+
+    const typeEl = row.querySelector(".e-type");
+    const productEl = row.querySelector(".e-product");
+    const labelEl = row.querySelector(".e-label");
+    const qtyEl = row.querySelector(".e-qty");
+    const unitEl = row.querySelector(".e-unit");
+    const amountEl = row.querySelector(".amount");
+
+    typeEl.value = type;
+    productEl.value = exp.product_id || "";
+    labelEl.value = exp.note || "";
+    qtyEl.value = exp.qty ?? "";
+    unitEl.value = centsToEurosInput(exp.unit_cost_cents);
+
+    function refresh() {
+      const t = typeEl.value;
+      if (t === "product") {
+        productEl.style.display = "";
+        labelEl.style.display = "none";
+      } else {
+        productEl.style.display = "none";
+        labelEl.style.display = "";
+      }
+
+      if (t === "product") {
+        const pid = productEl.value;
+        if (pid && !unitEl.value) {
+          const price = productPriceById.get(pid);
+          if (price !== undefined) unitEl.value = centsToEurosInput(price);
+        }
+      }
+
+      const qty = parseQty(qtyEl.value);
+      const unit = parseEurosToCents(unitEl.value);
+      const amount = qty * unit;
+      amountEl.textContent = formatCents(amount || 0);
+      updateSummaryView();
+    }
+
+    typeEl.addEventListener("change", refresh);
+    productEl.addEventListener("change", refresh);
+    qtyEl.addEventListener("input", refresh);
+    unitEl.addEventListener("input", refresh);
+    row.querySelector(".e-del").addEventListener("click", () => {
+      row.remove();
+      updateSummaryView();
+    });
+
+    refresh();
+  }
+
+  function computeExpenseTotalCents() {
+    const modal = ensureModalExists();
+    const rows = Array.from(modal.querySelectorAll(".exp-row"));
+    return rows.reduce((sum, row) => {
+      const qty = parseQty(row.querySelector(".e-qty")?.value);
+      const unit = parseEurosToCents(row.querySelector(".e-unit")?.value);
+      return sum + (qty * unit || 0);
+    }, 0);
+  }
+
+  // =========================
+  // FILES
+  // =========================
+  function renderFilesList(files = []) {
+    const modal = ensureModalExists();
+    const wrap = modal.querySelector(".files-list");
+    wrap.innerHTML = "";
+
+    if (!files.length) {
+      wrap.innerHTML = `<div class="itv-muted">Aucun fichier</div>`;
+      return;
+    }
+
+    files.forEach((f) => {
+      const row = document.createElement("div");
+      row.className = "itv-file-row";
+      row.dataset.fileId = f.id;
+      row.dataset.filePath = f.file_path;
+      row.innerHTML = `
+        <div>
+          <div style="font-weight:700;">${f.type || "Document"}</div>
+          <div class="itv-muted">${f.file_path}</div>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button type="button" class="itv-btn secondary f-open">Ouvrir</button>
+          <button type="button" class="itv-btn danger f-del">Supprimer</button>
+        </div>
+      `;
+      wrap.appendChild(row);
+
+      row.querySelector(".f-open").addEventListener("click", async () => {
+        const { data, error } = await supabase.storage.from(CONFIG.BUCKET).createSignedUrl(f.file_path, CONFIG.SIGNED_URL_TTL);
+        if (error) return alert("Erreur lien: " + error.message);
+        window.open(data.signedUrl, "_blank");
+      });
+
+      row.querySelector(".f-del").addEventListener("click", async () => {
+        if (!confirm("Supprimer ce fichier ?")) return;
+        const { error: storErr } = await supabase.storage.from(CONFIG.BUCKET).remove([f.file_path]);
+        if (storErr) return alert(storErr.message);
+        const { error: dbErr } = await supabase.from("intervention_files").delete().eq("id", f.id);
+        if (dbErr) return alert(dbErr.message);
+        row.remove();
+      });
+    });
+  }
+
+  function renderPendingFiles() {
+    const modal = ensureModalExists();
+    const wrap = modal.querySelector(".pending-files");
+    wrap.innerHTML = "";
+    if (!modalState.pendingFiles.length) return;
+
+    modalState.pendingFiles.forEach((pf, idx) => {
+      const div = document.createElement("div");
+      div.className = "itv-chip";
+      div.textContent = pf.file.name;
+      div.style.marginRight = "6px";
+      div.style.marginTop = "6px";
+      div.addEventListener("click", () => {
+        modalState.pendingFiles.splice(idx, 1);
+        renderPendingFiles();
+      });
+      wrap.appendChild(div);
+    });
+  }
+
+  // =========================
+  // PV
+  // =========================
+  function renderPvSection(pv = null) {
+    const modal = ensureModalExists();
+    const draftWrap = modal.querySelector(".pv-draft");
+    const signedWrap = modal.querySelector(".pv-signed");
+
+    draftWrap.innerHTML = pv?.pv_draft_path
+      ? `<div class="itv-pv-row"><div>${pv.pv_draft_path}</div><button type="button" class="itv-btn secondary pv-open-draft">Ouvrir</button></div>`
+      : `<div class="itv-muted">Aucun PV draft</div>`;
+
+    signedWrap.innerHTML = pv?.pv_signed_path
+      ? `<div class="itv-pv-row"><div>${pv.pv_signed_path}</div><button type="button" class="itv-btn secondary pv-open-signed">Ouvrir</button></div>`
+      : `<div class="itv-muted">Aucun PV signé</div>`;
+
+    const draftBtn = draftWrap.querySelector(".pv-open-draft");
+    if (draftBtn && pv?.pv_draft_path) {
+      draftBtn.addEventListener("click", async () => {
+        const { data, error } = await supabase.storage.from(CONFIG.BUCKET).createSignedUrl(pv.pv_draft_path, CONFIG.SIGNED_URL_TTL);
+        if (error) return alert("Erreur lien: " + error.message);
+        window.open(data.signedUrl, "_blank");
+      });
+    }
+
+    const signedBtn = signedWrap.querySelector(".pv-open-signed");
+    if (signedBtn && pv?.pv_signed_path) {
+      signedBtn.addEventListener("click", async () => {
+        const { data, error } = await supabase.storage.from(CONFIG.BUCKET).createSignedUrl(pv.pv_signed_path, CONFIG.SIGNED_URL_TTL);
+        if (error) return alert("Erreur lien: " + error.message);
+        window.open(data.signedUrl, "_blank");
+      });
+    }
+
+    if (modalState.pendingPvDraft) {
+      const chip = document.createElement("div");
+      chip.className = "itv-chip";
+      chip.textContent = "Draft à uploader: " + modalState.pendingPvDraft.name;
+      draftWrap.appendChild(chip);
+    }
+    if (modalState.pendingPvSigned) {
+      const chip = document.createElement("div");
+      chip.className = "itv-chip";
+      chip.textContent = "Signé à uploader: " + modalState.pendingPvSigned.name;
+      signedWrap.appendChild(chip);
+    }
   }
 
   // =========================
@@ -734,6 +1198,26 @@ window.Webflow.push(async function () {
       return;
     }
 
+    const techIds = getSelectedTechs().map(t => t.id);
+
+    const compRows = Array.from(modal.querySelectorAll(".comp-row")).map(row => ({
+      tech_id: row.dataset.techId,
+      amount_cents: parseEurosToCents(row.querySelector(".c-amount").value),
+      status: cleanNullableText(row.querySelector(".c-status").value),
+      currency: row.querySelector(".c-currency").value.trim() || "EUR",
+      notes: row.querySelector(".c-notes").value.trim() || null
+    })).filter(c => c.tech_id);
+
+    const expRows = Array.from(modal.querySelectorAll(".exp-row")).map(row => {
+      const type = row.querySelector(".e-type").value;
+      const product_id = row.querySelector(".e-product").value || null;
+      const note = row.querySelector(".e-label").value.trim() || null;
+      const qty = parseQty(row.querySelector(".e-qty").value);
+      const unit_cost_cents = parseEurosToCents(row.querySelector(".e-unit").value);
+      const amount_cents = qty * unit_cost_cents;
+      return { type, product_id, note, qty, unit_cost_cents, amount_cents };
+    }).filter(r => r.qty > 0 || r.amount_cents > 0);
+
     try {
       let interventionId = modalState.id;
 
@@ -754,7 +1238,85 @@ window.Webflow.push(async function () {
         if (error) throw new Error(error.message);
       }
 
-      localStorage.removeItem(modalState.mode === "edit" ? `itvDraft:${interventionId}` : "itvDraft:new");
+      await supabase.from("intervention_assignees").delete().eq("intervention_id", interventionId);
+      if (techIds.length) {
+        const rows = techIds.map(uid => ({ intervention_id: interventionId, user_id: uid }));
+        const { error } = await supabase.from("intervention_assignees").insert(rows);
+        if (error) throw new Error("Assignations: " + error.message);
+      }
+
+      await supabase.from("intervention_compensations").delete().eq("intervention_id", interventionId);
+      if (compRows.length) {
+        const rows = compRows.map(c => ({ ...c, intervention_id: interventionId }));
+        const { error } = await supabase.from("intervention_compensations").insert(rows);
+        if (error) throw new Error("Compensations: " + error.message);
+      }
+
+      await supabase.from("intervention_expenses").delete().eq("intervention_id", interventionId);
+      if (expRows.length) {
+        const rows = expRows.map(e => ({ ...e, intervention_id: interventionId }));
+        const { error } = await supabase.from("intervention_expenses").insert(rows);
+        if (error) throw new Error("Dépenses: " + error.message);
+      }
+
+      if (modalState.pendingFiles.length) {
+        for (const pf of modalState.pendingFiles) {
+          const path = `interventions/${interventionId}/${Date.now()}_${safeFileName(pf.file.name)}`;
+          const { error: upErr } = await supabase.storage.from(CONFIG.BUCKET).upload(path, pf.file);
+          if (upErr) throw new Error("Upload fichier: " + upErr.message);
+
+          const { error: insErr } = await supabase.from("intervention_files").insert({
+            intervention_id: interventionId,
+            type: pf.type || "document",
+            file_path: path
+          });
+          if (insErr) throw new Error("Enregistrement fichier: " + insErr.message);
+        }
+        modalState.pendingFiles = [];
+      }
+
+      if (modalState.pendingPvDraft || modalState.pendingPvSigned) {
+        const pvPayload = { intervention_id: interventionId };
+        if (modalState.pendingPvDraft) {
+          const path = `interventions/${interventionId}/pv/draft_${Date.now()}_${safeFileName(modalState.pendingPvDraft.name)}`;
+          const { error: upErr } = await supabase.storage.from(CONFIG.BUCKET).upload(path, modalState.pendingPvDraft);
+          if (upErr) throw new Error("Upload PV draft: " + upErr.message);
+          pvPayload.pv_draft_path = path;
+          pvPayload.draft_origin = PV_ORIGIN_DEFAULT;
+          pvPayload.draft_uploaded_at = new Date().toISOString();
+        }
+        if (modalState.pendingPvSigned) {
+          const path = `interventions/${interventionId}/pv/signed_${Date.now()}_${safeFileName(modalState.pendingPvSigned.name)}`;
+          const { error: upErr } = await supabase.storage.from(CONFIG.BUCKET).upload(path, modalState.pendingPvSigned);
+          if (upErr) throw new Error("Upload PV signé: " + upErr.message);
+          pvPayload.pv_signed_path = path;
+          pvPayload.signed_origin = PV_ORIGIN_DEFAULT;
+          pvPayload.signed_uploaded_at = new Date().toISOString();
+        }
+
+        const { data: pvExists } = await supabase
+          .from("intervention_pv")
+          .select("intervention_id")
+          .eq("intervention_id", interventionId)
+          .maybeSingle();
+
+        if (pvExists) {
+          const { error } = await supabase
+            .from("intervention_pv")
+            .update(pvPayload)
+            .eq("intervention_id", interventionId);
+          if (error) throw new Error("PV: " + error.message);
+        } else {
+          const { error } = await supabase
+            .from("intervention_pv")
+            .insert(pvPayload);
+          if (error) throw new Error("PV: " + error.message);
+        }
+
+        modalState.pendingPvDraft = null;
+        modalState.pendingPvSigned = null;
+      }
+
       closeModal();
       await loadInterventions();
     } catch (e) {
@@ -764,20 +1326,124 @@ window.Webflow.push(async function () {
   }
 
   // =========================
+  // DELETE MODAL
+  // =========================
+  function ensureDeleteModalExists() {
+    let modal = document.querySelector(".delete-itv-modal");
+    if (modal) return modal;
+
+    modal = document.createElement("div");
+    modal.className = "delete-itv-modal";
+    modal.style.cssText = "position:fixed; inset:0; z-index:100000; display:none; font-family:inherit;";
+
+    modal.innerHTML = `
+      <div class="delete-itv-modal__overlay" style="position:absolute; inset:0; background:rgba(0,0,0,.6)"></div>
+      <div class="delete-itv-modal__content" style="
+        position:relative; width:min(520px, calc(100vw - 32px));
+        background:#fff; border-radius:14px; padding:18px 18px 16px;
+        margin:16px auto; top:50%; transform:translateY(-50%);
+        box-shadow:0 20px 70px rgba(0,0,0,.35);
+      ">
+        <div style="display:flex; justify-content:space-between; gap:12px;">
+          <div>
+            <div style="font-size:18px; font-weight:800; margin-bottom:6px;">Confirmer la suppression</div>
+            <div style="opacity:.75; line-height:1.4;">Voulez-vous vraiment supprimer cette intervention ?</div>
+          </div>
+          <button type="button" class="delete-itv-modal__close" style="border:none; background:#f3f4f6; padding:10px 12px; border-radius:10px; cursor:pointer; font-weight:800;">✕</button>
+        </div>
+
+        <div style="margin-top:14px; padding:12px; border:1px solid #e5e7eb; border-radius:12px;">
+          <div style="opacity:.6; font-size:12px; margin-bottom:6px;">Intervention</div>
+          <div class="delete-itv-modal__label" style="font-weight:800;">—</div>
+        </div>
+
+        <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:14px;">
+          <button type="button" class="delete-itv-modal__cancel" style="border:1px solid #e5e7eb; background:#fff; padding:10px 14px; border-radius:10px; cursor:pointer; font-weight:700;">Annuler</button>
+          <button type="button" class="delete-itv-modal__confirm" style="border:none; background:#ef4444; color:#fff; padding:10px 14px; border-radius:10px; cursor:pointer; font-weight:800;">Supprimer</button>
+        </div>
+
+        <div class="delete-itv-modal__error" style="display:none; margin-top:10px; color:#b91c1c; font-weight:600;"></div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const close = () => closeDeleteModal();
+    modal.querySelector(".delete-itv-modal__overlay").addEventListener("click", close);
+    modal.querySelector(".delete-itv-modal__close").addEventListener("click", close);
+    modal.querySelector(".delete-itv-modal__cancel").addEventListener("click", close);
+
+    return modal;
+  }
+
+  function closeDeleteModal() {
+    const modal = document.querySelector(".delete-itv-modal");
+    if (!modal) return;
+    modal.style.display = "none";
+  }
+
+  function openDeleteModal({ interventionId, label }) {
+    const modal = ensureDeleteModalExists();
+    modal.style.display = "block";
+    modal.dataset.interventionId = interventionId || "";
+
+    const labelEl = modal.querySelector(".delete-itv-modal__label");
+    const errEl = modal.querySelector(".delete-itv-modal__error");
+    const confirmBtn = modal.querySelector(".delete-itv-modal__confirm");
+
+    if (labelEl) labelEl.textContent = label || "—";
+    if (errEl) { errEl.style.display = "none"; errEl.textContent = ""; }
+
+    confirmBtn.onclick = async () => {
+      try {
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = "Suppression...";
+
+        await supabase.from("intervention_compensations").delete().eq("intervention_id", interventionId);
+        await supabase.from("intervention_assignees").delete().eq("intervention_id", interventionId);
+        await supabase.from("intervention_expenses").delete().eq("intervention_id", interventionId);
+        await supabase.from("intervention_files").delete().eq("intervention_id", interventionId);
+        await supabase.from("intervention_pv").delete().eq("intervention_id", interventionId);
+
+        const { error: itvErr } = await supabase.from("interventions").delete().eq("id", interventionId);
+        if (itvErr) throw new Error(itvErr.message);
+
+        closeDeleteModal();
+        await loadInterventions();
+      } catch (e) {
+        console.error(e);
+        if (errEl) {
+          errEl.style.display = "block";
+          errEl.textContent = e?.message || "Erreur lors de la suppression";
+        }
+      } finally {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = "Supprimer";
+      }
+    };
+  }
+
+  // =========================
   // OPEN MODAL
   // =========================
   async function openInterventionModal(mode, id = null) {
     const modal = ensureModalExists();
     showError("");
     modalState.id = id;
-    modalState.mode = mode;
+    setMode(mode);
 
     await loadTechs();
     await loadProducts();
+    await populateTechSelect(modal.querySelector(".f-techs"));
 
     clearModalFields();
-    restoreDraft();
-    goStep(0);
+
+    if (mode !== "add") {
+      const bundle = await loadInterventionBundle(id);
+      fillModal(bundle.intervention, bundle.assigns, bundle.compensations, bundle.expenses, bundle.files, bundle.pv);
+    }
+
+    goStep(mode === "view" ? 6 : 0);
     openModal();
   }
 
@@ -786,16 +1452,14 @@ window.Webflow.push(async function () {
   // =========================
   document.addEventListener("click", async (e) => {
     const withModifier = e.metaKey || e.ctrlKey || e.shiftKey || e.altKey;
-  
-    // ADD
+
     const addBtn = e.target.closest("a.add-intervention, .add-intervention");
     if (addBtn) {
       e.preventDefault?.();
       await openInterventionModal("add");
       return;
     }
-  
-    // SHOW (view)
+
     const showBtn = e.target.closest("a.show-intervention, .show-intervention");
     if (showBtn) {
       if (!(withModifier && showBtn.tagName === "A")) {
@@ -806,8 +1470,7 @@ window.Webflow.push(async function () {
         return;
       }
     }
-  
-    // EDIT
+
     const editBtn = e.target.closest("a.update-intervention, .update-intervention");
     if (editBtn) {
       if (!(withModifier && editBtn.tagName === "A")) {
@@ -818,8 +1481,7 @@ window.Webflow.push(async function () {
         return;
       }
     }
-  
-    // DELETE
+
     const delBtn = e.target.closest("a.delete-intervention, .delete-intervention");
     if (delBtn) {
       e.preventDefault();
@@ -833,7 +1495,6 @@ window.Webflow.push(async function () {
       return;
     }
   }, true);
-
 
   // =========================
   // INIT
