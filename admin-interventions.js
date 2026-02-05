@@ -1,7 +1,5 @@
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script>document.documentElement.setAttribute("data-page","admin-interventions");</script>
+document.documentElement.setAttribute("data-page","admin-interventions");
 
-<script>
 window.Webflow ||= [];
 window.Webflow.push(async function () {
   const supabase = window.__MBL_SUPABASE__;
@@ -10,10 +8,11 @@ window.Webflow.push(async function () {
     return;
   }
 
+  const USER_CFG = window.__MBL_CFG__ || {};
   const CONFIG = {
-    BUCKET: "interventions-files",
-    SIGNED_URL_TTL: 3600,
-    PRODUCTS_TABLE: "products",
+    BUCKET: USER_CFG.BUCKET || "interventions-files",
+    SIGNED_URL_TTL: USER_CFG.SIGNED_URL_TTL || 3600,
+    PRODUCTS_TABLE: USER_CFG.PRODUCTS_TABLE || "products",
   };
 
   const PAGE_INTERVENTION = "/intervention";
@@ -364,7 +363,6 @@ window.Webflow.push(async function () {
     let data = null;
     let error = null;
 
-    // tentative avec prix
     ({ data, error } = await supabase
       .from(CONFIG.PRODUCTS_TABLE)
       .select("id, name, price_cents, unit_cost_cents, is_active")
@@ -564,8 +562,22 @@ window.Webflow.push(async function () {
           display:flex; gap:10px; justify-content:flex-end; margin-top:14px;
         }
         .itv-muted { opacity:.7; font-size:12px; }
+        .itv-modal.is-readonly .itv-save,
+        .itv-modal.is-readonly .add-exp-product,
+        .itv-modal.is-readonly .add-exp-extra,
+        .itv-modal.is-readonly .e-del,
+        .itv-modal.is-readonly .f-del,
+        .itv-modal.is-readonly .f-file-input,
+        .itv-modal.is-readonly .pv-draft-input,
+        .itv-modal.is-readonly .pv-signed-input {
+          display: none !important;
+        }
+        .itv-modal.is-readonly input,
+        .itv-modal.is-readonly textarea,
+        .itv-modal.is-readonly select {
+          background: #f9fafb;
+        }
       </style>
-
       <div class="itv-modal__overlay"></div>
       <div class="itv-modal__panel">
         <div class="itv-modal__header">
@@ -835,12 +847,11 @@ window.Webflow.push(async function () {
     modalState.mode = mode;
 
     const isView = mode === "view";
-    modal.querySelectorAll("input, textarea, select, button.add-exp-product, button.add-exp-extra, .f-file-input, .pv-draft-input, .pv-signed-input")
-      .forEach(el => {
-        if (el.classList.contains("itv-close") || el.classList.contains("itv-tab-btn")) return;
-        if (el.classList.contains("itv-save")) return;
-        el.disabled = isView;
-      });
+    modal.classList.toggle("is-readonly", isView);
+
+    modal.querySelectorAll("input, textarea, select").forEach(el => {
+      el.disabled = isView;
+    });
 
     modal.querySelectorAll(".itv-save").forEach(btn => {
       btn.style.display = isView ? "none" : "";
@@ -965,10 +976,24 @@ window.Webflow.push(async function () {
     return Array.from(select.selectedOptions || []).map(o => ({ id: o.value, name: o.textContent }));
   }
 
-  function renderCompRows(existing = []) {
+  function renderCompRows(existing = null) {
     const modal = ensureModalExists();
     const wrap = modal.querySelector(".comp-rows");
     const selected = getSelectedTechs();
+
+    if (!existing) {
+      const current = new Map();
+      modal.querySelectorAll(".comp-row").forEach(row => {
+        current.set(row.dataset.techId, {
+          tech_id: row.dataset.techId,
+          amount_cents: parseEurosToCents(row.querySelector(".c-amount").value),
+          status: row.querySelector(".c-status").value.trim() || null,
+          currency: row.querySelector(".c-currency").value.trim() || "EUR",
+          notes: row.querySelector(".c-notes").value.trim() || null
+        });
+      });
+      existing = Array.from(current.values());
+    }
 
     const byTech = new Map();
     existing.forEach(c => {
@@ -1317,7 +1342,6 @@ window.Webflow.push(async function () {
         if (error) throw new Error(error.message);
       }
 
-      // Assignations
       await supabase.from("intervention_assignees").delete().eq("intervention_id", interventionId);
       if (techIds.length) {
         const rows = techIds.map(uid => ({ intervention_id: interventionId, user_id: uid }));
@@ -1325,7 +1349,6 @@ window.Webflow.push(async function () {
         if (error) throw new Error("Assignations: " + error.message);
       }
 
-      // Compensations
       await supabase.from("intervention_compensations").delete().eq("intervention_id", interventionId);
       if (compRows.length) {
         const rows = compRows.map(c => ({ ...c, intervention_id: interventionId }));
@@ -1333,7 +1356,6 @@ window.Webflow.push(async function () {
         if (error) throw new Error("Compensations: " + error.message);
       }
 
-      // Expenses
       await supabase.from("intervention_expenses").delete().eq("intervention_id", interventionId);
       if (expRows.length) {
         const rows = expRows.map(e => ({ ...e, intervention_id: interventionId }));
@@ -1341,7 +1363,6 @@ window.Webflow.push(async function () {
         if (error) throw new Error("Dépenses: " + error.message);
       }
 
-      // Files upload
       if (modalState.pendingFiles.length) {
         for (const pf of modalState.pendingFiles) {
           const path = `interventions/${interventionId}/${Date.now()}_${safeFileName(pf.file.name)}`;
@@ -1358,7 +1379,6 @@ window.Webflow.push(async function () {
         modalState.pendingFiles = [];
       }
 
-      // PV upload
       if (modalState.pendingPvDraft || modalState.pendingPvSigned) {
         const pvPayload = { intervention_id: interventionId };
         if (modalState.pendingPvDraft) {
@@ -1418,7 +1438,7 @@ window.Webflow.push(async function () {
   // OPEN MODAL (VIEW/EDIT/ADD)
   // =========================
   async function openInterventionModal(mode, id = null) {
-    ensureModalExists();
+    const modal = ensureModalExists();
     showError("");
     modalState.id = id;
     modalState.pendingFiles = [];
@@ -1428,7 +1448,7 @@ window.Webflow.push(async function () {
     await loadTechs();
     await loadProducts();
 
-    await populateTechSelect(document.querySelector(".itv-modal .f-techs"));
+    await populateTechSelect(modal.querySelector(".f-techs"));
 
     clearModalFields();
     setMode(mode);
@@ -1585,7 +1605,6 @@ window.Webflow.push(async function () {
   document.addEventListener("click", async (e) => {
     const withModifier = e.metaKey || e.ctrlKey || e.shiftKey || e.altKey;
 
-    // ADD
     const addBtn = e.target.closest("a.add-intervention, .add-intervention");
     if (addBtn) {
       e.preventDefault?.();
@@ -1593,7 +1612,6 @@ window.Webflow.push(async function () {
       return;
     }
 
-    // VIEW
     const showBtn = e.target.closest("a.show-intervention, .show-intervention");
     if (showBtn) {
       if (!(withModifier && showBtn.tagName === "A")) {
@@ -1605,7 +1623,6 @@ window.Webflow.push(async function () {
       }
     }
 
-    // EDIT
     const editBtn = e.target.closest("a.update-intervention, .update-intervention");
     if (editBtn) {
       if (!(withModifier && editBtn.tagName === "A")) {
@@ -1617,7 +1634,6 @@ window.Webflow.push(async function () {
       }
     }
 
-    // DELETE
     const delBtn = e.target.closest("a.delete-intervention, .delete-intervention");
     if (delBtn) {
       e.preventDefault();
@@ -1639,4 +1655,3 @@ window.Webflow.push(async function () {
   applyFilter(searchInput?.value || "");
 
 });
-</script>
