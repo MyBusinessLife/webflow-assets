@@ -18,6 +18,11 @@
     REQUIRE_PHOTOS_DEFAULT: false,
     REQUIRE_SIGNATURE_DEFAULT: false,
 
+    PV_URL_FIELD: "pv_blank_url",
+    PV_PATH_FIELD: "pv_blank_path",
+    REMUNERATION_FIELD: "tech_fee",
+    CURRENCY: "EUR",
+
     DEFAULT_CHECKLIST: [
       "Arrive sur site et confirme le contact",
       "Realise l'intervention",
@@ -52,10 +57,11 @@
     errorBody: "Impossible de recuperer les interventions. Reessaye plus tard.",
     validateTitle: "Validation de l'intervention",
     validateCTA: "Valider l'intervention",
-    detailsCTA: "Details",
-    sheetCTA: "Fiche",
+    detailsCTA: "Fiche",
     callCTA: "Appeler",
     mapCTA: "Itineraire",
+    pvCTA: "PV vierge",
+    startCTA: "Demarrer",
     notesLabel: "Notes de fin",
     photosLabel: "Photos",
     photosHint: "Ajoute 1 ou plusieurs photos",
@@ -66,7 +72,14 @@
     confirmValidate: "Confirmer la validation ?",
     toastSaved: "Intervention validee",
     toastSavedPartial: "Validation enregistree mais statut non mis a jour",
-    toastError: "Une erreur est survenue"
+    toastError: "Une erreur est survenue",
+    toastStart: "Intervention demarree",
+    toastStartError: "Impossible de demarrer",
+    mapChooseTitle: "Choisir une app",
+    mapPlans: "Plans",
+    mapGoogle: "Google Maps",
+    mapWaze: "Waze",
+    mapCancel: "Annuler"
   };
 
   const root = findRoot();
@@ -82,8 +95,9 @@
 
   applyConfigOverrides(root);
 
-
   injectStyles();
+
+  let mapAddress = "";
 
   const els = renderShell(root);
   const state = {
@@ -101,7 +115,6 @@
   init();
 
   async function init() {
-
     const { data: authData, error: authError } = await supabase.auth.getUser();
     if (authError || !authData?.user) {
       els.list.innerHTML = `
@@ -115,14 +128,9 @@
 
     showSkeleton(els.list);
     try {
-      const { data: authData, error: authError } = await supabase.auth.getUser();
-      if (authError || !authData?.user) throw authError || new Error("Non connecte");
-
       state.userId = authData.user.id;
-
       const data = await fetchAssignments(state.userId);
       state.items = normalizeAssignments(data);
-
       renderList();
     } catch (e) {
       renderError(els.list);
@@ -157,7 +165,14 @@
         requires_signature,
         requires_photos,
         requires_checklist,
-        completed_at
+        completed_at,
+        started_at,
+        pv_blank_url,
+        pv_blank_path,
+        tech_fee,
+        description,
+        notes_tech,
+        tech_notes
       )
     `;
 
@@ -209,6 +224,11 @@
     card.className = "ti-card";
     card.dataset.id = row.id;
 
+    const status = String(row.status || "").toLowerCase();
+    const isDone = isDoneStatus(status);
+    const isCanceled = status === "canceled";
+    const isStarted = isStartedStatus(status) || !!row.started_at;
+
     const statusLabel = getStatusLabel(row.status);
     const statusTone = getStatusTone(row.status);
     const dateLabel = formatDateFR(row.start_at) || "Date a definir";
@@ -218,8 +238,14 @@
     const phoneReadable = formatPhoneReadable(row.support_phone);
     const address = row.address ? String(row.address).trim() : "";
 
-    const detailsUrl = `${CONFIG.DETAIL_PAGE_PATH}?id=${encodeURIComponent(row.id)}`;
-    const mapUrl = address ? buildDirectionsUrl(address) : "";
+    const pvUrl = getPvUrl(row);
+    const remuneration = formatMoney(getFieldValue(row, CONFIG.REMUNERATION_FIELD));
+    const description = getFirstText(row, ["description", "details", "notes_tech", "tech_notes", "notes", "problem"]);
+    const startedAt = row.started_at ? formatDateFR(row.started_at) : "";
+    const completedAt = row.completed_at ? formatDateFR(row.completed_at) : "";
+
+    const showStart = !isStarted && !isDone && !isCanceled;
+    const showValidate = isStarted && !isDone && !isCanceled;
 
     card.innerHTML = `
       <div class="ti-card-head">
@@ -235,10 +261,11 @@
 
       <div class="ti-actions">
         <a class="ti-btn ti-btn--ghost ${phoneNormalized ? "" : "is-disabled"}" data-action="call" ${phoneNormalized ? `href="tel:${phoneNormalized}"` : ""}>${STR.callCTA}</a>
-        <a class="ti-btn ti-btn--ghost ${address ? "" : "is-disabled"}" data-action="map" ${address ? `href="${mapUrl}" target="_blank" rel="noopener"` : ""}>${STR.mapCTA}</a>
+        <button class="ti-btn ti-btn--ghost ${address ? "" : "is-disabled"}" data-action="map" ${address ? "" : "disabled"}>${STR.mapCTA}</button>
+        ${pvUrl ? `<a class="ti-btn ti-btn--ghost" href="${pvUrl}" target="_blank" rel="noopener" download>${STR.pvCTA}</a>` : ""}
         <button class="ti-btn ti-btn--ghost" data-action="toggle-details">${STR.detailsCTA}</button>
-        <a class="ti-btn ti-btn--ghost" href="${detailsUrl}">${STR.sheetCTA}</a>
-        <button class="ti-btn ti-btn--primary" data-action="toggle-validate">${STR.validateCTA}</button>
+        ${showStart ? `<button class="ti-btn ti-btn--start" data-action="start">${STR.startCTA}</button>` : ""}
+        ${showValidate ? `<button class="ti-btn ti-btn--primary" data-action="toggle-validate">${STR.validateCTA}</button>` : ""}
       </div>
 
       <div class="ti-details" hidden>
@@ -259,6 +286,31 @@
             <div class="ti-label">Date</div>
             <div class="ti-value">${escapeHTML(dateLabel)}</div>
           </div>
+          ${remuneration ? `
+          <div class="ti-info">
+            <div class="ti-label">Remuneration</div>
+            <div class="ti-value">${escapeHTML(remuneration)}</div>
+          </div>` : ""}
+          ${startedAt ? `
+          <div class="ti-info">
+            <div class="ti-label">Demarree</div>
+            <div class="ti-value">${escapeHTML(startedAt)}</div>
+          </div>` : ""}
+          ${completedAt ? `
+          <div class="ti-info">
+            <div class="ti-label">Terminee</div>
+            <div class="ti-value">${escapeHTML(completedAt)}</div>
+          </div>` : ""}
+          ${description ? `
+          <div class="ti-info">
+            <div class="ti-label">Details</div>
+            <div class="ti-value">${escapeHTML(description)}</div>
+          </div>` : ""}
+          ${pvUrl ? `
+          <div class="ti-info">
+            <div class="ti-label">PV vierge</div>
+            <div class="ti-value"><a class="ti-link" href="${pvUrl}" target="_blank" rel="noopener">${STR.pvCTA}</a></div>
+          </div>` : ""}
         </div>
       </div>
 
@@ -267,23 +319,37 @@
 
     const detailsBtn = card.querySelector('[data-action="toggle-details"]');
     const validateBtn = card.querySelector('[data-action="toggle-validate"]');
+    const startBtn = card.querySelector('[data-action="start"]');
+    const mapBtn = card.querySelector('[data-action="map"]');
     const detailsPanel = card.querySelector(".ti-details");
     const validatePanel = card.querySelector(".ti-validate");
 
-    detailsBtn.addEventListener("click", () => {
-      detailsPanel.hidden = !detailsPanel.hidden;
-    });
+    if (detailsBtn) {
+      detailsBtn.addEventListener("click", () => {
+        detailsPanel.hidden = !detailsPanel.hidden;
+      });
+    }
 
-    validateBtn.addEventListener("click", () => {
-      if (!validatePanel.dataset.ready) {
-        renderValidation(validatePanel, row);
-        validatePanel.dataset.ready = "1";
-      }
-      validatePanel.hidden = !validatePanel.hidden;
-      if (!validatePanel.hidden) {
-        validatePanel.scrollIntoView({ behavior: "smooth", block: "start" });
-      }
-    });
+    if (validateBtn) {
+      validateBtn.addEventListener("click", () => {
+        if (!validatePanel.dataset.ready) {
+          renderValidation(validatePanel, row);
+          validatePanel.dataset.ready = "1";
+        }
+        validatePanel.hidden = !validatePanel.hidden;
+        if (!validatePanel.hidden) {
+          validatePanel.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      });
+    }
+
+    if (startBtn) {
+      startBtn.addEventListener("click", () => startIntervention(row, startBtn));
+    }
+
+    if (mapBtn && !mapBtn.disabled) {
+      mapBtn.addEventListener("click", () => openMapSheet(address));
+    }
 
     return card;
   }
@@ -400,7 +466,47 @@
     updateValidateButton(container, row);
   }
 
+  async function startIntervention(row, btn) {
+    btn.disabled = true;
+    btn.textContent = "Demarrage...";
+
+    const startedAt = new Date().toISOString();
+
+    let res = await supabase
+      .from("interventions")
+      .update({ status: CONFIG.STATUS_IN_PROGRESS, started_at: startedAt })
+      .eq("id", row.id);
+
+    if (res.error && isMissingColumnError(res.error)) {
+      res = await supabase
+        .from("interventions")
+        .update({ status: CONFIG.STATUS_IN_PROGRESS })
+        .eq("id", row.id);
+    }
+
+    if (res.error) {
+      showToast("error", STR.toastStartError);
+      btn.disabled = false;
+      btn.textContent = STR.startCTA;
+      return;
+    }
+
+    const idx = state.items.findIndex((x) => x.id === row.id);
+    if (idx > -1) {
+      state.items[idx].status = CONFIG.STATUS_IN_PROGRESS;
+      state.items[idx].started_at = startedAt;
+    }
+
+    showToast("success", STR.toastStart);
+    renderList();
+  }
+
   async function validateIntervention(container, row) {
+    if (!isStartedStatus(row.status) && !row.started_at) {
+      showToast("warn", "Demarre d'abord l'intervention");
+      return;
+    }
+
     const id = row.id;
     const requiresChecklist = getFlag(row.requires_checklist, CONFIG.REQUIRE_CHECKLIST_DEFAULT);
     const requiresPhotos = getFlag(row.requires_photos, CONFIG.REQUIRE_PHOTOS_DEFAULT);
@@ -574,6 +680,17 @@
 
         <div class="ti-list" data-ti-list></div>
         <div class="ti-toasts" data-ti-toasts></div>
+
+        <div class="ti-sheet" data-ti-sheet hidden>
+          <div class="ti-sheet-backdrop" data-ti-sheet-close></div>
+          <div class="ti-sheet-panel">
+            <div class="ti-sheet-title">${STR.mapChooseTitle}</div>
+            <button class="ti-sheet-btn" data-map="apple">${STR.mapPlans}</button>
+            <button class="ti-sheet-btn" data-map="google">${STR.mapGoogle}</button>
+            <button class="ti-sheet-btn" data-map="waze">${STR.mapWaze}</button>
+            <button class="ti-sheet-btn ti-sheet-cancel" data-ti-sheet-close>${STR.mapCancel}</button>
+          </div>
+        </div>
       </div>
     `;
 
@@ -582,6 +699,8 @@
     const search = rootEl.querySelector("[data-ti-search]");
     const filters = Array.from(rootEl.querySelectorAll("[data-ti-filter]"));
     const toasts = rootEl.querySelector("[data-ti-toasts]");
+    const sheet = rootEl.querySelector("[data-ti-sheet]");
+    const sheetClose = Array.from(rootEl.querySelectorAll("[data-ti-sheet-close]"));
 
     filters.forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -597,7 +716,43 @@
       renderList();
     });
 
-    return { list, count, toasts };
+    sheet.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-map]");
+      if (!btn) return;
+      openMapProvider(btn.dataset.map);
+    });
+
+    sheetClose.forEach((el) => {
+      el.addEventListener("click", closeMapSheet);
+    });
+
+    return { list, count, toasts, sheet };
+  }
+
+  function openMapSheet(address) {
+    if (!address) return;
+    mapAddress = address;
+    els.sheet.hidden = false;
+    document.body.classList.add("ti-sheet-open");
+  }
+
+  function closeMapSheet() {
+    els.sheet.hidden = true;
+    document.body.classList.remove("ti-sheet-open");
+  }
+
+  function openMapProvider(provider) {
+    const url = buildMapUrl(provider, mapAddress);
+    if (url) window.open(url, "_blank");
+    closeMapSheet();
+  }
+
+  function buildMapUrl(provider, address) {
+    const q = encodeURIComponent(String(address).trim());
+    if (provider === "apple") return `https://maps.apple.com/?daddr=${q}`;
+    if (provider === "google") return `https://www.google.com/maps/dir/?api=1&destination=${q}`;
+    if (provider === "waze") return `https://waze.com/ul?q=${q}&navigate=yes`;
+    return buildDirectionsUrl(address);
   }
 
   function filterItems(items) {
@@ -662,6 +817,7 @@
     const requiresChecklist = getFlag(row.requires_checklist, CONFIG.REQUIRE_CHECKLIST_DEFAULT);
     const requiresPhotos = getFlag(row.requires_photos, CONFIG.REQUIRE_PHOTOS_DEFAULT);
     const requiresSignature = getFlag(row.requires_signature, CONFIG.REQUIRE_SIGNATURE_DEFAULT);
+    const startedOk = isStartedStatus(row.status) || !!row.started_at;
 
     const checklistOk = !requiresChecklist || state.checklist[id].every(Boolean);
     const photosOk = !requiresPhotos || (state.files[id] && state.files[id].length > 0);
@@ -669,7 +825,7 @@
 
     const btn = container.querySelector('[data-action="confirm-validate"]');
     if (!btn) return;
-    btn.disabled = !(checklistOk && photosOk && signatureOk);
+    btn.disabled = !(startedOk && checklistOk && photosOk && signatureOk);
   }
 
   function renderPreviews(id, container, files) {
@@ -788,6 +944,10 @@
     return status === "done";
   }
 
+  function isStartedStatus(status) {
+    return status === "in_progress" || status === "done";
+  }
+
   function formatDateFR(value) {
     if (!value) return "";
     let s = String(value).trim();
@@ -837,6 +997,39 @@
     return `https://www.google.com/maps/dir/?api=1&destination=${q}`;
   }
 
+  function getPvUrl(row) {
+    const direct = getFieldValue(row, CONFIG.PV_URL_FIELD);
+    if (direct) return String(direct);
+
+    const path = getFieldValue(row, CONFIG.PV_PATH_FIELD);
+    if (path) {
+      const { data } = supabase.storage.from(CONFIG.STORAGE_BUCKET).getPublicUrl(String(path));
+      return data?.publicUrl || "";
+    }
+    return "";
+  }
+
+  function formatMoney(value) {
+    if (value === null || value === undefined || value === "") return "";
+    const num = Number(value);
+    if (Number.isNaN(num)) return String(value);
+    return new Intl.NumberFormat("fr-FR", { style: "currency", currency: CONFIG.CURRENCY }).format(num);
+  }
+
+  function getFieldValue(row, key) {
+    if (!row || !key) return "";
+    const v = row[key];
+    return (v === null || v === undefined) ? "" : v;
+  }
+
+  function getFirstText(row, keys) {
+    for (const k of keys) {
+      const v = row?.[k];
+      if (v !== null && v !== undefined && String(v).trim() !== "") return String(v);
+    }
+    return "";
+  }
+
   function escapeHTML(str) {
     return String(str || "")
       .replace(/&/g, "&amp;")
@@ -884,6 +1077,10 @@
     if (d.requireChecklist) CONFIG.REQUIRE_CHECKLIST_DEFAULT = d.requireChecklist === "true";
     if (d.requirePhotos) CONFIG.REQUIRE_PHOTOS_DEFAULT = d.requirePhotos === "true";
     if (d.requireSignature) CONFIG.REQUIRE_SIGNATURE_DEFAULT = d.requireSignature === "true";
+    if (d.pvUrlField) CONFIG.PV_URL_FIELD = d.pvUrlField;
+    if (d.pvPathField) CONFIG.PV_PATH_FIELD = d.pvPathField;
+    if (d.remunerationField) CONFIG.REMUNERATION_FIELD = d.remunerationField;
+    if (d.currency) CONFIG.CURRENCY = d.currency;
     if (d.checklist) {
       try {
         const parsed = JSON.parse(d.checklist);
@@ -1066,6 +1263,11 @@
   color: #fff;
 }
 
+.ti-btn--start {
+  background: #0f766e;
+  color: #fff;
+}
+
 .ti-btn.is-disabled {
   opacity: 0.4;
   pointer-events: none;
@@ -1092,6 +1294,12 @@
 
 .ti-value {
   font-size: 14px;
+}
+
+.ti-link {
+  color: #0ea5e9;
+  text-decoration: none;
+  font-weight: 600;
 }
 
 .ti-validate {
@@ -1229,6 +1437,65 @@
 .ti-toast--success { background: #16a34a; }
 .ti-toast--warn { background: #f59e0b; }
 .ti-toast--error { background: #dc2626; }
+
+.ti-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.ti-sheet[hidden] {
+  display: none;
+}
+
+.ti-sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.ti-sheet-panel {
+  position: relative;
+  width: min(480px, 92vw);
+  background: #fff;
+  border-radius: 16px;
+  padding: 16px;
+  margin: 0 12px 12px;
+  display: grid;
+  gap: 10px;
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.2);
+}
+
+.ti-sheet-title {
+  font-weight: 700;
+  font-size: 14px;
+  color: #0f172a;
+}
+
+.ti-sheet-btn {
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.ti-sheet-cancel {
+  background: #0f172a;
+  color: #fff;
+  border-color: #0f172a;
+  text-align: center;
+}
+
+body.ti-sheet-open {
+  overflow: hidden;
+}
 
 @media (min-width: 768px) {
   .ti-controls {
