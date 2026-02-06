@@ -513,7 +513,44 @@ window.Webflow.push(async function () {
     sort: "date_desc",
   };
 
+  const refSequenceState = {
+    maxSeen: 0,
+    initialized: false,
+  };
+
   let listUi = null;
+
+  function extractReferenceNumber(ref) {
+    const match = String(ref || "").trim().match(/^MBL-(\d+)$/i);
+    if (!match) return null;
+    const n = Number(match[1]);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function refreshReferenceSequenceFromItems(items) {
+    const list = Array.isArray(items) ? items : [];
+    let maxRef = refSequenceState.maxSeen || 0;
+    list.forEach((itv) => {
+      const n = extractReferenceNumber(itv?.internal_ref);
+      if (n && n > maxRef) maxRef = n;
+    });
+    refSequenceState.maxSeen = maxRef;
+    refSequenceState.initialized = true;
+  }
+
+  function getNextReferenceCandidate() {
+    if (!refSequenceState.initialized) {
+      refreshReferenceSequenceFromItems(listState.items || []);
+    }
+    return `MBL-${Math.max(0, refSequenceState.maxSeen) + 1}`;
+  }
+
+  function markReferenceUsed(ref) {
+    const n = extractReferenceNumber(ref);
+    if (!n) return;
+    refSequenceState.maxSeen = Math.max(refSequenceState.maxSeen || 0, n);
+    refSequenceState.initialized = true;
+  }
 
   function canonicalStatusForList(value) {
     const key = normalizeStatus(value).replace(/\s+/g, "_");
@@ -890,6 +927,7 @@ window.Webflow.push(async function () {
 
     ensureListingUi();
     listState.items = enriched;
+    refreshReferenceSequenceFromItems(enriched);
     listState.search = norm(searchInput?.value || "");
     refreshListingView();
   }
@@ -1152,6 +1190,42 @@ window.Webflow.push(async function () {
     });
   }
 
+  function lockReferenceField() {
+    const modal = ensureModalExists();
+    const refInput = modal.querySelector(".f-ref");
+    if (!refInput) return;
+    refInput.readOnly = true;
+    refInput.classList.add("is-locked");
+    refInput.setAttribute("aria-readonly", "true");
+    refInput.setAttribute("title", "Reference auto-generee");
+  }
+
+  function assignNextReferenceCandidate(force) {
+    const modal = ensureModalExists();
+    const refInput = modal.querySelector(".f-ref");
+    if (!refInput) return;
+    if (!force && String(refInput.value || "").trim()) return;
+    refInput.value = getNextReferenceCandidate();
+  }
+
+  async function resolveAvailableReference(candidate) {
+    const parsed = extractReferenceNumber(candidate);
+    let start = parsed || (Math.max(0, refSequenceState.maxSeen) + 1);
+
+    for (let offset = 0; offset < 200; offset += 1) {
+      const ref = `MBL-${start + offset}`;
+      const { data, error } = await supabase
+        .from("interventions")
+        .select("id")
+        .eq("internal_ref", ref)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      if (!data) return ref;
+    }
+
+    throw new Error("Impossible de trouver une reference libre.");
+  }
+
   function goStep(idx) {
     const modal = ensureModalExists();
     currentStep = Math.max(0, Math.min(STEPS.length - 1, idx));
@@ -1363,6 +1437,12 @@ window.Webflow.push(async function () {
           border-color:#0ea5e9;
           box-shadow:0 0 0 3px rgba(14, 165, 233, 0.16);
         }
+        .itv-field input.is-locked {
+          background: #eef4fb;
+          color: #4f6b87;
+          border-color: #d2deea;
+          cursor: not-allowed;
+        }
         .itv-field input.is-invalid, .itv-field textarea.is-invalid, .itv-field select.is-invalid {
           border-color: #ef4444 !important;
           box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.14) !important;
@@ -1565,8 +1645,9 @@ window.Webflow.push(async function () {
         <div class="itv-tab" data-tab="infos">
           <div class="itv-grid">
             <div class="itv-field">
-              <label>Référence *</label>
+              <label>Référence auto *</label>
               <input class="f-ref" type="text" />
+              <div class="itv-muted">Format auto: MBL-123</div>
             </div>
             <div class="itv-field">
               <label>Statut</label>
@@ -1875,6 +1956,7 @@ window.Webflow.push(async function () {
     modal.querySelectorAll("input, textarea, select").forEach(el => {
       el.disabled = isView;
     });
+    lockReferenceField();
     setDirtyFlag(false);
   }
 
@@ -1950,15 +2032,20 @@ window.Webflow.push(async function () {
     clearFieldErrors();
 
     if (step === 0) {
-      const ref = modal.querySelector(".f-ref").value.trim();
+      const refInput = modal.querySelector(".f-ref");
+      let ref = refInput.value.trim();
       const client = modal.querySelector(".f-client").value.trim();
       const tarif = parseEurosToCents(modal.querySelector(".f-tarif").value);
       const start = modal.querySelector(".f-start").value;
       const end = modal.querySelector(".f-end").value;
 
       if (!ref) {
+        assignNextReferenceCandidate(true);
+        ref = refInput.value.trim();
+      }
+      if (!/^MBL-\d+$/i.test(ref)) {
         markInvalid([".f-ref"]);
-        return "La reference est obligatoire.";
+        return "La reference auto doit etre au format MBL-123.";
       }
       if (!client) {
         markInvalid([".f-client"]);
@@ -2044,7 +2131,6 @@ window.Webflow.push(async function () {
     const modal = ensureModalExists();
     const key = getDraftStorageKey();
     const data = {
-      ref: modal.querySelector(".f-ref").value,
       status: modal.querySelector(".f-status").value,
       title: modal.querySelector(".f-title").value,
       monday: modal.querySelector(".f-monday").value,
@@ -2069,7 +2155,6 @@ window.Webflow.push(async function () {
     if (!raw) return;
     try {
       const d = JSON.parse(raw);
-      modal.querySelector(".f-ref").value = d.ref || "";
       modal.querySelector(".f-status").value = d.status || "";
       modal.querySelector(".f-title").value = d.title || "";
       modal.querySelector(".f-monday").value = d.monday || "";
@@ -2130,6 +2215,7 @@ window.Webflow.push(async function () {
     renderTechChecklist();
     updateSummaryView();
     syncModalMeta();
+    lockReferenceField();
   }
 
   function fillModal(intervention, assigns, compensations, expenses, files, pv) {
@@ -2559,45 +2645,35 @@ window.Webflow.push(async function () {
       tarif: parseEurosToCents(modal.querySelector(".f-tarif").value),
     };
 
-    if (!payload.internal_ref) {
-      showError("La référence est obligatoire.");
-      return;
-    }
-
-    if (modalState.mode === "add") {
-      const { data: exists, error: existsErr } = await supabase
-        .from("interventions")
-        .select("id")
-        .eq("internal_ref", payload.internal_ref)
-        .maybeSingle();
-      if (existsErr) throw new Error(existsErr.message);
-      if (exists) {
-        showError("Cette référence existe déjà. Merci d’en choisir une autre.");
-        return;
-      }
-    }
-
-    const techIds = getSelectedTechs().map(t => t.id);
-
-    const compRows = Array.from(modal.querySelectorAll(".comp-row")).map(row => ({
-      tech_id: row.dataset.techId,
-      amount_cents: parseEurosToCents(row.querySelector(".c-amount").value),
-      status: cleanNullableText(row.querySelector(".c-status").value),
-      currency: row.querySelector(".c-currency").value.trim() || "EUR",
-      notes: row.querySelector(".c-notes").value.trim() || null
-    })).filter(c => c.tech_id);
-
-    const expRows = Array.from(modal.querySelectorAll(".exp-row")).map(row => {
-      const type = row.querySelector(".e-type").value;
-      const product_id = row.querySelector(".e-product").value || null;
-      const note = row.querySelector(".e-label").value.trim() || null;
-      const qty = parseQty(row.querySelector(".e-qty").value);
-      const unit_cost_cents = parseEurosToCents(row.querySelector(".e-unit").value);
-      const amount_cents = qty * unit_cost_cents;
-      return { type, product_id, note, qty, unit_cost_cents, amount_cents };
-    }).filter(r => r.qty > 0 || r.amount_cents > 0);
-
     try {
+      if (modalState.mode === "add") {
+        payload.internal_ref = await resolveAvailableReference(payload.internal_ref || getNextReferenceCandidate());
+        const refInput = modal.querySelector(".f-ref");
+        if (refInput) refInput.value = payload.internal_ref;
+      } else if (!payload.internal_ref) {
+        throw new Error("La reference est obligatoire.");
+      }
+
+      const techIds = getSelectedTechs().map(t => t.id);
+
+      const compRows = Array.from(modal.querySelectorAll(".comp-row")).map(row => ({
+        tech_id: row.dataset.techId,
+        amount_cents: parseEurosToCents(row.querySelector(".c-amount").value),
+        status: cleanNullableText(row.querySelector(".c-status").value),
+        currency: row.querySelector(".c-currency").value.trim() || "EUR",
+        notes: row.querySelector(".c-notes").value.trim() || null
+      })).filter(c => c.tech_id);
+
+      const expRows = Array.from(modal.querySelectorAll(".exp-row")).map(row => {
+        const type = row.querySelector(".e-type").value;
+        const product_id = row.querySelector(".e-product").value || null;
+        const note = row.querySelector(".e-label").value.trim() || null;
+        const qty = parseQty(row.querySelector(".e-qty").value);
+        const unit_cost_cents = parseEurosToCents(row.querySelector(".e-unit").value);
+        const amount_cents = qty * unit_cost_cents;
+        return { type, product_id, note, qty, unit_cost_cents, amount_cents };
+      }).filter(r => r.qty > 0 || r.amount_cents > 0);
+
       let interventionId = modalState.id;
 
       if (modalState.mode === "add") {
@@ -2612,6 +2688,7 @@ window.Webflow.push(async function () {
         if (error) throw new Error(error.message);
         interventionId = data.id;
         modalState.id = interventionId;
+        markReferenceUsed(payload.internal_ref);
       } else {
         const { error } = await supabase
           .from("interventions")
@@ -2969,6 +3046,7 @@ window.Webflow.push(async function () {
 
     if (mode === "add") {
       restoreDraft();
+      assignNextReferenceCandidate(true);
       renderCompRows([]);
       renderExpenseRows([]);
       renderFilesList([]);
