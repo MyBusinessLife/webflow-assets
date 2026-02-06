@@ -497,9 +497,10 @@
 
   function showFlowStep(key) {
     els.flow.querySelectorAll("[data-flow]").forEach((el) => {
-      el.hidden = el.dataset.flow !== key;
+      el.classList.toggle("is-active", el.dataset.flow === key);
     });
   }
+
 
   async function validateIntervention(row) {
     const id = row.id;
@@ -1357,6 +1358,9 @@
 .ti-sheet-title{font-weight:700;font-size:14px;color:#0f172a}
 .ti-sheet-btn{width:100%;text-align:left;padding:12px 14px;border-radius:12px;border:1px solid #e2e8f0;background:#f8fafc;font-size:14px;cursor:pointer}
 .ti-sheet-cancel{background:#0f172a;color:#fff;border-color:#0f172a;text-align:center}
+.ti-flow-section{display:none;}
+.ti-flow-section.is-active{display:grid;}
+
 body.ti-sheet-open{overflow:hidden}
 @media (max-width:820px){.ti-product-row{grid-template-columns:1fr 1fr}.ti-product-total,.ti-check-inline,.ti-btn--xs{grid-column:span 2}}
 @media (min-width:768px){.ti-steps{grid-template-columns:repeat(6,1fr)}}
