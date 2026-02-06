@@ -145,26 +145,31 @@
   function buildCard(row) {
     const card = document.createElement("article");
     card.className = "ti-card";
-
+    card.dataset.id = row.id;
+  
     const status = String(row.status || "").toLowerCase();
-    const isDone = status === "done";
+    const isDone = isDoneStatus(status);
     const isCanceled = status === "canceled";
-    const isStarted = status === "in_progress" || status === "done";
-
+    const isStarted = isStartedStatus(status) || !!row.started_at;
+  
     const statusLabel = getStatusLabel(row.status);
     const statusTone = getStatusTone(row.status);
     const dateLabel = formatDateFR(row.start_at) || "Date a definir";
     const clientTitle = `${row.client_name || "Client"} - ${row.title || "Intervention"}`;
-
+  
     const phoneNormalized = normalizePhone(row.support_phone);
+    const phoneReadable = formatPhoneReadable(row.support_phone);
     const address = row.address ? String(row.address).trim() : "";
+  
     const pvUrl = getPvUrl(row);
-
+    const remuneration = formatMoney(getFieldValue(row, CONFIG.REMUNERATION_FIELD));
+    const description = getFirstText(row, ["description", "notes_tech", "tech_notes", "notes", "problem", "issue"]);
+    const startedAt = row.started_at ? formatDateFR(row.started_at) : "";
+    const completedAt = row.completed_at ? formatDateFR(row.completed_at) : "";
+  
     const showStart = !isStarted && !isDone && !isCanceled;
     const showFlow = isStarted && !isDone && !isCanceled;
-
-    const runUrl = `${CONFIG.RUN_PAGE_PATH}?id=${encodeURIComponent(row.id)}`;
-
+  
     card.innerHTML = `
       <div class="ti-card-head">
         <div class="ti-card-main">
@@ -176,52 +181,96 @@
         </div>
         <div class="ti-badge ti-badge--${statusTone}">${escapeHTML(statusLabel)}</div>
       </div>
-
+  
       <div class="ti-actions">
-        <a class="ti-btn ti-btn--ghost ${phoneNormalized ? "" : "is-disabled"}" ${phoneNormalized ? `href="tel:${phoneNormalized}"` : ""}>${STR.callCTA}</a>
-        <button class="ti-btn ti-btn--ghost ${address ? "" : "is-disabled"}" data-action="map">${STR.mapCTA}</button>
+        <a class="ti-btn ti-btn--ghost ${phoneNormalized ? "" : "is-disabled"}" data-action="call" ${phoneNormalized ? `href="tel:${phoneNormalized}"` : ""}>${STR.callCTA}</a>
+        <button class="ti-btn ti-btn--ghost ${address ? "" : "is-disabled"}" data-action="map" ${address ? "" : "disabled"}>${STR.mapCTA}</button>
         ${pvUrl ? `<a class="ti-btn ti-btn--ghost" href="${pvUrl}" target="_blank" rel="noopener" download>${STR.pvCTA}</a>` : ""}
         <button class="ti-btn ti-btn--ghost" data-action="toggle-details">${STR.detailsCTA}</button>
         ${showStart ? `<button class="ti-btn ti-btn--start" data-action="start">${STR.startCTA}</button>` : ""}
-        ${showFlow ? `<a class="ti-btn ti-btn--primary" href="${runUrl}">${STR.flowCTA}</a>` : ""}
+        ${showFlow ? `<a class="ti-btn ti-btn--primary" href="${CONFIG.RUN_PAGE_PATH}?id=${encodeURIComponent(row.id)}">${STR.flowCTA}</a>` : ""}
       </div>
-
+  
       <div class="ti-details" hidden>
         <div class="ti-grid">
           ${infoRow("Client", row.client_name)}
           ${infoRow("Intervention", row.title)}
+          ${infoRow("Statut", statusLabel)}
           ${infoRow("Date", dateLabel)}
           ${infoRow("Adresse", address)}
+          ${infoRow("Telephone", phoneReadable)}
+          ${infoRow("Remuneration", remuneration)}
+          ${infoRow("Demarree", startedAt)}
+          ${infoRow("Terminee", completedAt)}
+          ${infoRow("Contact", pickFirst(row, ["contact_name", "client_contact", "contact"]))}
+          ${infoRow("Telephone contact", pickFirst(row, ["contact_phone", "client_phone", "phone_contact"]))}
+          ${infoRow("Email contact", pickFirst(row, ["contact_email", "client_email", "email_contact"]))}
+          ${infoRow("Consignes", description)}
+          ${infoRow("Acces", buildAccessInfo(row))}
+          ${infoRow("Materiel", buildEquipmentInfo(row))}
+          ${pvUrl ? infoRow("PV vierge", `<a class="ti-link" href="${pvUrl}" target="_blank" rel="noopener">${STR.pvCTA}</a>`, true) : ""}
         </div>
       </div>
     `;
-
+  
     const detailsBtn = card.querySelector('[data-action="toggle-details"]');
     const startBtn = card.querySelector('[data-action="start"]');
     const mapBtn = card.querySelector('[data-action="map"]');
     const detailsPanel = card.querySelector(".ti-details");
-
-    if (detailsBtn) detailsBtn.addEventListener("click", () => (detailsPanel.hidden = !detailsPanel.hidden));
-    if (mapBtn && address) mapBtn.addEventListener("click", () => openMapSheet(address));
-    if (startBtn) startBtn.addEventListener("click", () => startIntervention(row));
-
+  
+    if (detailsBtn) {
+      detailsBtn.addEventListener("click", () => {
+        detailsPanel.hidden = !detailsPanel.hidden;
+      });
+    }
+  
+    if (startBtn) {
+      startBtn.addEventListener("click", () => startIntervention(row, startBtn));
+    }
+  
+    if (mapBtn && !mapBtn.disabled) {
+      mapBtn.addEventListener("click", () => openMapSheet(address));
+    }
+  
     return card;
   }
 
-  async function startIntervention(row) {
-    const startedAt = new Date().toISOString();
-    const payload = { status: CONFIG.STATUS_IN_PROGRESS, started_at: startedAt };
 
+  async function startIntervention(row, btn) {
+    btn.disabled = true;
+    btn.textContent = "Demarrage...";
+  
+    const startedAt = new Date().toISOString();
+    const payload = { status: CONFIG.STATUS_IN_PROGRESS };
+    if (hasField(row, "started_at")) payload.started_at = startedAt;
+  
     const res = await supabase
       .from("interventions")
       .update(payload)
       .eq("id", row.id);
-
-    if (res.error) return;
-
+  
+    if (res.error) {
+      showToast("error", res.error.message || STR.toastStartError);
+      btn.disabled = false;
+      btn.textContent = STR.startCTA;
+      return;
+    }
+  
     setActiveId(row.id);
-    location.href = `${CONFIG.RUN_PAGE_PATH}?id=${encodeURIComponent(row.id)}`;
+    setStep(row.id, 1);
+  
+    const idx = state.items.findIndex((x) => x.id === row.id);
+    if (idx > -1) {
+      state.items[idx].status = CONFIG.STATUS_IN_PROGRESS;
+      if (hasField(row, "started_at")) state.items[idx].started_at = startedAt;
+    }
+  
+    showToast("success", STR.toastStart);
+  
+    // redirection vers la page de réalisation
+    window.location.href = `${CONFIG.RUN_PAGE_PATH}?id=${encodeURIComponent(row.id)}`;
   }
+
 
   function renderShell(rootEl) {
     rootEl.innerHTML = `
