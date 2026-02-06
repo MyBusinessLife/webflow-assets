@@ -27,6 +27,8 @@
     REMUNERATION_FIELD: "tech_fee",
     CURRENCY: "EUR",
 
+    LIST_PAGE_PATH: "/extranet/technician/interventions",
+
     STEPS_STORAGE_KEY: "mbl-intervention-steps"
   };
 
@@ -552,6 +554,13 @@
 
       if (statusUpdated) showToast("success", STR.toastSaved);
       else showToast("warn", STR.toastSavedPartial);
+
+      if (statusUpdated) {
+        setTimeout(() => {
+          window.location.href = CONFIG.LIST_PAGE_PATH;
+        }, 600);
+      }
+
 
       if (!reportOk) showToast("warn", STR.toastReportMissing);
       if (!expensesOk) showToast("warn", STR.toastExpensesMissing);
