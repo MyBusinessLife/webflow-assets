@@ -1042,8 +1042,115 @@ window.Webflow.push(async function () {
     id: null,
     pendingFiles: [],
     pendingPvDraft: null,
-    pendingPvSigned: null
+    pendingPvSigned: null,
+    dirty: false,
+    initialSignature: "",
+    saving: false
   };
+
+  function getDraftStorageKey() {
+    return modalState.mode === "edit" ? `itvDraft:${modalState.id}` : "itvDraft:new";
+  }
+
+  function normalizeEuroInput(value) {
+    const cents = parseEurosToCents(value);
+    return centsToEurosInput(cents || 0);
+  }
+
+  function getModalSnapshotSignature() {
+    const modal = ensureModalExists();
+    const base = {
+      ref: modal.querySelector(".f-ref")?.value || "",
+      status: modal.querySelector(".f-status")?.value || "",
+      title: modal.querySelector(".f-title")?.value || "",
+      monday: modal.querySelector(".f-monday")?.value || "",
+      client: modal.querySelector(".f-client")?.value || "",
+      client_ref: modal.querySelector(".f-client-ref")?.value || "",
+      phone: modal.querySelector(".f-phone")?.value || "",
+      tarif: modal.querySelector(".f-tarif")?.value || "",
+      address: modal.querySelector(".f-address")?.value || "",
+      start: modal.querySelector(".f-start")?.value || "",
+      end: modal.querySelector(".f-end")?.value || "",
+      equipment: modal.querySelector(".f-equipment")?.value || "",
+      infos: modal.querySelector(".f-infos")?.value || "",
+      observations: modal.querySelector(".f-observations")?.value || "",
+      techIds: getSelectedTechs().map((t) => t.id).sort(),
+      compRows: Array.from(modal.querySelectorAll(".comp-row")).map((row) => ({
+        tech_id: row.dataset.techId || "",
+        amount: row.querySelector(".c-amount")?.value || "",
+        status: row.querySelector(".c-status")?.value || "",
+        currency: row.querySelector(".c-currency")?.value || "",
+        notes: row.querySelector(".c-notes")?.value || "",
+      })),
+      expRows: Array.from(modal.querySelectorAll(".exp-row")).map((row) => ({
+        type: row.querySelector(".e-type")?.value || "",
+        product: row.querySelector(".e-product")?.value || "",
+        label: row.querySelector(".e-label")?.value || "",
+        qty: row.querySelector(".e-qty")?.value || "",
+        unit: row.querySelector(".e-unit")?.value || "",
+      })),
+      pendingFiles: modalState.pendingFiles.map((f) => `${f.type || ""}|${f.file?.name || ""}`),
+      pendingPvDraft: modalState.pendingPvDraft?.name || "",
+      pendingPvSigned: modalState.pendingPvSigned?.name || "",
+    };
+    return JSON.stringify(base);
+  }
+
+  function setDirtyFlag(flag) {
+    modalState.dirty = Boolean(flag);
+    const modal = ensureModalExists();
+    const badge = modal.querySelector(".itv-dirty-badge");
+    if (badge) badge.classList.toggle("is-visible", modalState.dirty && modalState.mode !== "view");
+  }
+
+  function refreshDirtyFlag() {
+    if (modalState.mode === "view") {
+      setDirtyFlag(false);
+      return;
+    }
+    const current = getModalSnapshotSignature();
+    setDirtyFlag(current !== modalState.initialSignature);
+  }
+
+  function resetDirtyBaseline() {
+    modalState.initialSignature = getModalSnapshotSignature();
+    setDirtyFlag(false);
+  }
+
+  function syncModalMeta() {
+    const modal = ensureModalExists();
+    const chip = modal.querySelector(".itv-mode-chip");
+    if (chip) {
+      chip.textContent =
+        modalState.mode === "view"
+          ? "Mode: consultation"
+          : modalState.mode === "edit"
+          ? "Mode: edition"
+          : "Mode: creation";
+    }
+  }
+
+  function tryCloseModal() {
+    if (modalState.saving) return;
+    if (modalState.mode !== "view" && modalState.dirty) {
+      const ok = window.confirm("Vous avez des modifications non sauvegardees. Fermer quand meme ?");
+      if (!ok) return;
+    }
+    closeModal();
+  }
+
+  function clearFieldErrors() {
+    const modal = ensureModalExists();
+    modal.querySelectorAll(".is-invalid").forEach((el) => el.classList.remove("is-invalid"));
+  }
+
+  function markInvalid(selectors) {
+    const modal = ensureModalExists();
+    selectors.forEach((sel) => {
+      const el = modal.querySelector(sel);
+      if (el) el.classList.add("is-invalid");
+    });
+  }
 
   function goStep(idx) {
     const modal = ensureModalExists();
@@ -1115,9 +1222,33 @@ window.Webflow.push(async function () {
           border-radius: 14px;
           padding: 14px 16px;
           box-shadow: 0 8px 20px rgba(12, 74, 110, 0.24);
+          position: sticky;
+          top: 0;
+          z-index: 5;
         }
         .itv-modal__title { font-size: 20px; font-weight: 800; }
         .itv-modal__subtitle { opacity: .9; }
+        .itv-modal__meta { display: inline-flex; gap: 8px; margin-top: 8px; align-items: center; flex-wrap: wrap; }
+        .itv-mode-chip {
+          display: inline-flex;
+          align-items: center;
+          border-radius: 999px;
+          padding: 4px 9px;
+          font-size: 11px;
+          font-weight: 800;
+          background: rgba(255,255,255,.18);
+          border: 1px solid rgba(255,255,255,.28);
+        }
+        .itv-dirty-badge {
+          display: none;
+          border-radius: 999px;
+          padding: 4px 9px;
+          font-size: 11px;
+          font-weight: 800;
+          background: rgba(255,255,255,.14);
+          border: 1px solid rgba(255,255,255,.3);
+        }
+        .itv-dirty-badge.is-visible { display: inline-flex; }
         .itv-btn {
           border: none;
           background: linear-gradient(120deg, #0f766e, #0c4a6e);
@@ -1176,6 +1307,37 @@ window.Webflow.push(async function () {
           background: linear-gradient(120deg, #0f766e, #0ea5e9);
           transition: width .24s ease;
         }
+        .itv-runtime {
+          margin-top: 10px;
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 8px;
+        }
+        .itv-metric {
+          border: 1px solid #d6e2ee;
+          border-radius: 10px;
+          background: #fff;
+          padding: 8px 10px;
+          min-width: 0;
+        }
+        .itv-metric-k {
+          font-size: 10px;
+          text-transform: uppercase;
+          letter-spacing: .07em;
+          color: #5a7490;
+          font-weight: 700;
+        }
+        .itv-metric-v {
+          margin-top: 4px;
+          font-weight: 800;
+          font-size: 16px;
+          color: #12375b;
+          line-height: 1.1;
+          font-variant-numeric: tabular-nums;
+          white-space: nowrap;
+        }
+        .itv-metric-v.is-positive { color: #0f766e; }
+        .itv-metric-v.is-negative { color: #be123c; }
         .itv-tab { display:none; margin-top:14px; }
         .itv-tab.is-active { display:block; }
         .itv-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
@@ -1200,6 +1362,11 @@ window.Webflow.push(async function () {
         .itv-field input:focus, .itv-field textarea:focus, .itv-field select:focus {
           border-color:#0ea5e9;
           box-shadow:0 0 0 3px rgba(14, 165, 233, 0.16);
+        }
+        .itv-field input.is-invalid, .itv-field textarea.is-invalid, .itv-field select.is-invalid {
+          border-color: #ef4444 !important;
+          box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.14) !important;
+          background: #fff8f8;
         }
         .itv-card {
           padding:12px;
@@ -1255,7 +1422,17 @@ window.Webflow.push(async function () {
           padding:10px 12px;
           font-weight:600;
         }
-        .itv-actions { display:flex; justify-content:space-between; margin-top:14px; gap: 8px; }
+        .itv-actions {
+          display:flex;
+          justify-content:space-between;
+          margin-top:14px;
+          gap: 8px;
+          position: sticky;
+          bottom: 0;
+          z-index: 4;
+          padding: 10px 2px 2px;
+          background: linear-gradient(180deg, rgba(247,251,255,0), rgba(247,251,255,.94) 40%, rgba(247,251,255,1));
+        }
         .itv-muted { color:#5a7490; font-size:12px; }
 
         .tech-toolbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
@@ -1329,6 +1506,7 @@ window.Webflow.push(async function () {
             padding: 12px;
           }
           .itv-grid { grid-template-columns: 1fr; }
+          .itv-runtime { grid-template-columns: repeat(2, minmax(0, 1fr)); }
           .itv-actions { flex-direction: column-reverse; align-items: stretch; }
           .itv-actions > * { width: 100%; }
           .itv-actions button { width: 100%; }
@@ -1343,6 +1521,10 @@ window.Webflow.push(async function () {
           <div>
             <div class="itv-modal__title">Intervention</div>
             <div class="itv-modal__subtitle">Parcours guidé</div>
+            <div class="itv-modal__meta">
+              <span class="itv-mode-chip">Mode: consultation</span>
+              <span class="itv-dirty-badge">Brouillon non sauvegarde</span>
+            </div>
           </div>
           <div style="display:flex; gap:8px;">
             <button type="button" class="itv-btn secondary itv-close">Fermer</button>
@@ -1359,6 +1541,24 @@ window.Webflow.push(async function () {
           <button class="itv-step" data-step="6">7. Résumé</button>
         </div>
         <div class="itv-progress"><div class="itv-progress__bar"></div></div>
+        <div class="itv-runtime">
+          <div class="itv-metric">
+            <div class="itv-metric-k">Tarif</div>
+            <div class="itv-metric-v m-tarif">—</div>
+          </div>
+          <div class="itv-metric">
+            <div class="itv-metric-k">Depenses</div>
+            <div class="itv-metric-v m-expenses">—</div>
+          </div>
+          <div class="itv-metric">
+            <div class="itv-metric-k">Compensations</div>
+            <div class="itv-metric-v m-comps">—</div>
+          </div>
+          <div class="itv-metric">
+            <div class="itv-metric-k">Benefice estime</div>
+            <div class="itv-metric-v m-profit">—</div>
+          </div>
+        </div>
 
         <div class="itv-modal__error"></div>
 
@@ -1505,6 +1705,7 @@ window.Webflow.push(async function () {
             <div class="itv-card"><div class="k">Tarif</div><div class="v s-tarif">—</div></div>
             <div class="itv-card"><div class="k">Total dépenses</div><div class="v s-expenses">—</div></div>
             <div class="itv-card"><div class="k">Total compensations</div><div class="v s-comps">—</div></div>
+            <div class="itv-card"><div class="k">Benefice estimé</div><div class="v s-profit">—</div></div>
           </div>
         </div>
 
@@ -1520,7 +1721,7 @@ window.Webflow.push(async function () {
 
     document.body.appendChild(modal);
 
-    const close = () => closeModal();
+    const close = () => tryCloseModal();
     modal.querySelectorAll(".itv-close").forEach(btn => btn.addEventListener("click", close));
     modal.querySelector(".itv-modal__overlay").addEventListener("click", close);
 
@@ -1532,14 +1733,30 @@ window.Webflow.push(async function () {
     }
 
     modal.querySelectorAll(".itv-step").forEach(btn => {
-      btn.addEventListener("click", () => goStep(Number(btn.dataset.step)));
+      btn.addEventListener("click", () => {
+        const target = Number(btn.dataset.step);
+        if (modalState.mode === "view" || target <= currentStep) {
+          goStep(target);
+          return;
+        }
+        for (let i = currentStep; i < target; i++) {
+          const err = validateStep(i);
+          if (err) {
+            showError(err);
+            goStep(i);
+            return;
+          }
+        }
+        showError("");
+        goStep(target);
+      });
     });
 
     modal.querySelector(".itv-prev").addEventListener("click", () => goStep(currentStep - 1));
 
     modal.querySelector(".itv-next").addEventListener("click", () => {
       if (modalState.mode === "view") {
-        if (currentStep === STEPS.length - 1) closeModal();
+        if (currentStep === STEPS.length - 1) tryCloseModal();
         else goStep(currentStep + 1);
         return;
       }
@@ -1559,28 +1776,64 @@ window.Webflow.push(async function () {
       const type = modal.querySelector(".f-file-type").value.trim() || "document";
       modalState.pendingFiles.push(...files.map(f => ({ file: f, type })));
       renderPendingFiles();
+      refreshDirtyFlag();
     });
 
     modal.querySelector(".pv-draft-input").addEventListener("change", (e) => {
       const file = e.target.files?.[0] || null;
       modalState.pendingPvDraft = file;
       renderPvSection();
+      refreshDirtyFlag();
     });
 
     modal.querySelector(".pv-signed-input").addEventListener("change", (e) => {
       const file = e.target.files?.[0] || null;
       modalState.pendingPvSigned = file;
       renderPvSection();
+      refreshDirtyFlag();
     });
 
     modal.querySelector(".tech-search").addEventListener("input", (e) => {
       renderTechChecklist(e.target.value);
     });
 
+    modal.querySelectorAll(".f-tarif, .c-amount, .e-unit").forEach((el) => {
+      el.addEventListener("blur", () => {
+        const v = String(el.value || "").trim();
+        if (!v) return;
+        el.value = normalizeEuroInput(v);
+      });
+    });
+
     modal.querySelector(".itv-modal__panel").addEventListener("input", debounce(() => {
+      clearFieldErrors();
       updateSummaryView();
       saveDraft();
+      refreshDirtyFlag();
     }, 250));
+
+    modal.querySelector(".itv-modal__panel").addEventListener("focusout", (e) => {
+      const target = e.target;
+      if (!target?.classList) return;
+      if (
+        target.classList.contains("f-tarif") ||
+        target.classList.contains("c-amount") ||
+        target.classList.contains("e-unit")
+      ) {
+        const v = String(target.value || "").trim();
+        if (v) target.value = normalizeEuroInput(v);
+        updateSummaryView();
+        saveDraft();
+        refreshDirtyFlag();
+      }
+    });
+
+    modal.querySelector(".itv-modal__panel").addEventListener("keydown", (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        if (modalState.mode !== "view" && !modalState.saving) submitModal();
+      }
+    });
 
     return modal;
   }
@@ -1594,6 +1847,8 @@ window.Webflow.push(async function () {
 
   function openModal() {
     const modal = ensureModalExists();
+    syncModalMeta();
+    modalState.saving = false;
     modal.style.display = "block";
     document.body.style.overflow = "hidden";
   }
@@ -1603,17 +1858,24 @@ window.Webflow.push(async function () {
     if (!modal) return;
     modal.style.display = "none";
     document.body.style.overflow = "";
+    const err = modal.querySelector(".itv-modal__error");
+    if (err) { err.textContent = ""; err.style.display = "none"; }
+    clearFieldErrors();
+    modalState.saving = false;
+    modalState.dirty = false;
   }
 
   function setMode(mode) {
     const modal = ensureModalExists();
     modalState.mode = mode;
+    syncModalMeta();
 
     const isView = mode === "view";
     modal.classList.toggle("is-readonly", isView);
     modal.querySelectorAll("input, textarea, select").forEach(el => {
       el.disabled = isView;
     });
+    setDirtyFlag(false);
   }
 
   function showError(msg) {
@@ -1637,6 +1899,7 @@ window.Webflow.push(async function () {
 
     const expTotal = computeExpenseTotalCents();
     const compTotal = computeCompTotalCents();
+    const profit = tarif - expTotal - compTotal;
 
     modal.querySelector(".s-ref").textContent = ref;
     modal.querySelector(".s-status").textContent = status;
@@ -1647,11 +1910,29 @@ window.Webflow.push(async function () {
     modal.querySelector(".s-tarif").textContent = formatCents(tarif);
     modal.querySelector(".s-expenses").textContent = formatCents(expTotal);
     modal.querySelector(".s-comps").textContent = formatCents(compTotal);
+    const profitSummaryEl = modal.querySelector(".s-profit");
+    if (profitSummaryEl) {
+      profitSummaryEl.textContent = formatCents(profit);
+      profitSummaryEl.style.color = profit >= 0 ? "#0f766e" : "#be123c";
+    }
 
     const expEl = modal.querySelector(".exp-total");
     const compEl = modal.querySelector(".comp-total");
     if (expEl) expEl.textContent = formatCents(expTotal);
     if (compEl) compEl.textContent = formatCents(compTotal);
+
+    const mTarif = modal.querySelector(".m-tarif");
+    const mExp = modal.querySelector(".m-expenses");
+    const mComps = modal.querySelector(".m-comps");
+    const mProfit = modal.querySelector(".m-profit");
+    if (mTarif) mTarif.textContent = formatCents(tarif);
+    if (mExp) mExp.textContent = formatCents(expTotal);
+    if (mComps) mComps.textContent = formatCents(compTotal);
+    if (mProfit) {
+      mProfit.textContent = formatCents(profit);
+      mProfit.classList.toggle("is-positive", profit >= 0);
+      mProfit.classList.toggle("is-negative", profit < 0);
+    }
 
     updateTechCount();
   }
@@ -1666,15 +1947,90 @@ window.Webflow.push(async function () {
 
   function validateStep(step) {
     const modal = ensureModalExists();
+    clearFieldErrors();
+
     if (step === 0) {
       const ref = modal.querySelector(".f-ref").value.trim();
-      if (!ref) return "La référence est obligatoire.";
+      const client = modal.querySelector(".f-client").value.trim();
+      const tarif = parseEurosToCents(modal.querySelector(".f-tarif").value);
+      const start = modal.querySelector(".f-start").value;
+      const end = modal.querySelector(".f-end").value;
+
+      if (!ref) {
+        markInvalid([".f-ref"]);
+        return "La reference est obligatoire.";
+      }
+      if (!client) {
+        markInvalid([".f-client"]);
+        return "Le client est obligatoire.";
+      }
+      if (tarif < 0) {
+        markInvalid([".f-tarif"]);
+        return "Le tarif doit etre positif.";
+      }
+      if (start && end) {
+        const s = new Date(start).getTime();
+        const e = new Date(end).getTime();
+        if (Number.isFinite(s) && Number.isFinite(e) && e < s) {
+          markInvalid([".f-start", ".f-end"]);
+          return "La date de fin doit etre apres la date de debut.";
+        }
+      }
     }
+
+    if (step === 1) {
+      const selected = getSelectedTechs();
+      if (!selected.length) {
+        return "Selectionne au moins un technicien.";
+      }
+    }
+
     if (step === 2) {
       const rows = modal.querySelectorAll(".comp-row");
       for (const row of rows) {
         const v = row.querySelector(".c-amount").value.trim();
-        if (v && parseEurosToCents(v) === 0) return "Montant compensation invalide.";
+        if (v && parseEurosToCents(v) === 0) {
+          row.querySelector(".c-amount")?.classList.add("is-invalid");
+          return "Montant compensation invalide.";
+        }
+      }
+    }
+
+    if (step === 3) {
+      const rows = Array.from(modal.querySelectorAll(".exp-row"));
+      for (const row of rows) {
+        const type = row.querySelector(".e-type")?.value;
+        const qty = parseQty(row.querySelector(".e-qty")?.value);
+        const unit = parseEurosToCents(row.querySelector(".e-unit")?.value);
+        const product = row.querySelector(".e-product")?.value || "";
+
+        if (qty < 0 || unit < 0) {
+          row.querySelector(".e-qty")?.classList.add("is-invalid");
+          row.querySelector(".e-unit")?.classList.add("is-invalid");
+          return "Les depenses doivent etre positives.";
+        }
+        if (qty > 0 && unit === 0) {
+          row.querySelector(".e-unit")?.classList.add("is-invalid");
+          return "Renseigne un cout unitaire valide.";
+        }
+        if (isProductType(type) && qty > 0 && !product) {
+          row.querySelector(".e-product")?.classList.add("is-invalid");
+          return "Selectionne un produit pour chaque depense de type produit.";
+        }
+      }
+    }
+
+    return null;
+  }
+
+  function validateBeforeSubmit() {
+    // Validate only editable logical steps.
+    const stepsToCheck = [0, 1, 2, 3];
+    for (const s of stepsToCheck) {
+      const err = validateStep(s);
+      if (err) {
+        goStep(s);
+        return err;
       }
     }
     return null;
@@ -1686,7 +2042,7 @@ window.Webflow.push(async function () {
   function saveDraft() {
     if (modalState.mode === "view") return;
     const modal = ensureModalExists();
-    const key = modalState.mode === "edit" ? `itvDraft:${modalState.id}` : "itvDraft:new";
+    const key = getDraftStorageKey();
     const data = {
       ref: modal.querySelector(".f-ref").value,
       status: modal.querySelector(".f-status").value,
@@ -1708,7 +2064,7 @@ window.Webflow.push(async function () {
 
   function restoreDraft() {
     const modal = ensureModalExists();
-    const key = modalState.mode === "edit" ? `itvDraft:${modalState.id}` : "itvDraft:new";
+    const key = getDraftStorageKey();
     const raw = localStorage.getItem(key);
     if (!raw) return;
     try {
@@ -1731,7 +2087,7 @@ window.Webflow.push(async function () {
   }
 
   function clearDraft() {
-    const key = modalState.mode === "edit" ? `itvDraft:${modalState.id}` : "itvDraft:new";
+    const key = getDraftStorageKey();
     localStorage.removeItem(key);
   }
 
@@ -1740,6 +2096,7 @@ window.Webflow.push(async function () {
   // =========================
   function clearModalFields() {
     const modal = ensureModalExists();
+    clearFieldErrors();
     modal.querySelector(".f-ref").value = "";
     modal.querySelector(".f-status").value = "Planifiée";
     modal.querySelector(".f-title").value = "";
@@ -1772,6 +2129,7 @@ window.Webflow.push(async function () {
 
     renderTechChecklist();
     updateSummaryView();
+    syncModalMeta();
   }
 
   function fillModal(intervention, assigns, compensations, expenses, files, pv) {
@@ -1866,6 +2224,8 @@ window.Webflow.push(async function () {
         card.classList.toggle("is-selected", chk.checked);
         renderCompRows();
         updateSummaryView();
+        saveDraft();
+        refreshDirtyFlag();
       });
 
       list.appendChild(card);
@@ -2022,9 +2382,13 @@ window.Webflow.push(async function () {
     row.querySelector(".e-del").addEventListener("click", () => {
       row.remove();
       updateSummaryView();
+      saveDraft();
+      refreshDirtyFlag();
     });
 
     refresh();
+    saveDraft();
+    refreshDirtyFlag();
   }
 
   function computeExpenseTotalCents() {
@@ -2099,6 +2463,8 @@ window.Webflow.push(async function () {
       div.addEventListener("click", () => {
         modalState.pendingFiles.splice(idx, 1);
         renderPendingFiles();
+        saveDraft();
+        refreshDirtyFlag();
       });
       wrap.appendChild(div);
     });
@@ -2157,7 +2523,23 @@ window.Webflow.push(async function () {
   // =========================
   async function submitModal() {
     const modal = ensureModalExists();
+    if (modalState.saving) return;
     showError("");
+    clearFieldErrors();
+
+    const preErr = validateBeforeSubmit();
+    if (preErr) {
+      showError(preErr);
+      return;
+    }
+
+    modalState.saving = true;
+    const nextBtn = modal.querySelector(".itv-next");
+    const prevText = nextBtn ? nextBtn.textContent : "";
+    if (nextBtn) {
+      nextBtn.disabled = true;
+      nextBtn.textContent = "Enregistrement...";
+    }
 
     const payload = {
       internal_ref: modal.querySelector(".f-ref").value.trim(),
@@ -2318,11 +2700,18 @@ window.Webflow.push(async function () {
       }
 
       clearDraft();
+      resetDirtyBaseline();
       closeModal();
       await loadInterventions();
     } catch (e) {
       console.error(e);
       showError(e?.message || "Erreur lors de l’enregistrement");
+    } finally {
+      modalState.saving = false;
+      if (nextBtn) {
+        nextBtn.disabled = false;
+        nextBtn.textContent = prevText || "Enregistrer";
+      }
     }
   }
 
@@ -2402,6 +2791,32 @@ window.Webflow.push(async function () {
           justify-content: flex-end;
           margin-top: 14px;
         }
+        .delete-itv-modal__confirm-wrap {
+          margin-top: 12px;
+          padding: 10px;
+          border: 1px dashed #d8e4ef;
+          border-radius: 10px;
+          background: #fbfdff;
+        }
+        .delete-itv-modal__confirm-wrap-label {
+          font-size: 12px;
+          color: #5a7490;
+          margin-bottom: 6px;
+          font-weight: 600;
+        }
+        .delete-itv-modal__confirm-input {
+          width: 100%;
+          border: 1px solid #cfdeeb;
+          border-radius: 10px;
+          padding: 9px 10px;
+          outline: none;
+          color: #10233f;
+          background: #fff;
+        }
+        .delete-itv-modal__confirm-input:focus {
+          border-color: #0ea5e9;
+          box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.16);
+        }
         .delete-itv-modal__cancel {
           border: 1px solid #cfdeeb;
           background: #fff;
@@ -2419,6 +2834,11 @@ window.Webflow.push(async function () {
           border-radius: 10px;
           cursor: pointer;
           font-weight: 800;
+        }
+        .delete-itv-modal__confirm:disabled {
+          opacity: .5;
+          cursor: not-allowed;
+          filter: grayscale(.15);
         }
         .delete-itv-modal__error {
           display: none;
@@ -2445,6 +2865,11 @@ window.Webflow.push(async function () {
         <div class="delete-itv-modal__target">
           <div class="delete-itv-modal__target-label">Intervention</div>
           <div class="delete-itv-modal__label">—</div>
+        </div>
+
+        <div class="delete-itv-modal__confirm-wrap">
+          <div class="delete-itv-modal__confirm-wrap-label">Saisis la reference pour confirmer</div>
+          <input class="delete-itv-modal__confirm-input" type="text" placeholder="Reference exacte" />
         </div>
 
         <div class="delete-itv-modal__actions">
@@ -2480,9 +2905,21 @@ window.Webflow.push(async function () {
     const labelEl = modal.querySelector(".delete-itv-modal__label");
     const errEl = modal.querySelector(".delete-itv-modal__error");
     const confirmBtn = modal.querySelector(".delete-itv-modal__confirm");
+    const confirmInput = modal.querySelector(".delete-itv-modal__confirm-input");
 
     if (labelEl) labelEl.textContent = label || "—";
     if (errEl) { errEl.style.display = "none"; errEl.textContent = ""; }
+    if (confirmInput) confirmInput.value = "";
+    if (confirmBtn) confirmBtn.disabled = true;
+
+    const expected = String(label || "").trim();
+    const refreshDeleteGate = () => {
+      if (!confirmBtn) return;
+      const typed = String(confirmInput?.value || "").trim();
+      confirmBtn.disabled = !expected || typed !== expected;
+    };
+    if (confirmInput) confirmInput.oninput = refreshDeleteGate;
+    refreshDeleteGate();
 
     confirmBtn.onclick = async () => {
       try {
@@ -2507,7 +2944,7 @@ window.Webflow.push(async function () {
           errEl.textContent = e?.message || "Erreur lors de la suppression";
         }
       } finally {
-        confirmBtn.disabled = false;
+        refreshDeleteGate();
         confirmBtn.textContent = "Supprimer";
       }
     };
@@ -2537,6 +2974,7 @@ window.Webflow.push(async function () {
       renderFilesList([]);
       renderPvSection(null);
       goStep(0);
+      resetDirtyBaseline();
       return;
     }
 
@@ -2544,6 +2982,7 @@ window.Webflow.push(async function () {
       const bundle = await loadInterventionBundle(id);
       fillModal(bundle.intervention, bundle.assigns, bundle.compensations, bundle.expenses, bundle.files, bundle.pv);
       goStep(mode === "view" ? STEPS.length - 1 : 0);
+      resetDirtyBaseline();
     } catch (e) {
       console.error(e);
       showError("Erreur chargement intervention: " + e.message);
