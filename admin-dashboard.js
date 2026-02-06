@@ -17,7 +17,8 @@
     echartsCdn: "https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js",
     supabaseCdn: "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2",
     dateField: "start_at",
-    tarifUnit: "cent", // "auto" | "euro" | "cent"
+    defaultPreset: "all",
+    tarifUnit: "auto", // "auto" | "euro" | "cent"
     statusBuckets: {
       done: [
         "done",
@@ -89,7 +90,7 @@
       direction: "desc",
     },
     filters: {
-      preset: "30d",
+      preset: "all",
       startDate: "",
       endDate: "",
       userId: "all",
@@ -116,33 +117,34 @@
   };
 
   const DASHBOARD_CSS = `
-    @import url("https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Manrope:wght@500;700&display=swap");
-
     [data-mbl-admin-dashboard], #mbl-admin-dashboard, .mbl-admin-dashboard {
       position: relative;
       min-height: 100%;
     }
 
     .mbl-shell {
-      --bg-0: #090d13;
-      --bg-1: #101826;
-      --stroke: rgba(148, 176, 207, 0.22);
-      --text-main: #f5f8fb;
-      --text-soft: #8b98aa;
-      --card-bg: linear-gradient(140deg, rgba(16, 24, 38, 0.92), rgba(8, 13, 21, 0.9));
+      --brand-teal: #0f766e;
+      --brand-blue: #0c4a6e;
+      --brand-sky: #0ea5e9;
+      --bg-0: #f4f8fc;
+      --bg-1: #edf4fb;
+      --stroke: #d6e1ed;
+      --text-main: #10233f;
+      --text-soft: #55708c;
+      --card-bg: #ffffff;
       position: relative;
       overflow: hidden;
       padding: clamp(14px, 1.9vw, 28px);
       color: var(--text-main);
-      font-family: "Manrope", sans-serif;
+      font-family: inherit;
       background:
-        radial-gradient(1200px 500px at 8% -5%, rgba(55, 132, 243, 0.25), transparent 62%),
-        radial-gradient(900px 540px at 98% 0%, rgba(42, 216, 167, 0.18), transparent 56%),
-        linear-gradient(170deg, var(--bg-0), var(--bg-1) 55%, #080c12);
+        radial-gradient(900px 420px at 8% -8%, rgba(15, 118, 110, 0.14), transparent 68%),
+        radial-gradient(880px 480px at 100% 0%, rgba(14, 165, 233, 0.14), transparent 70%),
+        linear-gradient(180deg, var(--bg-0), var(--bg-1));
       border-radius: 20px;
-      border: 1px solid rgba(116, 146, 180, 0.2);
+      border: 1px solid var(--stroke);
       isolation: isolate;
-      box-shadow: 0 24px 90px rgba(4, 8, 13, 0.55);
+      box-shadow: 0 16px 34px rgba(12, 37, 66, 0.08);
     }
 
     .mbl-shell::before {
@@ -151,47 +153,47 @@
       inset: 0;
       z-index: -1;
       background-image:
-        linear-gradient(rgba(147, 165, 187, 0.06) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(147, 165, 187, 0.06) 1px, transparent 1px);
-      background-size: 34px 34px;
-      opacity: 0.35;
+        linear-gradient(rgba(12, 74, 110, 0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(12, 74, 110, 0.04) 1px, transparent 1px);
+      background-size: 30px 30px;
+      opacity: 0.45;
       pointer-events: none;
     }
 
     .mbl-bg-glow {
       position: absolute;
-      width: clamp(180px, 26vw, 460px);
+      width: clamp(180px, 26vw, 420px);
       aspect-ratio: 1;
       border-radius: 999px;
-      filter: blur(65px);
-      opacity: 0.45;
+      filter: blur(55px);
+      opacity: 0.35;
       pointer-events: none;
       z-index: -1;
     }
 
     .mbl-bg-glow-a {
-      top: -24%;
-      left: -8%;
-      background: radial-gradient(circle at center, rgba(78, 162, 255, 0.7), transparent 72%);
+      top: -18%;
+      left: -6%;
+      background: radial-gradient(circle at center, rgba(15, 118, 110, 0.52), transparent 72%);
       animation: mblFloatA 12s ease-in-out infinite;
     }
 
     .mbl-bg-glow-b {
-      right: -8%;
-      bottom: -35%;
-      background: radial-gradient(circle at center, rgba(30, 201, 138, 0.72), transparent 70%);
+      right: -7%;
+      bottom: -30%;
+      background: radial-gradient(circle at center, rgba(14, 165, 233, 0.44), transparent 70%);
       animation: mblFloatB 14s ease-in-out infinite;
     }
 
     @keyframes mblFloatA {
       0% { transform: translate3d(0, 0, 0); }
-      50% { transform: translate3d(20px, -10px, 0); }
+      50% { transform: translate3d(16px, -10px, 0); }
       100% { transform: translate3d(0, 0, 0); }
     }
 
     @keyframes mblFloatB {
       0% { transform: translate3d(0, 0, 0); }
-      50% { transform: translate3d(-18px, 8px, 0); }
+      50% { transform: translate3d(-14px, 8px, 0); }
       100% { transform: translate3d(0, 0, 0); }
     }
 
@@ -201,9 +203,9 @@
       inset: 0;
       display: grid;
       place-items: center;
-      background: rgba(5, 10, 16, 0.72);
+      background: rgba(245, 250, 255, 0.72);
       backdrop-filter: blur(2px);
-      color: #c8d4e2;
+      color: #294f74;
       letter-spacing: 0.02em;
       font-weight: 700;
       z-index: 9;
@@ -213,8 +215,7 @@
       background: var(--card-bg);
       border: 1px solid var(--stroke);
       border-radius: 16px;
-      box-shadow: 0 18px 44px rgba(4, 7, 12, 0.4);
-      backdrop-filter: blur(5px);
+      box-shadow: 0 10px 20px rgba(12, 37, 66, 0.06);
     }
 
     .mbl-header {
@@ -224,6 +225,12 @@
       gap: 16px;
       align-items: flex-start;
       flex-wrap: wrap;
+      background: linear-gradient(
+        130deg,
+        rgba(15, 118, 110, 0.08),
+        rgba(14, 165, 233, 0.05) 45%,
+        rgba(255, 255, 255, 0.9) 78%
+      );
     }
 
     .mbl-header-title-wrap {
@@ -232,20 +239,20 @@
 
     .mbl-overline {
       margin: 0 0 8px;
-      font-family: "Sora", sans-serif;
       text-transform: uppercase;
-      letter-spacing: 0.16em;
-      color: #7eb6ff;
+      letter-spacing: 0.14em;
+      color: #0f766e;
       font-size: 10px;
       font-weight: 700;
     }
 
     .mbl-title {
       margin: 0;
-      font-family: "Sora", sans-serif;
-      font-size: clamp(23px, 3.4vw, 37px);
+      font-size: clamp(23px, 3.2vw, 36px);
       line-height: 1.05;
       letter-spacing: -0.02em;
+      color: #0c3154;
+      font-weight: 800;
     }
 
     .mbl-subtitle {
@@ -269,7 +276,7 @@
       cursor: pointer;
       border-radius: 11px;
       padding: 10px 14px;
-      font-family: "Sora", sans-serif;
+      font-family: inherit;
       font-size: 12px;
       font-weight: 700;
       letter-spacing: 0.01em;
@@ -280,15 +287,15 @@
     .mbl-btn:active { transform: translateY(0); }
 
     .mbl-btn-solid {
-      color: #06111c;
-      background: linear-gradient(120deg, #1ec98a, #56d2ff);
-      box-shadow: 0 8px 26px rgba(46, 174, 145, 0.35);
+      color: #ffffff;
+      background: linear-gradient(120deg, #0f766e, #0c4a6e);
+      box-shadow: 0 8px 20px rgba(12, 74, 110, 0.23);
     }
 
     .mbl-btn-ghost {
-      color: #dbe7f5;
-      border: 1px solid rgba(142, 170, 199, 0.38);
-      background: rgba(34, 47, 67, 0.42);
+      color: #0c4a6e;
+      border: 1px solid rgba(12, 74, 110, 0.22);
+      background: #ffffff;
     }
 
     .mbl-last-sync {
@@ -320,35 +327,35 @@
       font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.07em;
-      color: #8ea3ba;
+      color: #5c7590;
       font-weight: 700;
     }
 
     .mbl-filter input,
     .mbl-filter select {
-      border: 1px solid rgba(131, 154, 178, 0.32);
+      border: 1px solid #cfdeeb;
       outline: none;
       border-radius: 10px;
       padding: 10px 11px;
       font-size: 13px;
       line-height: 1;
-      background: rgba(8, 13, 20, 0.68);
-      color: #eaf2fb;
+      background: #ffffff;
+      color: #10233f;
       min-width: 0;
     }
 
-    .mbl-filter input::placeholder { color: #8292a6; }
+    .mbl-filter input::placeholder { color: #8095ad; }
     .mbl-filter input:focus,
     .mbl-filter select:focus {
-      border-color: rgba(88, 164, 255, 0.78);
-      box-shadow: 0 0 0 3px rgba(84, 162, 251, 0.17);
+      border-color: #0ea5e9;
+      box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.16);
     }
 
     .mbl-error {
       margin-top: 12px;
-      background: linear-gradient(160deg, rgba(84, 25, 37, 0.88), rgba(45, 13, 18, 0.82));
-      border: 1px solid rgba(255, 113, 128, 0.46);
-      color: #ffd6dc;
+      background: #fff1f4;
+      border: 1px solid #ffc9d2;
+      color: #9f1733;
       border-radius: 12px;
       padding: 12px 14px;
       font-size: 13px;
@@ -368,6 +375,7 @@
       overflow: hidden;
       animation: mblStagger 0.35s ease both;
       animation-delay: calc(var(--idx, 0) * 50ms);
+      background: linear-gradient(180deg, #ffffff, #f8fbff);
     }
 
     .mbl-kpi::before {
@@ -377,8 +385,7 @@
       width: 130px;
       aspect-ratio: 1;
       border-radius: 999px;
-      opacity: 0.27;
-      filter: blur(0px);
+      opacity: 0.21;
       pointer-events: none;
     }
 
@@ -387,26 +394,25 @@
       font-size: 11px;
       letter-spacing: 0.07em;
       text-transform: uppercase;
-      color: #8fa2b7;
+      color: #5d7590;
       font-weight: 700;
     }
 
     .mbl-kpi-value {
       margin: 8px 0 0;
-      font-family: "Sora", sans-serif;
       font-size: clamp(19px, 2.1vw, 27px);
-      font-weight: 700;
+      font-weight: 800;
       line-height: 1.04;
       letter-spacing: -0.02em;
-      color: #f4f9ff;
+      color: #0e2c4b;
     }
 
-    .tone-blue::before { background: radial-gradient(circle at center, #4ea2ff, transparent 70%); }
-    .tone-green::before { background: radial-gradient(circle at center, #1ec98a, transparent 70%); }
-    .tone-amber::before { background: radial-gradient(circle at center, #ffb954, transparent 70%); }
-    .tone-red::before { background: radial-gradient(circle at center, #ff6f7d, transparent 70%); }
-    .tone-slate::before { background: radial-gradient(circle at center, #9caec4, transparent 70%); }
-    .tone-violet::before { background: radial-gradient(circle at center, #7a91ff, transparent 70%); }
+    .tone-blue::before { background: radial-gradient(circle at center, #0ea5e9, transparent 70%); }
+    .tone-green::before { background: radial-gradient(circle at center, #0f766e, transparent 70%); }
+    .tone-amber::before { background: radial-gradient(circle at center, #f59e0b, transparent 70%); }
+    .tone-red::before { background: radial-gradient(circle at center, #ef4444, transparent 70%); }
+    .tone-slate::before { background: radial-gradient(circle at center, #94a3b8, transparent 70%); }
+    .tone-violet::before { background: radial-gradient(circle at center, #6366f1, transparent 70%); }
 
     .mbl-analytics-grid {
       margin-top: 14px;
@@ -423,9 +429,8 @@
     .mbl-chart-card h2 {
       margin: 0 0 10px;
       font-size: 14px;
-      font-family: "Sora", sans-serif;
       font-weight: 700;
-      color: #dce8f6;
+      color: #143a61;
       letter-spacing: 0.01em;
     }
 
@@ -449,22 +454,22 @@
 
     .mbl-table-head h2 {
       margin: 0;
-      font-family: "Sora", sans-serif;
       font-size: 15px;
-      color: #dce8f6;
+      color: #143a61;
+      font-weight: 700;
     }
 
     .mbl-table-count {
       font-size: 12px;
-      color: #8ea3ba;
+      color: #5c7590;
       font-weight: 700;
     }
 
     .mbl-table-wrap {
       overflow: auto;
       border-radius: 12px;
-      border: 1px solid rgba(132, 157, 183, 0.26);
-      background: rgba(6, 10, 16, 0.64);
+      border: 1px solid #d6e2ee;
+      background: #ffffff;
     }
 
     .mbl-table {
@@ -477,40 +482,40 @@
       position: sticky;
       top: 0;
       z-index: 1;
-      background: linear-gradient(180deg, rgba(12, 20, 31, 0.98), rgba(9, 14, 22, 0.96));
-      color: #a0b1c5;
+      background: linear-gradient(180deg, #f3f8fe, #edf4fc);
+      color: #55708c;
       text-transform: uppercase;
       font-size: 11px;
       letter-spacing: 0.06em;
       font-weight: 700;
       padding: 10px 8px;
       white-space: nowrap;
-      border-bottom: 1px solid rgba(126, 150, 174, 0.27);
+      border-bottom: 1px solid #d6e2ee;
       cursor: pointer;
       text-align: left;
     }
 
     .mbl-table tbody td {
       font-size: 13px;
-      color: #e4edf7;
-      border-top: 1px solid rgba(86, 108, 132, 0.24);
+      color: #203a57;
+      border-top: 1px solid #e2ebf3;
       padding: 10px 8px;
       vertical-align: top;
     }
 
     .mbl-table tbody tr:hover td {
-      background: rgba(44, 71, 103, 0.14);
+      background: #f6fbff;
     }
 
     .mbl-main {
       margin: 0;
       font-weight: 700;
-      color: #f5fbff;
+      color: #143a61;
     }
 
     .mbl-sub {
       margin: 4px 0 0;
-      color: #7f8fa2;
+      color: #6f87a0;
       font-size: 12px;
     }
 
@@ -526,29 +531,29 @@
     }
 
     .mbl-chip-done {
-      background: rgba(18, 111, 76, 0.32);
-      border-color: rgba(36, 205, 148, 0.42);
-      color: #abf2d8;
+      background: #e8f9f4;
+      border-color: #9ddfc8;
+      color: #0f766e;
     }
     .mbl-chip-progress {
-      background: rgba(31, 83, 150, 0.35);
-      border-color: rgba(88, 176, 255, 0.42);
-      color: #c2e3ff;
+      background: #e9f5ff;
+      border-color: #a9d6ff;
+      color: #0c4a6e;
     }
     .mbl-chip-pending {
-      background: rgba(121, 84, 28, 0.34);
-      border-color: rgba(255, 191, 100, 0.42);
-      color: #ffe2b6;
+      background: #fff6e8;
+      border-color: #f9d39b;
+      color: #b76a00;
     }
     .mbl-chip-cancel {
-      background: rgba(117, 29, 41, 0.35);
-      border-color: rgba(255, 118, 135, 0.38);
-      color: #ffd2d9;
+      background: #ffeef1;
+      border-color: #ffc3cc;
+      color: #be123c;
     }
     .mbl-chip-other {
-      background: rgba(75, 90, 111, 0.38);
-      border-color: rgba(161, 178, 198, 0.36);
-      color: #d7dfeb;
+      background: #f1f5f9;
+      border-color: #d5dfea;
+      color: #5f7187;
     }
 
     .ta-right {
@@ -557,12 +562,12 @@
       font-feature-settings: "tnum" 1, "lnum" 1;
     }
 
-    .is-positive { color: #8ff0c8; font-weight: 700; }
-    .is-negative { color: #ffb9c4; font-weight: 700; }
+    .is-positive { color: #0f766e; font-weight: 700; }
+    .is-negative { color: #be123c; font-weight: 700; }
 
     .mbl-empty {
       text-align: center;
-      color: #8da0b5;
+      color: #72889f;
       padding: 28px 10px;
       font-weight: 600;
     }
@@ -662,7 +667,7 @@
 
       initSupabase(config);
       primeDefaultDates();
-      applyDatePreset("30d", true);
+      applyDatePreset(config.defaultPreset || "all", true);
       await refreshAll();
       return {
         refresh: refreshAll,
@@ -853,7 +858,7 @@
             <label for="mbl-preset">Periode</label>
             <select id="mbl-preset" name="preset">
               <option value="7d">7 derniers jours</option>
-              <option value="30d" selected>30 derniers jours</option>
+              <option value="30d">30 derniers jours</option>
               <option value="90d">90 derniers jours</option>
               <option value="ytd">Depuis debut annee</option>
               <option value="all">Tout</option>
@@ -946,8 +951,10 @@
 
     const form = root.querySelector(SELECTORS.filtersForm);
     if (form) {
+      const presetInput = form.querySelector("#mbl-preset");
       const startInput = form.querySelector("#mbl-start-date");
       const endInput = form.querySelector("#mbl-end-date");
+      if (presetInput) presetInput.value = state.filters.preset || "all";
       startInput.value = state.filters.startDate;
       endInput.value = state.filters.endDate;
     }
@@ -1592,7 +1599,7 @@
         },
         legend: {
           data: ["CA", "Couts", "Benefice"],
-          textStyle: { color: "#c8d0da", fontSize: 11 },
+          textStyle: { color: "#55708c", fontSize: 11 },
         },
         grid: {
           top: 36,
@@ -1605,18 +1612,18 @@
           type: "category",
           data: labels.length ? labels : ["--"],
           boundaryGap: false,
-          axisLabel: { color: "#9aa6b2" },
-          axisLine: { lineStyle: { color: "#2d3642" } },
+          axisLabel: { color: "#5c7590" },
+          axisLine: { lineStyle: { color: "#d5e3ef" } },
         },
         yAxis: {
           type: "value",
           axisLabel: {
-            color: "#9aa6b2",
+            color: "#5c7590",
             formatter: function (v) {
               return compactCurrency(v, state.config.locale, state.config.currency);
             },
           },
-          splitLine: { lineStyle: { color: "#2d3642", opacity: 0.4 } },
+          splitLine: { lineStyle: { color: "#e5edf6", opacity: 1 } },
         },
         series: [
           {
@@ -1624,8 +1631,8 @@
             type: "line",
             smooth: true,
             symbol: "none",
-            lineStyle: { width: 2, color: "#62a9ff" },
-            areaStyle: { opacity: 0.12, color: "#62a9ff" },
+            lineStyle: { width: 2, color: "#0c4a6e" },
+            areaStyle: { opacity: 0.1, color: "#0c4a6e" },
             data: revenueSeries.length ? revenueSeries : [0],
           },
           {
@@ -1633,8 +1640,8 @@
             type: "line",
             smooth: true,
             symbol: "none",
-            lineStyle: { width: 2, color: "#ffb454" },
-            areaStyle: { opacity: 0.1, color: "#ffb454" },
+            lineStyle: { width: 2, color: "#f59e0b" },
+            areaStyle: { opacity: 0.08, color: "#f59e0b" },
             data: costSeries.length ? costSeries : [0],
           },
           {
@@ -1642,8 +1649,8 @@
             type: "line",
             smooth: true,
             symbol: "none",
-            lineStyle: { width: 2.4, color: "#22d497" },
-            areaStyle: { opacity: 0.12, color: "#22d497" },
+            lineStyle: { width: 2.4, color: "#0f766e" },
+            areaStyle: { opacity: 0.1, color: "#0f766e" },
             data: profitSeries.length ? profitSeries : [0],
           },
         ],
@@ -1673,11 +1680,11 @@
     });
 
     const data = [
-      { name: "Terminees", value: groups.done, itemStyle: { color: "#1ec98a" } },
-      { name: "En cours", value: groups.inProgress, itemStyle: { color: "#4ea2ff" } },
-      { name: "Pending", value: groups.pending, itemStyle: { color: "#ffb954" } },
-      { name: "Annulees", value: groups.canceled, itemStyle: { color: "#ff6b6b" } },
-      { name: "Autres", value: groups.other, itemStyle: { color: "#8f9fb2" } },
+      { name: "Terminees", value: groups.done, itemStyle: { color: "#0f766e" } },
+      { name: "En cours", value: groups.inProgress, itemStyle: { color: "#0c4a6e" } },
+      { name: "Pending", value: groups.pending, itemStyle: { color: "#f59e0b" } },
+      { name: "Annulees", value: groups.canceled, itemStyle: { color: "#be123c" } },
+      { name: "Autres", value: groups.other, itemStyle: { color: "#94a3b8" } },
     ].filter((i) => i.value > 0);
 
     state.charts.status.setOption(
@@ -1688,7 +1695,7 @@
         },
         legend: {
           bottom: 0,
-          textStyle: { color: "#c8d0da", fontSize: 11 },
+          textStyle: { color: "#55708c", fontSize: 11 },
         },
         series: [
           {
@@ -1699,10 +1706,10 @@
             avoidLabelOverlap: false,
             label: { show: false },
             itemStyle: {
-              borderColor: "rgba(9, 14, 21, 0.9)",
+              borderColor: "#ffffff",
               borderWidth: 2,
             },
-            data: data.length ? data : [{ name: "Aucune data", value: 1, itemStyle: { color: "#364150" } }],
+            data: data.length ? data : [{ name: "Aucune data", value: 1, itemStyle: { color: "#c6d3df" } }],
           },
         ],
       },
@@ -1749,18 +1756,18 @@
         xAxis: {
           type: "value",
           axisLabel: {
-            color: "#9aa6b2",
+            color: "#5c7590",
             formatter: function (v) {
               return compactCurrency(v, state.config.locale, state.config.currency);
             },
           },
-          splitLine: { lineStyle: { color: "#2d3642", opacity: 0.4 } },
+          splitLine: { lineStyle: { color: "#e5edf6", opacity: 1 } },
         },
         yAxis: {
           type: "category",
           data: names.length ? names : ["Aucune data"],
-          axisLabel: { color: "#c8d0da" },
-          axisLine: { lineStyle: { color: "#2d3642" } },
+          axisLabel: { color: "#4d6882" },
+          axisLine: { lineStyle: { color: "#d5e3ef" } },
         },
         series: [
           {
@@ -1770,8 +1777,8 @@
             itemStyle: {
               borderRadius: [0, 8, 8, 0],
               color: new window.echarts.graphic.LinearGradient(0, 0, 1, 0, [
-                { offset: 0, color: "#1ec98a" },
-                { offset: 1, color: "#4ea2ff" },
+                { offset: 0, color: "#0f766e" },
+                { offset: 1, color: "#0ea5e9" },
               ]),
             },
           },
@@ -1819,7 +1826,7 @@
         },
         legend: {
           top: 0,
-          textStyle: { color: "#c8d0da", fontSize: 11 },
+          textStyle: { color: "#55708c", fontSize: 11 },
           data: ["CA", "Benefice"],
         },
         grid: {
@@ -1832,18 +1839,18 @@
         xAxis: {
           type: "value",
           axisLabel: {
-            color: "#9aa6b2",
+            color: "#5c7590",
             formatter: function (v) {
               return compactCurrency(v, state.config.locale, state.config.currency);
             },
           },
-          splitLine: { lineStyle: { color: "#2d3642", opacity: 0.35 } },
+          splitLine: { lineStyle: { color: "#e5edf6", opacity: 1 } },
         },
         yAxis: {
           type: "category",
           data: labels.length ? labels : ["Aucune data"],
-          axisLabel: { color: "#c8d0da" },
-          axisLine: { lineStyle: { color: "#2d3642" } },
+          axisLabel: { color: "#4d6882" },
+          axisLine: { lineStyle: { color: "#d5e3ef" } },
         },
         series: [
           {
@@ -1851,14 +1858,14 @@
             type: "bar",
             data: revenues.length ? revenues : [0],
             barMaxWidth: 12,
-            itemStyle: { color: "#4ea2ff", borderRadius: [0, 6, 6, 0] },
+            itemStyle: { color: "#0c4a6e", borderRadius: [0, 6, 6, 0] },
           },
           {
             name: "Benefice",
             type: "bar",
             data: profits.length ? profits : [0],
             barMaxWidth: 12,
-            itemStyle: { color: "#1ec98a", borderRadius: [0, 6, 6, 0] },
+            itemStyle: { color: "#0f766e", borderRadius: [0, 6, 6, 0] },
           },
         ],
       },
@@ -1926,14 +1933,24 @@
   }
 
   function parseTarifToEuros(value, unit) {
-    const amount = toNumber(value);
-    if (!amount) return 0;
+    const amount = parseLooseNumber(value);
+    if (!Number.isFinite(amount) || amount === 0) return 0;
 
     if (unit === "cent") return amount / 100;
     if (unit === "euro") return amount;
 
-    // Auto mode: if values are very large, assume cents.
-    return Math.abs(amount) > 5000 ? amount / 100 : amount;
+    // Auto mode:
+    // - decimal values are treated as euros (ex: "120,50")
+    // - large integer values are usually stored in cents (ex: 12000 => 120 EUR)
+    const raw = String(value == null ? "" : value).trim();
+    const hasExplicitDecimal =
+      /,\d{1,2}$/.test(raw) ||
+      /\.\d{1,2}$/.test(raw) ||
+      (typeof value === "number" && !Number.isInteger(value));
+
+    if (hasExplicitDecimal) return amount;
+    if (Math.abs(amount) >= 1000 && Number.isInteger(amount)) return amount / 100;
+    return amount;
   }
 
   function profileLabel(profile) {
@@ -2003,7 +2020,7 @@
       style: "currency",
       currency: state.config.currency,
       minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
+      maximumFractionDigits: 2,
     }).format(toNumber(value));
   }
 
@@ -2047,6 +2064,46 @@
       hour: "2-digit",
       minute: "2-digit",
     }).format(date);
+  }
+
+  function parseLooseNumber(value) {
+    if (value == null) return 0;
+    if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+
+    let s = String(value).trim();
+    if (!s) return 0;
+
+    s = s
+      .replace(/\s+/g, "")
+      .replace(/\u00A0/g, "")
+      .replace(/€/g, "")
+      .replace(/eur/gi, "");
+
+    if (!s) return 0;
+    if (/^-?\d+$/.test(s)) return Number(s);
+
+    if (s.includes(",") && s.includes(".")) {
+      if (s.lastIndexOf(",") > s.lastIndexOf(".")) {
+        s = s.replace(/\./g, "").replace(",", ".");
+      } else {
+        s = s.replace(/,/g, "");
+      }
+    } else if (s.includes(",")) {
+      const parts = s.split(",");
+      if (parts.length === 2 && parts[1].length <= 2) {
+        s = parts[0].replace(/\./g, "") + "." + parts[1];
+      } else {
+        s = s.replace(/,/g, "");
+      }
+    } else if (s.includes(".")) {
+      const parts = s.split(".");
+      if (parts.length > 1 && parts[parts.length - 1].length === 3) {
+        s = s.replace(/\./g, "");
+      }
+    }
+
+    const n = Number(s);
+    return Number.isFinite(n) ? n : 0;
   }
 
   function toNumber(value) {
