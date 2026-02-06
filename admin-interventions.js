@@ -208,9 +208,113 @@ window.Webflow.push(async function () {
     return (first + last).toUpperCase();
   }
 
+  function injectAdminThemeStyles() {
+    if (document.getElementById("mbl-admin-interventions-theme")) return;
+
+    const style = document.createElement("style");
+    style.id = "mbl-admin-interventions-theme";
+    style.textContent = `
+      html[data-page="admin-interventions"] body {
+        background:
+          radial-gradient(900px 420px at 8% -8%, rgba(15, 118, 110, 0.14), transparent 68%),
+          radial-gradient(880px 480px at 100% 0%, rgba(14, 165, 233, 0.14), transparent 70%),
+          linear-gradient(180deg, #f4f8fc, #edf4fb);
+      }
+
+      html[data-page="admin-interventions"] .intervention-search {
+        width: min(380px, 100%);
+        border: 1px solid #cfdeeb;
+        border-radius: 12px;
+        background: #ffffff;
+        color: #10233f;
+        outline: none;
+        padding: 10px 12px;
+        transition: border-color .2s ease, box-shadow .2s ease;
+      }
+      html[data-page="admin-interventions"] .intervention-search:focus {
+        border-color: #0ea5e9;
+        box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.16);
+      }
+
+      html[data-page="admin-interventions"] .intervention-row {
+        border: 1px solid #d6e2ee;
+        border-radius: 14px;
+        background: #ffffff;
+        box-shadow: 0 8px 20px rgba(12, 37, 66, 0.06);
+        transition: transform .16s ease, box-shadow .22s ease, border-color .22s ease;
+      }
+      html[data-page="admin-interventions"] .intervention-row:hover {
+        transform: translateY(-1px);
+        border-color: #b8d1e5;
+        box-shadow: 0 14px 26px rgba(12, 37, 66, 0.1);
+      }
+
+      html[data-page="admin-interventions"] .ref-intervention { color: #0c4a6e; font-weight: 800; }
+      html[data-page="admin-interventions"] .client-intervention { color: #143a61; font-weight: 700; }
+      html[data-page="admin-interventions"] .address-intervention { color: #6f87a0; }
+      html[data-page="admin-interventions"] .technician-intervention { color: #294f74; }
+      html[data-page="admin-interventions"] .date-intervention { color: #55708c; }
+      html[data-page="admin-interventions"] .ca-intervention {
+        color: #0f766e;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+      }
+
+      html[data-page="admin-interventions"] .status-intervention {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        padding: 4px 9px;
+        font-size: 11px;
+        font-weight: 700;
+        border: 1px solid transparent;
+        white-space: nowrap;
+      }
+      html[data-page="admin-interventions"] .status-intervention.is-planned {
+        background: #f1f5f9; border-color: #d5dfea; color: #5f7187;
+      }
+      html[data-page="admin-interventions"] .status-intervention.is-pending {
+        background: #fff6e8; border-color: #f9d39b; color: #b76a00;
+      }
+      html[data-page="admin-interventions"] .status-intervention.is-progress {
+        background: #e9f5ff; border-color: #a9d6ff; color: #0c4a6e;
+      }
+      html[data-page="admin-interventions"] .status-intervention.is-done {
+        background: #e8f9f4; border-color: #9ddfc8; color: #0f766e;
+      }
+      html[data-page="admin-interventions"] .status-intervention.is-canceled {
+        background: #ffeef1; border-color: #ffc3cc; color: #be123c;
+      }
+
+      html[data-page="admin-interventions"] .show-intervention,
+      html[data-page="admin-interventions"] .update-intervention,
+      html[data-page="admin-interventions"] .upgrade-intervention,
+      html[data-page="admin-interventions"] .delete-intervention {
+        border-radius: 10px !important;
+        border: 1px solid #cfdeeb !important;
+        background: #ffffff !important;
+        color: #0c4a6e !important;
+        font-weight: 700 !important;
+        transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+      }
+      html[data-page="admin-interventions"] .show-intervention:hover,
+      html[data-page="admin-interventions"] .update-intervention:hover,
+      html[data-page="admin-interventions"] .upgrade-intervention:hover,
+      html[data-page="admin-interventions"] .delete-intervention:hover {
+        transform: translateY(-1px);
+        border-color: #0ea5e9 !important;
+        box-shadow: 0 6px 16px rgba(12, 74, 110, 0.12);
+      }
+    `;
+
+    document.head.appendChild(style);
+  }
+
   // =========================
   // LISTING
   // =========================
+  injectAdminThemeStyles();
+
   const firstRow = document.querySelector(".intervention-row");
   if (!firstRow) {
     console.error("[ADMIN INTERVENTIONS] .intervention-row introuvable (template).");
@@ -522,60 +626,213 @@ window.Webflow.push(async function () {
     modal.innerHTML = `
       <style>
         .itv-modal * { box-sizing: border-box; }
-        .itv-modal__overlay { position:absolute; inset:0; background:rgba(9,24,30,.65); backdrop-filter: blur(3px); }
+        .itv-modal__overlay {
+          position: absolute;
+          inset: 0;
+          background: rgba(10, 31, 53, 0.42);
+          backdrop-filter: blur(3px);
+        }
         .itv-modal__panel {
-          position:relative; width:min(1000px, calc(100vw - 32px));
-          max-height:calc(100vh - 32px); overflow:auto;
-          background:#fff; border-radius:18px; padding:18px;
-          margin:16px auto; top:50%; transform:translateY(-50%);
-          box-shadow:0 25px 80px rgba(0,0,0,.35);
+          position: relative;
+          width: min(1020px, calc(100vw - 28px));
+          max-height: calc(100vh - 30px);
+          overflow: auto;
+          background:
+            radial-gradient(720px 220px at 8% -5%, rgba(15, 118, 110, 0.1), transparent 65%),
+            radial-gradient(680px 280px at 100% 0%, rgba(14, 165, 233, 0.1), transparent 72%),
+            linear-gradient(180deg, #f7fbff, #eff6fd);
+          border: 1px solid #d6e2ee;
+          border-radius: 18px;
+          padding: 16px;
+          margin: 14px auto;
+          top: 50%;
+          transform: translateY(-50%);
+          box-shadow: 0 25px 60px rgba(12, 37, 66, 0.24);
+          color: #10233f;
         }
+        .itv-modal__panel::-webkit-scrollbar { width: 10px; height: 10px; }
+        .itv-modal__panel::-webkit-scrollbar-thumb { background: #c9d8e6; border-radius: 10px; }
+        .itv-modal__panel::-webkit-scrollbar-track { background: #edf3fa; border-radius: 10px; }
         .itv-modal__header {
-          display:flex; justify-content:space-between; align-items:center; gap:12px;
-          background:linear-gradient(120deg,#0f766e,#0c4a6e);
-          color:#fff; border-radius:14px; padding:14px 16px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 12px;
+          background: linear-gradient(120deg, #0f766e, #0c4a6e);
+          color: #fff;
+          border-radius: 14px;
+          padding: 14px 16px;
+          box-shadow: 0 8px 20px rgba(12, 74, 110, 0.24);
         }
-        .itv-modal__title { font-size:20px; font-weight:800; }
-        .itv-modal__subtitle { opacity:.85; }
-        .itv-btn { border:none; background:#0f766e; color:#fff; padding:10px 14px; border-radius:10px; cursor:pointer; font-weight:800; }
-        .itv-btn.secondary { border:1px solid #e5e7eb; background:#fff; color:#111827; font-weight:700; }
-        .itv-btn.danger { background:#ef4444; }
+        .itv-modal__title { font-size: 20px; font-weight: 800; }
+        .itv-modal__subtitle { opacity: .9; }
+        .itv-btn {
+          border: none;
+          background: linear-gradient(120deg, #0f766e, #0c4a6e);
+          color: #fff;
+          padding: 10px 14px;
+          border-radius: 10px;
+          cursor: pointer;
+          font-weight: 800;
+          transition: transform .16s ease, box-shadow .2s ease;
+        }
+        .itv-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 16px rgba(12, 74, 110, 0.2); }
+        .itv-btn:active { transform: translateY(0); }
+        .itv-btn.secondary {
+          border: 1px solid #cfdeeb;
+          background: #fff;
+          color: #0c4a6e;
+          font-weight: 700;
+        }
+        .itv-btn.danger {
+          background: linear-gradient(120deg, #ef4444, #be123c);
+          color: #fff;
+        }
         .itv-stepper { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
-        .itv-step { border:1px solid #e5e7eb; background:#f3f4f6; padding:6px 12px; border-radius:999px; cursor:pointer; font-weight:700; font-size:12px; }
-        .itv-step.is-active { background:#0f766e; color:#fff; border-color:#0f766e; }
+        .itv-step {
+          border:1px solid #d7e4f0;
+          background:#ffffff;
+          color:#4f6b87;
+          padding:6px 12px;
+          border-radius:999px;
+          cursor:pointer;
+          font-weight:700;
+          font-size:12px;
+        }
+        .itv-step.is-active {
+          background:#0c4a6e;
+          color:#fff;
+          border-color:#0c4a6e;
+          box-shadow: 0 8px 16px rgba(12, 74, 110, 0.18);
+        }
         .itv-tab { display:none; margin-top:14px; }
         .itv-tab.is-active { display:block; }
         .itv-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-        .itv-field label { font-size:12px; opacity:.7; display:block; margin-bottom:6px; }
-        .itv-field input, .itv-field textarea, .itv-field select {
-          width:100%; padding:11px 12px; border:1px solid #e5e7eb; border-radius:12px;
-          font-family:inherit; background:#fcfcfd;
+        .itv-field label {
+          font-size:12px;
+          color:#55708c;
+          display:block;
+          margin-bottom:6px;
+          font-weight: 600;
         }
-        .itv-card { padding:12px; border:1px solid #e5e7eb; border-radius:12px; background:#f8fafc; }
-        .itv-card .k { font-size:12px; opacity:.6; }
-        .itv-card .v { font-weight:800; }
+        .itv-field input, .itv-field textarea, .itv-field select {
+          width:100%;
+          padding:11px 12px;
+          border:1px solid #cfdeeb;
+          border-radius:12px;
+          font-family:inherit;
+          background:#fff;
+          color:#10233f;
+          outline: none;
+          transition: border-color .2s ease, box-shadow .2s ease;
+        }
+        .itv-field input:focus, .itv-field textarea:focus, .itv-field select:focus {
+          border-color:#0ea5e9;
+          box-shadow:0 0 0 3px rgba(14, 165, 233, 0.16);
+        }
+        .itv-card {
+          padding:12px;
+          border:1px solid #d6e2ee;
+          border-radius:12px;
+          background:#ffffff;
+          box-shadow: 0 4px 10px rgba(12, 37, 66, 0.04);
+        }
+        .itv-card .k { font-size:12px; color:#5a7490; }
+        .itv-card .v { font-weight:800; color:#143a61; }
         .itv-row { display:grid; grid-template-columns: 1.4fr 1fr 1fr 1fr 40px; gap:8px; align-items:center; }
         .itv-row input, .itv-row select { padding:8px 10px; }
-        .itv-row .amount { font-weight:800; text-align:right; }
-        .itv-section-title { font-weight:800; margin:8px 0; }
-        .itv-table-head { display:grid; grid-template-columns:1.4fr 1fr 1fr 1fr 40px; gap:8px; font-size:12px; opacity:.6; margin:8px 0; }
-        .itv-file-row, .itv-pv-row { display:flex; justify-content:space-between; gap:12px; align-items:center; padding:10px 12px; border:1px solid #e5e7eb; border-radius:10px; margin-top:8px; }
-        .itv-chip { display:inline-flex; align-items:center; padding:4px 8px; background:#f3f4f6; border-radius:999px; font-size:12px; font-weight:700; }
-        .itv-modal__error { display:none; margin-top:10px; color:#b91c1c; font-weight:600; }
-        .itv-actions { display:flex; justify-content:space-between; margin-top:14px; }
-        .itv-muted { opacity:.7; font-size:12px; }
+        .itv-row .amount { font-weight:800; text-align:right; color:#0f766e; }
+        .itv-section-title { font-weight:800; margin:8px 0; color:#143a61; }
+        .itv-table-head {
+          display:grid;
+          grid-template-columns:1.4fr 1fr 1fr 1fr 40px;
+          gap:8px;
+          font-size:12px;
+          color:#5a7490;
+          margin:8px 0;
+          font-weight: 700;
+        }
+        .itv-file-row, .itv-pv-row {
+          display:flex;
+          justify-content:space-between;
+          gap:12px;
+          align-items:center;
+          padding:10px 12px;
+          border:1px solid #d6e2ee;
+          background: #fff;
+          border-radius:10px;
+          margin-top:8px;
+        }
+        .itv-chip {
+          display:inline-flex;
+          align-items:center;
+          padding:4px 8px;
+          background:#e9f5ff;
+          color:#0c4a6e;
+          border: 1px solid #afd7fb;
+          border-radius:999px;
+          font-size:12px;
+          font-weight:700;
+        }
+        .itv-modal__error {
+          display:none;
+          margin-top:10px;
+          background:#fff1f4;
+          border:1px solid #ffc9d2;
+          color:#9f1733;
+          border-radius:10px;
+          padding:10px 12px;
+          font-weight:600;
+        }
+        .itv-actions { display:flex; justify-content:space-between; margin-top:14px; gap: 8px; }
+        .itv-muted { color:#5a7490; font-size:12px; }
 
-        .tech-toolbar { display:flex; gap:10px; align-items:center; }
+        .tech-toolbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
         .tech-grid { display:grid; grid-template-columns: repeat(auto-fill,minmax(210px,1fr)); gap:10px; margin-top:10px; }
-        .tech-card { border:1px solid #e5e7eb; background:#fff; padding:10px; border-radius:12px; display:flex; gap:10px; align-items:center; cursor:pointer; }
-        .tech-card.is-selected { border-color:#0f766e; box-shadow:0 0 0 2px rgba(15,118,110,.15); }
-        .tech-avatar { width:36px; height:36px; border-radius:10px; background:#e0f2fe; color:#0f766e; font-weight:800; display:flex; align-items:center; justify-content:center; }
-        .tech-meta { font-size:12px; opacity:.7; }
+        .tech-card {
+          border:1px solid #d6e2ee;
+          background:#fff;
+          padding:10px;
+          border-radius:12px;
+          display:flex;
+          gap:10px;
+          align-items:center;
+          cursor:pointer;
+          transition: border-color .18s ease, box-shadow .18s ease, transform .16s ease;
+        }
+        .tech-card:hover { transform: translateY(-1px); box-shadow: 0 8px 16px rgba(12, 37, 66, 0.08); }
+        .tech-card.is-selected {
+          border-color:#0ea5e9;
+          box-shadow:0 0 0 3px rgba(14,165,233,.14);
+          background:#f5fbff;
+        }
+        .tech-avatar {
+          width:36px;
+          height:36px;
+          border-radius:10px;
+          background:#e7f5ff;
+          color:#0c4a6e;
+          font-weight:800;
+          display:flex;
+          align-items:center;
+          justify-content:center;
+        }
+        .tech-meta { font-size:12px; color:#55708c; }
 
-        .exp-row { display:grid; grid-template-columns: 1.5fr .6fr .7fr .7fr 40px; gap:8px; align-items:center; padding:8px; border:1px dashed #e5e7eb; border-radius:12px; margin-bottom:8px; background:#fff; }
+        .exp-row {
+          display:grid;
+          grid-template-columns: 1.5fr .6fr .7fr .7fr 40px;
+          gap:8px;
+          align-items:center;
+          padding:8px;
+          border:1px dashed #c9d8e6;
+          border-radius:12px;
+          margin-bottom:8px;
+          background:#fff;
+        }
         .exp-row .exp-main { display:flex; flex-direction:column; gap:6px; }
-        .exp-total-box { display:flex; justify-content:space-between; align-items:center; margin-top:8px; }
-        .exp-total { font-weight:800; }
+        .exp-total-box { display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap: wrap; margin-top:8px; }
+        .exp-total { font-weight:800; color:#0f766e; }
 
         .itv-modal.is-readonly .itv-next,
         .itv-modal.is-readonly .add-exp-product,
@@ -590,7 +847,22 @@ window.Webflow.push(async function () {
         .itv-modal.is-readonly input,
         .itv-modal.is-readonly textarea,
         .itv-modal.is-readonly select {
-          background: #f9fafb;
+          background: #f7fbff;
+        }
+
+        @media (max-width: 860px) {
+          .itv-modal__panel {
+            width: calc(100vw - 18px);
+            max-height: calc(100vh - 18px);
+            margin: 9px auto;
+            padding: 12px;
+          }
+          .itv-grid { grid-template-columns: 1fr; }
+          .itv-actions { flex-direction: column-reverse; align-items: stretch; }
+          .itv-actions > * { width: 100%; }
+          .itv-actions button { width: 100%; }
+          .itv-table-head, .itv-row { grid-template-columns: 1fr; }
+          .exp-row { grid-template-columns: 1fr; }
         }
       </style>
 
@@ -1594,32 +1866,121 @@ window.Webflow.push(async function () {
     modal.style.cssText = "position:fixed; inset:0; z-index:100000; display:none; font-family:inherit;";
 
     modal.innerHTML = `
-      <div class="delete-itv-modal__overlay" style="position:absolute; inset:0; background:rgba(0,0,0,.6)"></div>
-      <div class="delete-itv-modal__content" style="
-        position:relative; width:min(520px, calc(100vw - 32px));
-        background:#fff; border-radius:14px; padding:18px 18px 16px;
-        margin:16px auto; top:50%; transform:translateY(-50%);
-        box-shadow:0 20px 70px rgba(0,0,0,.35);
-      ">
-        <div style="display:flex; justify-content:space-between; gap:12px;">
+      <style>
+        .delete-itv-modal__overlay {
+          position: absolute;
+          inset: 0;
+          background: rgba(10, 31, 53, 0.42);
+          backdrop-filter: blur(2px);
+        }
+        .delete-itv-modal__content {
+          position: relative;
+          width: min(520px, calc(100vw - 24px));
+          background: linear-gradient(180deg, #ffffff, #f6faff);
+          border: 1px solid #d6e2ee;
+          border-radius: 14px;
+          padding: 18px 18px 16px;
+          margin: 12px auto;
+          top: 50%;
+          transform: translateY(-50%);
+          box-shadow: 0 20px 60px rgba(12, 37, 66, 0.24);
+          color: #10233f;
+        }
+        .delete-itv-modal__header {
+          display: flex;
+          justify-content: space-between;
+          gap: 12px;
+          align-items: flex-start;
+        }
+        .delete-itv-modal__title {
+          font-size: 18px;
+          font-weight: 800;
+          margin-bottom: 6px;
+          color: #143a61;
+        }
+        .delete-itv-modal__subtitle {
+          color: #55708c;
+          line-height: 1.4;
+        }
+        .delete-itv-modal__close {
+          border: 1px solid #cfdeeb;
+          background: #ffffff;
+          color: #0c4a6e;
+          padding: 10px 12px;
+          border-radius: 10px;
+          cursor: pointer;
+          font-weight: 800;
+        }
+        .delete-itv-modal__target {
+          margin-top: 14px;
+          padding: 12px;
+          border: 1px solid #d6e2ee;
+          border-radius: 12px;
+          background: #fff;
+        }
+        .delete-itv-modal__target-label {
+          color: #5a7490;
+          font-size: 12px;
+          margin-bottom: 6px;
+        }
+        .delete-itv-modal__label { font-weight: 800; color: #143a61; }
+        .delete-itv-modal__actions {
+          display: flex;
+          gap: 10px;
+          justify-content: flex-end;
+          margin-top: 14px;
+        }
+        .delete-itv-modal__cancel {
+          border: 1px solid #cfdeeb;
+          background: #fff;
+          color: #0c4a6e;
+          padding: 10px 14px;
+          border-radius: 10px;
+          cursor: pointer;
+          font-weight: 700;
+        }
+        .delete-itv-modal__confirm {
+          border: none;
+          background: linear-gradient(120deg, #ef4444, #be123c);
+          color: #fff;
+          padding: 10px 14px;
+          border-radius: 10px;
+          cursor: pointer;
+          font-weight: 800;
+        }
+        .delete-itv-modal__error {
+          display: none;
+          margin-top: 10px;
+          color: #9f1733;
+          font-weight: 600;
+          background: #fff1f4;
+          border: 1px solid #ffc9d2;
+          border-radius: 10px;
+          padding: 9px 10px;
+        }
+      </style>
+
+      <div class="delete-itv-modal__overlay"></div>
+      <div class="delete-itv-modal__content">
+        <div class="delete-itv-modal__header">
           <div>
-            <div style="font-size:18px; font-weight:800; margin-bottom:6px;">Confirmer la suppression</div>
-            <div style="opacity:.75; line-height:1.4;">Voulez-vous vraiment supprimer cette intervention ?</div>
+            <div class="delete-itv-modal__title">Confirmer la suppression</div>
+            <div class="delete-itv-modal__subtitle">Voulez-vous vraiment supprimer cette intervention ?</div>
           </div>
-          <button type="button" class="delete-itv-modal__close" style="border:none; background:#f3f4f6; padding:10px 12px; border-radius:10px; cursor:pointer; font-weight:800;">✕</button>
+          <button type="button" class="delete-itv-modal__close">✕</button>
         </div>
 
-        <div style="margin-top:14px; padding:12px; border:1px solid #e5e7eb; border-radius:12px;">
-          <div style="opacity:.6; font-size:12px; margin-bottom:6px;">Intervention</div>
-          <div class="delete-itv-modal__label" style="font-weight:800;">—</div>
+        <div class="delete-itv-modal__target">
+          <div class="delete-itv-modal__target-label">Intervention</div>
+          <div class="delete-itv-modal__label">—</div>
         </div>
 
-        <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:14px;">
-          <button type="button" class="delete-itv-modal__cancel" style="border:1px solid #e5e7eb; background:#fff; padding:10px 14px; border-radius:10px; cursor:pointer; font-weight:700;">Annuler</button>
-          <button type="button" class="delete-itv-modal__confirm" style="border:none; background:#ef4444; color:#fff; padding:10px 14px; border-radius:10px; cursor:pointer; font-weight:800;">Supprimer</button>
+        <div class="delete-itv-modal__actions">
+          <button type="button" class="delete-itv-modal__cancel">Annuler</button>
+          <button type="button" class="delete-itv-modal__confirm">Supprimer</button>
         </div>
 
-        <div class="delete-itv-modal__error" style="display:none; margin-top:10px; color:#b91c1c; font-weight:600;"></div>
+        <div class="delete-itv-modal__error"></div>
       </div>
     `;
 
