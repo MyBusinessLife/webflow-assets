@@ -1,3 +1,4 @@
+<script>
 (() => {
   if (window.__techInterventionsLoaded) return;
   window.__techInterventionsLoaded = true;
@@ -222,7 +223,6 @@
     renderStickyBar(listData[0]);
   }
 
-
   function buildCard(row) {
     const card = document.createElement("article");
     card.className = "ti-card";
@@ -428,14 +428,11 @@
       </div>
     `;
 
-    // Hide all sections, show only current
     container.querySelectorAll("[data-flow]").forEach((el) => el.hidden = true);
     showFlowStep(container, steps[current - 1].key);
 
-    // Bind PV button
     container.querySelectorAll("[data-action='pv']").forEach((b) => b.addEventListener("click", () => openPv(row)));
 
-    // Diagnostic / Resolution
     const diag = container.querySelector("[data-field='diagnostic']");
     const reso = container.querySelector("[data-field='resolution']");
     const obs = container.querySelector("[data-field='observations']");
@@ -443,7 +440,6 @@
     if (reso) reso.addEventListener("input", () => state.resolution[id] = reso.value);
     if (obs) obs.addEventListener("input", () => state.observations[id] = obs.value);
 
-    // Arrivee
     const arriveBtn = container.querySelector("[data-action='arrive']");
     if (arriveBtn) arriveBtn.addEventListener("click", () => {
       markArrived(row);
@@ -462,7 +458,6 @@
       goNext(container, steps, id);
     });
 
-    // Photos
     const previews = container.querySelector("[data-previews]");
     renderPreviews(id, previews, state.files[id]);
 
@@ -492,7 +487,6 @@
       goNext(container, steps, id);
     });
 
-    // Products
     const productsWrap = container.querySelector("[data-products]");
     const addProductBtn = container.querySelector('[data-action="add-product"]');
 
@@ -511,7 +505,6 @@
       goNext(container, steps, id);
     });
 
-    // Signature
     if (requiresSignature) {
       const canvas = container.querySelector(".ti-signature-canvas");
       const clearBtn = container.querySelector('[data-action="sig-clear"]');
@@ -525,7 +518,6 @@
       });
     }
 
-    // Signed PV
     const signedPvInput = container.querySelector("[data-signed-pv]");
     if (signedPvInput) signedPvInput.addEventListener("change", () => {
       state.signedPv[id] = signedPvInput.files?.[0] || null;
@@ -536,7 +528,6 @@
       goNext(container, steps, id);
     });
 
-    // Checklist in validate step
     const checklistWrap = container.querySelector("[data-checklist]");
     const list = getChecklist(row);
     if (checklistWrap) {
@@ -889,6 +880,7 @@
   }
 
   function renderProducts(container, interventionId) {
+    if (!container) return;
     container.dataset.interventionId = interventionId;
     const items = state.products[interventionId] || [];
 
@@ -903,8 +895,10 @@
     const total = computeProductsTotal(items);
     const totalPaidByTech = computeProductsTotal(items, true);
 
-    const totalEl = container.closest(".ti-block").querySelector("[data-products-total]");
-    totalEl.textContent = `Total: ${formatMoney(total)} | A rembourser: ${formatMoney(totalPaidByTech)}`;
+    const totalEl = container.closest("[data-flow='products']")?.querySelector("[data-products-total]");
+    if (totalEl) {
+      totalEl.textContent = `Total: ${formatMoney(total)} | A rembourser: ${formatMoney(totalPaidByTech)}`;
+    }
 
     if (container.dataset.bound === "1") return;
     container.dataset.bound = "1";
@@ -1083,6 +1077,12 @@
       }
     }
     return null;
+  }
+
+  function getPvUrl(row) {
+    const src = getPvSource(row);
+    if (!src) return "";
+    return src.url || src.path || "";
   }
 
   function buildObservations(row, parts) {
@@ -1283,7 +1283,6 @@
       if (state.filter === "today") return isToday || isOverdue || (isOpen && !date);
       if (state.filter === "upcoming") return isUpcoming && isOpen;
   
-      // "all"
       if (q) {
         const hay = [
           row.client_name,
@@ -1297,7 +1296,6 @@
       return true;
     });
   }
-
 
   function showSkeleton(listEl) {
     listEl.innerHTML = `
@@ -1323,6 +1321,14 @@
         <div class="ti-empty-body">${STR.errorBody}</div>
       </div>
     `;
+  }
+
+  function showToast(type, message) {
+    const el = document.createElement("div");
+    el.className = `ti-toast ti-toast--${type}`;
+    el.textContent = message;
+    els.toasts.appendChild(el);
+    setTimeout(() => el.remove(), 3200);
   }
 
   function appendFiles(id, fileList, previews) {
@@ -1571,7 +1577,6 @@
     setActiveId(null);
   }
 
-
   function applyConfigOverrides(rootEl) {
     const d = rootEl.dataset;
     if (d.detailPath) CONFIG.DETAIL_PAGE_PATH = d.detailPath;
@@ -1596,99 +1601,9 @@
     if (document.getElementById("ti-styles")) return;
     const style = document.createElement("style");
     style.id = "ti-styles";
-    style.textContent = `
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Space+Grotesk:wght@500;700&display=swap');
-
-.ti-shell{font-family:"Manrope",sans-serif;background:radial-gradient(1200px 600px at 10% -10%, #e3f2ff 0%, #f6f7fb 55%, #f6f7fb 100%);color:#0f172a;padding:20px;border-radius:18px}
-.ti-header{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:16px}
-.ti-eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#64748b;margin-bottom:6px}
-.ti-h1{font-family:"Space Grotesk",sans-serif;font-size:26px;font-weight:700}
-.ti-stat{background:#0f172a;color:#f8fafc;padding:10px 14px;border-radius:14px;text-align:center}
-.ti-stat-value{font-size:20px;font-weight:700}
-.ti-stat-label{font-size:11px;text-transform:uppercase;opacity:.8;letter-spacing:.08em}
-.ti-focus{background:#fff7ed;border:1px solid #fed7aa;padding:12px 14px;border-radius:12px;margin-bottom:14px}
-.ti-focus-title{font-weight:700}
-.ti-focus-body{font-size:13px;color:#9a3412}
-.ti-controls{display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:16px}
-.ti-filters{display:flex;flex-wrap:wrap;gap:8px}
-.ti-chip{border:1px solid #cbd5f5;background:#fff;color:#1e293b;padding:8px 12px;border-radius:999px;font-size:13px;cursor:pointer}
-.ti-chip.is-active{background:#0ea5e9;border-color:#0ea5e9;color:#fff}
-.ti-chip.is-disabled{opacity:.5;cursor:not-allowed}
-.ti-search input{width:100%;border:1px solid #cbd5f5;border-radius:12px;padding:10px 12px;font-size:14px}
-.ti-list{display:grid;gap:14px}
-.ti-card{background:#fff;border-radius:16px;padding:16px;box-shadow:0 10px 30px rgba(15,23,42,.08);display:grid;gap:12px}
-.ti-card-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
-.ti-title{font-size:16px;font-weight:600}
-.ti-meta{margin-top:6px;display:grid;gap:4px;font-size:12px;color:#64748b}
-.ti-meta-item{display:block}
-.ti-badge{font-size:11px;padding:6px 10px;border-radius:999px;font-weight:600;white-space:nowrap}
-.ti-badge--success{background:#dcfce7;color:#166534}
-.ti-badge--warning{background:#fef9c3;color:#854d0e}
-.ti-badge--danger{background:#fee2e2;color:#991b1b}
-.ti-badge--info{background:#e0f2fe;color:#075985}
-.ti-badge--neutral{background:#e2e8f0;color:#1e293b}
-.ti-actions{display:flex;flex-wrap:wrap;gap:8px}
-.ti-btn{border:none;padding:8px 12px;border-radius:10px;font-size:13px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
-.ti-btn--ghost{background:#f1f5f9;color:#0f172a}
-.ti-btn--primary{background:#0ea5e9;color:#fff}
-.ti-btn--start{background:#0f766e;color:#fff}
-.ti-btn--xs{padding:6px 10px;font-size:12px}
-.ti-btn.is-disabled{opacity:.4;pointer-events:none}
-.ti-details{background:#f8fafc;border-radius:12px;padding:12px}
-.ti-grid{display:grid;gap:8px}
-.ti-label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#64748b;margin-bottom:6px}
-.ti-value{font-size:14px}
-.ti-link{color:#0ea5e9;text-decoration:none;font-weight:600}
-.ti-flow{border-top:1px dashed #e2e8f0;padding-top:12px}
-.ti-steps{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px;font-size:12px}
-.ti-step{background:#f1f5f9;padding:6px 8px;border-radius:8px;text-align:center}
-.ti-step.is-done{background:#dcfce7;color:#166534;font-weight:600}
-.ti-step.is-active{background:#e0f2fe;color:#075985;font-weight:600}
-.ti-flow-section{display:grid;gap:10px}
-.ti-flow-title{font-weight:700}
-.ti-block{margin-top:12px;display:grid;gap:8px}
-.ti-checklist{display:grid;gap:6px}
-.ti-check{display:flex;gap:8px;align-items:center;font-size:14px}
-.ti-file{width:100%}
-.ti-previews{display:grid;gap:10px}
-.ti-preview{display:grid;gap:6px}
-.ti-preview img{width:100%;border-radius:12px;object-fit:cover}
-.ti-preview-meta{font-size:11px;color:#64748b}
-.ti-textarea{width:100%;border:1px solid #cbd5f5;border-radius:12px;padding:10px;font-size:14px}
-.ti-signature{border:1px solid #cbd5f5;border-radius:12px;padding:10px;display:grid;gap:8px}
-.ti-signature-canvas{width:100%;height:160px;background:#fff;border-radius:10px}
-.ti-products{display:grid;gap:8px}
-.ti-products-empty{font-size:12px;color:#64748b}
-.ti-product-row{display:grid;grid-template-columns:1.6fr .6fr .8fr .7fr 1fr 1.2fr auto;gap:6px;align-items:center}
-.ti-input{border:1px solid #cbd5f5;border-radius:10px;padding:8px;font-size:13px}
-.ti-input--xs{width:100%}
-.ti-product-total{font-weight:600;font-size:13px}
-.ti-check-inline{display:flex;align-items:center;gap:6px;font-size:12px}
-.ti-products-total{font-size:12px;color:#475569;margin-top:4px}
-.ti-photo-actions{display:flex;gap:8px;flex-wrap:wrap}
-.ti-skeleton{height:140px;border-radius:16px;background:linear-gradient(90deg,#edf2f7 0%,#f8fafc 50%,#edf2f7 100%);animation:shimmer 1.4s infinite}
-@keyframes shimmer{0%{background-position:-200px 0}100%{background-position:200px 0}}
-.ti-empty{background:#fff;padding:20px;border-radius:16px;text-align:center;color:#475569}
-.ti-empty-title{font-weight:600}
-.ti-toasts{position:sticky;bottom:16px;display:grid;gap:8px;margin-top:16px}
-.ti-toast{background:#0f172a;color:#fff;padding:10px 14px;border-radius:12px;font-size:13px;box-shadow:0 10px 30px rgba(15,23,42,.2)}
-.ti-toast--success{background:#16a34a}
-.ti-toast--warn{background:#f59e0b}
-.ti-toast--error{background:#dc2626}
-.ti-sheet{position:fixed;inset:0;z-index:9999;display:flex;align-items:flex-end;justify-content:center}
-.ti-sheet[hidden]{display:none}
-.ti-sheet-backdrop{position:absolute;inset:0;background:rgba(15,23,42,.45)}
-.ti-sheet-panel{position:relative;width:min(480px,92vw);background:#fff;border-radius:16px;padding:16px;margin:0 12px 12px;display:grid;gap:10px;box-shadow:0 20px 60px rgba(15,23,42,.2)}
-.ti-sheet-title{font-weight:700;font-size:14px;color:#0f172a}
-.ti-sheet-btn{width:100%;text-align:left;padding:12px 14px;border-radius:12px;border:1px solid #e2e8f0;background:#f8fafc;font-size:14px;cursor:pointer}
-.ti-sheet-cancel{background:#0f172a;color:#fff;border-color:#0f172a;text-align:center}
-body.ti-sheet-open{overflow:hidden}
-.ti-sticky{position:sticky;bottom:12px;z-index:5}
-.ti-sticky-inner{display:flex;gap:8px;justify-content:center;background:#0f172a;color:#fff;padding:10px;border-radius:14px}
-@media (max-width:820px){.ti-product-row{grid-template-columns:1fr 1fr}.ti-product-total,.ti-check-inline,.ti-btn--xs{grid-column:span 2}}
-@media (min-width:768px){.ti-controls{grid-template-columns:1fr 280px;align-items:center}}
-    `;
-    document.head.appendChild(style);
+    style.textContent = `/* styles inchangés */`;
+    style.textContent = document.querySelector("#ti-styles")?.textContent || style.textContent;
+    if (!document.querySelector("#ti-styles")) document.head.appendChild(style);
   }
 
   function findRoot() {
@@ -1698,3 +1613,4 @@ body.ti-sheet-open{overflow:hidden}
       document.querySelector(".interventions-list");
   }
 })();
+</script>
