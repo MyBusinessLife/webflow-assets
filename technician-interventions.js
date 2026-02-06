@@ -183,35 +183,45 @@
 
   function renderList() {
     syncActiveId();
-
-    const focus = !!state.activeId;
+  
+    const activeRow = state.activeId
+      ? state.items.find(
+          (r) =>
+            String(r.id) === String(state.activeId) &&
+            String(r.status || "").toLowerCase() === CONFIG.STATUS_IN_PROGRESS
+        )
+      : null;
+  
+    const focus = !!activeRow;
+  
     root.classList.toggle("ti-focus-mode", focus);
     els.focus.hidden = !focus;
+  
     if (focus) {
       els.focusTitle.textContent = STR.focusTitle;
       els.focusBody.textContent = STR.focusBody;
     }
+  
     setControlsDisabled(focus);
-
-    const listData = focus
-      ? state.items.filter((row) => String(row.id) === String(state.activeId))
-      : filterItems(state.items);
-
+  
+    const listData = focus ? [activeRow] : filterItems(state.items);
+  
     els.count.textContent = String(listData.length);
-
+  
     if (!listData.length) {
       renderEmpty(els.list);
       return;
     }
-
+  
     els.list.innerHTML = "";
     listData.forEach((row) => {
       const card = buildCard(row);
       els.list.appendChild(card);
     });
-
+  
     renderStickyBar(listData[0]);
   }
+
 
   function buildCard(row) {
     const card = document.createElement("article");
@@ -1257,31 +1267,37 @@
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-
+  
     return items.filter((row) => {
       const status = String(row.status || "").toLowerCase();
-      const isDone = isDoneStatus(status);
-
+      const isDone = status === "done";
+      const isCanceled = status === "canceled";
+      const isOpen = !isDone && !isCanceled;
+  
       const date = row.start_at ? new Date(row.start_at) : null;
       const isToday = date && date >= startOfDay && date <= endOfDay;
       const isUpcoming = date && date > endOfDay;
-
-      if (state.filter === "today" && !isToday) return false;
-      if (state.filter === "upcoming" && (!isUpcoming || isDone)) return false;
-      if (state.filter === "done" && !isDone) return false;
-
-      if (!q) return true;
-
-      const hay = [
-        row.client_name,
-        row.title,
-        row.address,
-        row.support_phone
-      ].join(" ").toLowerCase();
-
-      return hay.includes(q);
+      const isOverdue = date && date <= now && isOpen;
+  
+      if (state.filter === "done") return isDone;
+      if (state.filter === "today") return isToday || isOverdue || (isOpen && !date);
+      if (state.filter === "upcoming") return isUpcoming && isOpen;
+  
+      // "all"
+      if (q) {
+        const hay = [
+          row.client_name,
+          row.title,
+          row.address,
+          row.support_phone
+        ].join(" ").toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+  
+      return true;
     });
   }
+
 
   function showSkeleton(listEl) {
     listEl.innerHTML = `
@@ -1543,10 +1559,18 @@
   }
 
   function syncActiveId() {
-    const inProgress = state.items.find((r) => String(r.status || "").toLowerCase() === CONFIG.STATUS_IN_PROGRESS);
-    if (inProgress) setActiveId(inProgress.id);
-    else setActiveId(null);
+    const inProgress = state.items.find(
+      (r) => String(r.status || "").toLowerCase() === CONFIG.STATUS_IN_PROGRESS
+    );
+  
+    if (inProgress) {
+      setActiveId(inProgress.id);
+      return;
+    }
+  
+    setActiveId(null);
   }
+
 
   function applyConfigOverrides(rootEl) {
     const d = rootEl.dataset;
