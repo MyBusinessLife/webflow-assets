@@ -5,9 +5,10 @@
   const CONFIG = {
     SUPABASE_URL: "https://jrjdhdechcdlygpgaoes.supabase.co",
     SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpyamRoZGVjaGNkbHlncGdhb2VzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc3NzczMzQsImV4cCI6MjA4MzM1MzMzNH0.E13XKKpIjB1auVtTmgBgV7jxmvS-EOv52t0mT1neKXE",
-    RUN_PAGE_PATH: "/extranet/technician/intervention-realisation",
 
+    RUN_PAGE_PATH: "/extranet/technician/intervention-realisation",
     STORAGE_BUCKET: "interventions-files",
+
     STATUS_DONE: "done",
     STATUS_IN_PROGRESS: "in_progress"
   };
@@ -15,7 +16,12 @@
   let supabase = window.__MBL_SUPABASE__ || window.__techSupabase;
   if (!supabase) {
     supabase = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
-      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storageKey: "mbl-extranet-auth" }
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        storageKey: "mbl-extranet-auth"
+      }
     });
     window.__techSupabase = supabase;
   }
@@ -145,6 +151,8 @@
     const isCanceled = status === "canceled";
     const isStarted = status === "in_progress" || status === "done";
 
+    const statusLabel = getStatusLabel(row.status);
+    const statusTone = getStatusTone(row.status);
     const dateLabel = formatDateFR(row.start_at) || "Date a definir";
     const clientTitle = `${row.client_name || "Client"} - ${row.title || "Intervention"}`;
 
@@ -166,6 +174,7 @@
             ${address ? `<span class="ti-meta-item">${escapeHTML(address)}</span>` : ""}
           </div>
         </div>
+        <div class="ti-badge ti-badge--${statusTone}">${escapeHTML(statusLabel)}</div>
       </div>
 
       <div class="ti-actions">
@@ -470,10 +479,8 @@
 
   function escapeHTML(str) {
     return String(str || "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;");
   }
 
@@ -481,12 +488,7 @@
     if (!value) return "";
     const safeLabel = escapeHTML(label);
     const safeValue = isHtml ? value : escapeHTML(value);
-    return `
-      <div class="ti-info">
-        <div class="ti-label">${safeLabel}</div>
-        <div class="ti-value">${safeValue}</div>
-      </div>
-    `;
+    return `<div class="ti-info"><div class="ti-label">${safeLabel}</div><div class="ti-value">${safeValue}</div></div>`;
   }
 
   function injectStyles() {
@@ -494,12 +496,61 @@
     const style = document.createElement("style");
     style.id = "ti-styles";
     style.textContent = `
-      .ti-shell{font-family:Manrope, sans-serif;background:#f6f7fb;padding:20px;border-radius:18px}
-      .ti-card{background:#fff;border-radius:16px;padding:16px;box-shadow:0 10px 30px rgba(15,23,42,.08)}
-      .ti-actions{display:flex;gap:8px;flex-wrap:wrap}
-      .ti-btn{border:none;padding:8px 12px;border-radius:10px;font-size:13px;cursor:pointer;text-decoration:none}
-      .ti-btn--primary{background:#0ea5e9;color:#fff}
-      .ti-btn--ghost{background:#f1f5f9;color:#0f172a}
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Space+Grotesk:wght@500;700&display=swap');
+.ti-shell{font-family:"Manrope",sans-serif;background:radial-gradient(1200px 600px at 10% -10%, #e3f2ff 0%, #f6f7fb 55%, #f6f7fb 100%);color:#0f172a;padding:20px;border-radius:18px}
+.ti-header{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:16px}
+.ti-eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#64748b;margin-bottom:6px}
+.ti-h1{font-family:"Space Grotesk",sans-serif;font-size:26px;font-weight:700}
+.ti-stat{background:#0f172a;color:#f8fafc;padding:10px 14px;border-radius:14px;text-align:center}
+.ti-stat-value{font-size:20px;font-weight:700}
+.ti-stat-label{font-size:11px;text-transform:uppercase;opacity:.8;letter-spacing:.08em}
+.ti-focus{background:#fff7ed;border:1px solid #fed7aa;padding:12px 14px;border-radius:12px;margin-bottom:14px}
+.ti-focus-title{font-weight:700}
+.ti-focus-body{font-size:13px;color:#9a3412}
+.ti-controls{display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:16px}
+.ti-filters{display:flex;flex-wrap:wrap;gap:8px}
+.ti-chip{border:1px solid #cbd5f5;background:#fff;color:#1e293b;padding:8px 12px;border-radius:999px;font-size:13px;cursor:pointer}
+.ti-chip.is-active{background:#0ea5e9;border-color:#0ea5e9;color:#fff}
+.ti-chip.is-disabled{opacity:.5;cursor:not-allowed}
+.ti-search input{width:100%;border:1px solid #cbd5f5;border-radius:12px;padding:10px 12px;font-size:14px}
+.ti-list{display:grid;gap:14px}
+.ti-card{background:#fff;border-radius:16px;padding:16px;box-shadow:0 10px 30px rgba(15,23,42,.08);display:grid;gap:12px}
+.ti-card-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.ti-title{font-size:16px;font-weight:600}
+.ti-meta{margin-top:6px;display:grid;gap:4px;font-size:12px;color:#64748b}
+.ti-meta-item{display:block}
+.ti-badge{font-size:11px;padding:6px 10px;border-radius:999px;font-weight:600;white-space:nowrap}
+.ti-badge--success{background:#dcfce7;color:#166534}
+.ti-badge--warning{background:#fef9c3;color:#854d0e}
+.ti-badge--danger{background:#fee2e2;color:#991b1b}
+.ti-badge--info{background:#e0f2fe;color:#075985}
+.ti-badge--neutral{background:#e2e8f0;color:#1e293b}
+.ti-actions{display:flex;flex-wrap:wrap;gap:8px}
+.ti-btn{border:none;padding:8px 12px;border-radius:10px;font-size:13px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
+.ti-btn--ghost{background:#f1f5f9;color:#0f172a}
+.ti-btn--primary{background:#0ea5e9;color:#fff}
+.ti-btn--start{background:#0f766e;color:#fff}
+.ti-btn.is-disabled{opacity:.4;pointer-events:none}
+.ti-details{background:#f8fafc;border-radius:12px;padding:12px}
+.ti-grid{display:grid;gap:8px}
+.ti-label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#64748b;margin-bottom:6px}
+.ti-value{font-size:14px}
+.ti-toasts{position:sticky;bottom:16px;display:grid;gap:8px;margin-top:16px}
+.ti-sheet{position:fixed;inset:0;z-index:9999;display:flex;align-items:flex-end;justify-content:center}
+.ti-sheet[hidden]{display:none}
+.ti-sheet-backdrop{position:absolute;inset:0;background:rgba(15,23,42,.45)}
+.ti-sheet-panel{position:relative;width:min(480px,92vw);background:#fff;border-radius:16px;padding:16px;margin:0 12px 12px;display:grid;gap:10px;box-shadow:0 20px 60px rgba(15,23,42,.2)}
+.ti-sheet-title{font-weight:700;font-size:14px;color:#0f172a}
+.ti-sheet-btn{width:100%;text-align:left;padding:12px 14px;border-radius:12px;border:1px solid #e2e8f0;background:#f8fafc;font-size:14px;cursor:pointer}
+.ti-sheet-cancel{background:#0f172a;color:#fff;border-color:#0f172a;text-align:center}
+body.ti-sheet-open{overflow:hidden}
+.ti-sticky{position:sticky;bottom:12px;z-index:5}
+.ti-sticky-inner{display:flex;gap:8px;justify-content:center;background:#0f172a;color:#fff;padding:10px;border-radius:14px}
+.ti-empty{background:#fff;padding:20px;border-radius:16px;text-align:center;color:#475569}
+.ti-empty-title{font-weight:600}
+.ti-skeleton{height:140px;border-radius:16px;background:linear-gradient(90deg,#edf2f7 0%,#f8fafc 50%,#edf2f7 100%);animation:shimmer 1.4s infinite}
+@keyframes shimmer{0%{background-position:-200px 0}100%{background-position:200px 0}}
+@media (min-width:768px){.ti-controls{grid-template-columns:1fr 280px;align-items:center}}
     `;
     document.head.appendChild(style);
   }
