@@ -591,18 +591,34 @@
   }
 
   async function saveReport(payload) {
-    const { error } = await supabase.from(CONFIG.REPORTS_TABLE).upsert(payload, { onConflict: "intervention_id,user_id" });
-    if (error) return !isTableMissing(error);
+    const { error, status } = await supabase
+      .from(CONFIG.REPORTS_TABLE)
+      .upsert(payload, { onConflict: "intervention_id,user_id" });
+  
+    if (error) {
+      if (isTableMissing(error) || status === 404) return false;
+      console.warn("Report error", error);
+      return false;
+    }
     return true;
   }
+
 
   async function saveExpenses(interventionId) {
     const rows = cleanProducts(state.products[interventionId] || []);
     if (!rows.length) return true;
-
-    const del = await supabase.from(CONFIG.EXPENSES_TABLE).delete().eq("intervention_id", interventionId).eq("user_id", state.userId);
-    if (del.error && isTableMissing(del.error)) return false;
-
+  
+    const del = await supabase
+      .from(CONFIG.EXPENSES_TABLE)
+      .delete()
+      .eq("intervention_id", interventionId)
+      .eq("user_id", state.userId);
+  
+    if (del.error) {
+      if (isTableMissing(del.error)) return false;
+      console.warn("Expenses delete error", del.error);
+    }
+  
     const payload = rows.map((r) => ({
       intervention_id: interventionId,
       user_id: state.userId,
@@ -613,38 +629,44 @@
       paid_by_tech: r.paidByTech,
       note: r.note || null
     }));
-
+  
     const ins = await supabase.from(CONFIG.EXPENSES_TABLE).insert(payload);
-    if (ins.error && isTableMissing(ins.error)) return false;
+    if (ins.error) {
+      if (isTableMissing(ins.error)) return false;
+      console.warn("Expenses insert error", ins.error);
+    }
     return !ins.error;
   }
+
 
   async function updateIntervention(id, completedAt, row, observationsText, signedPv) {
     const payload = { status: CONFIG.STATUS_DONE };
     if (hasField(row, "completed_at")) payload.completed_at = completedAt;
-
+  
     const obsField = findExistingField(row, ["observations", "tech_observations", "report_notes", "notes_tech"]);
     if (obsField) payload[obsField] = observationsText;
-
+  
     if (signedPv) {
       const pvField = findExistingField(row, [CONFIG.SIGNED_PV_URL_FIELD, "pv_signed_url"]);
       const pvPathField = findExistingField(row, [CONFIG.SIGNED_PV_PATH_FIELD, "pv_signed_path"]);
       if (pvField && signedPv.url) payload[pvField] = signedPv.url;
       if (pvPathField && signedPv.path) payload[pvPathField] = signedPv.path;
     }
-
+  
     const res = await supabase.from("interventions").update(payload).eq("id", id);
     if (!res.error) return true;
-
+  
+    // fallback si contrainte status
     if (String(res.error?.code || "") === "23514") {
       const fallback = { ...payload };
       delete fallback.status;
       const res2 = await supabase.from("interventions").update(fallback).eq("id", id);
       return !res2.error;
     }
-
+  
     return false;
   }
+
 
   async function ensureProductsLoaded(interventionId) {
     if (state.productsLoaded[interventionId]) return;
@@ -1373,4 +1395,22 @@ body.ti-sheet-open{overflow:hidden}
       document.querySelector("#technician-interventions-root") ||
       document.querySelector(".technician-interventions");
   }
+
+  function hasField(row, key) {
+    return row && Object.prototype.hasOwnProperty.call(row, key);
+  }
+  
+  function findExistingField(row, keys) {
+    for (const k of keys) {
+      if (hasField(row, k)) return k;
+    }
+    return "";
+  }
+  
+  function isTableMissing(error) {
+    const code = String(error?.code || "");
+    const msg = String(error?.message || "").toLowerCase();
+    return code === "PGRST205" || msg.includes("could not find the table") || msg.includes("not found");
+  }
+
 })();
