@@ -561,4 +561,25 @@ body.ti-sheet-open{overflow:hidden}
       document.querySelector(".technician-interventions") ||
       document.querySelector(".interventions-list");
   }
+
+  function getStatusLabel(status) {
+    const s = String(status || "").toLowerCase();
+    if (s === "planned") return "Planifiée";
+    if (s === "pending") return "En attente";
+    if (s === "in_progress") return "En cours";
+    if (s === "confirmed") return "Confirmée";
+    if (s === "done") return "Terminée";
+    if (s === "canceled") return "Annulee";
+    return status ? capitalize(status) : "À faire";
+  }
+  
+  function getStatusTone(status) {
+    const s = String(status || "").toLowerCase();
+    if (s === "done") return "success";
+    if (s === "in_progress") return "warning";
+    if (s === "confirmed") return "info";
+    if (s === "canceled") return "danger";
+    return "neutral";
+  }
+
 })();
