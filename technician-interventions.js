@@ -355,7 +355,6 @@
       { key: "photos", label: "Photos" },
       { key: "products", label: "Produits" }
     ];
-
     if (requiresSignature) steps.push({ key: "signature", label: "Signature" });
     steps.push({ key: "observations", label: "Observations" });
     steps.push({ key: "validate", label: "Validation" });
@@ -457,12 +456,10 @@
 
       <div class="ti-flow-section" data-flow-step="validate">
         <div class="ti-flow-title">Validation</div>
-
         <div class="ti-block">
           <div class="ti-label">${STR.checklistLabel}</div>
           <div class="ti-checklist" data-checklist></div>
         </div>
-
         <div class="ti-flow-actions">
           <button class="ti-btn ti-btn--ghost" data-action="prev-step">${STR.backCTA}</button>
           <button class="ti-btn ti-btn--primary" data-action="confirm-validate">${STR.validateCTA}</button>
@@ -607,7 +604,7 @@
   function showFlowStep(container, steps, step) {
     const key = steps[step - 1]?.key || steps[0].key;
     container.querySelectorAll("[data-flow-step]").forEach((el) => {
-      el.hidden = el.dataset.flowStep !== key;
+      el.classList.toggle("is-active", el.dataset.flowStep === key);
     });
     container.querySelectorAll("[data-step-index]").forEach((el) => {
       const s = Number(el.dataset.stepIndex);
@@ -752,6 +749,58 @@
       btn.disabled = false;
       btn.textContent = STR.validateCTA;
     }
+  }
+
+  async function updateIntervention(id, completedAt, row, observationsText, signedPv) {
+    const payload = { status: CONFIG.STATUS_DONE };
+    if (hasField(row, "completed_at")) payload.completed_at = completedAt;
+
+    const obsField = findExistingField(row, ["observations", "tech_observations", "report_notes", "notes_tech"]);
+    if (obsField) payload[obsField] = observationsText;
+
+    if (signedPv) {
+      const pvField = findExistingField(row, [CONFIG.SIGNED_PV_URL_FIELD, "pv_signed_url"]);
+      const pvPathField = findExistingField(row, [CONFIG.SIGNED_PV_PATH_FIELD, "pv_signed_path"]);
+      if (pvField && signedPv.url) payload[pvField] = signedPv.url;
+      if (pvPathField && signedPv.path) payload[pvPathField] = signedPv.path;
+    }
+
+    let { error } = await supabase
+      .from("interventions")
+      .update(payload)
+      .eq("id", id);
+
+    if (error && isStatusConstraintError(error)) {
+      const fallback = ["done", "completed", "complete"];
+      for (const s of fallback) {
+        if (s === payload.status) continue;
+        const retry = await supabase
+          .from("interventions")
+          .update({ ...payload, status: s })
+          .eq("id", id);
+        if (!retry.error) return true;
+      }
+
+      const noStatus = { ...payload };
+      delete noStatus.status;
+      const retryNoStatus = await supabase
+        .from("interventions")
+        .update(noStatus)
+        .eq("id", id);
+
+      if (!retryNoStatus.error) return false;
+    }
+
+    if (error) {
+      console.error("Update error", error);
+      return false;
+    }
+    return true;
+  }
+
+  function isStatusConstraintError(err) {
+    const msg = String(err?.message || "");
+    return String(err?.code || "") === "23514" || msg.includes("status_check");
   }
 
   async function uploadPhotos(interventionId, files) {
@@ -925,9 +974,7 @@
     if (!items.length) {
       container.innerHTML = `<div class="ti-products-empty">Aucun produit ajoute</div>`;
     } else {
-      container.innerHTML = items
-        .map((item, idx) => productRowTemplate(item, idx))
-        .join("");
+      container.innerHTML = items.map((item, idx) => productRowTemplate(item, idx)).join("");
     }
 
     updateProductsTotals(container, interventionId);
@@ -1079,32 +1126,6 @@
     }
 
     return lines.join("\n");
-  }
-
-  async function updateIntervention(id, completedAt, row, observationsText, signedPv) {
-    const payload = { status: CONFIG.STATUS_DONE };
-    if (hasField(row, "completed_at")) payload.completed_at = completedAt;
-
-    const obsField = findExistingField(row, ["observations", "tech_observations", "report_notes", "notes_tech"]);
-    if (obsField) payload[obsField] = observationsText;
-
-    if (signedPv) {
-      const pvField = findExistingField(row, [CONFIG.SIGNED_PV_URL_FIELD, "pv_signed_url"]);
-      const pvPathField = findExistingField(row, [CONFIG.SIGNED_PV_PATH_FIELD, "pv_signed_path"]);
-      if (pvField && signedPv.url) payload[pvField] = signedPv.url;
-      if (pvPathField && signedPv.path) payload[pvPathField] = signedPv.path;
-    }
-
-    const { error } = await supabase
-      .from("interventions")
-      .update(payload)
-      .eq("id", id);
-
-    if (error) {
-      console.error("Update error", error);
-      return false;
-    }
-    return true;
   }
 
   function renderShell(rootEl) {
@@ -1756,7 +1777,8 @@
 .ti-step{background:#fff;border:1px solid #e2e8f0;padding:8px;border-radius:10px;text-align:center}
 .ti-step.is-done{background:#22c55e;color:#fff;border-color:#16a34a;font-weight:600}
 .ti-step.is-active{background:#0ea5e9;color:#fff;border-color:#0284c7;font-weight:600}
-.ti-flow-section{display:grid;gap:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:12px;animation:tiFade .2s ease}
+.ti-flow-section{display:none;gap:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:12px;animation:tiFade .2s ease}
+.ti-flow-section.is-active{display:grid}
 .ti-flow-title{font-weight:700;font-size:15px}
 .ti-flow-info{display:grid;gap:8px}
 .ti-flow-actions{display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap}
