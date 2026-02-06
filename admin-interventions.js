@@ -305,6 +305,168 @@ window.Webflow.push(async function () {
         border-color: #0ea5e9 !important;
         box-shadow: 0 6px 16px rgba(12, 74, 110, 0.12);
       }
+
+      html[data-page="admin-interventions"] .mbl-ai-board {
+        margin: 14px 0 12px;
+        border: 1px solid #d6e2ee;
+        border-radius: 16px;
+        background:
+          radial-gradient(720px 220px at 8% -12%, rgba(15, 118, 110, 0.1), transparent 68%),
+          radial-gradient(740px 260px at 100% 0%, rgba(14, 165, 233, 0.1), transparent 72%),
+          linear-gradient(180deg, #ffffff, #f5faff);
+        box-shadow: 0 10px 24px rgba(12, 37, 66, 0.08);
+        overflow: hidden;
+      }
+
+      html[data-page="admin-interventions"] .mbl-ai-kpis {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+        padding: 12px;
+      }
+
+      html[data-page="admin-interventions"] .mbl-ai-kpi {
+        position: relative;
+        border: 1px solid #d6e2ee;
+        border-radius: 12px;
+        background: #fff;
+        padding: 10px 12px;
+        overflow: hidden;
+      }
+      html[data-page="admin-interventions"] .mbl-ai-kpi::after {
+        content: "";
+        position: absolute;
+        width: 84px;
+        height: 84px;
+        border-radius: 999px;
+        right: -22px;
+        bottom: -40px;
+        opacity: .12;
+        background: radial-gradient(circle at center, #0c4a6e, transparent 70%);
+      }
+      html[data-page="admin-interventions"] .mbl-ai-kpi-label {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+        color: #58728d;
+        font-weight: 700;
+      }
+      html[data-page="admin-interventions"] .mbl-ai-kpi-value {
+        margin-top: 5px;
+        color: #12375b;
+        font-size: 20px;
+        line-height: 1.1;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+      }
+
+      html[data-page="admin-interventions"] .mbl-ai-toolbar {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 0 12px 12px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+
+      html[data-page="admin-interventions"] .mbl-ai-statuses {
+        display: flex;
+        gap: 7px;
+        flex-wrap: wrap;
+      }
+
+      html[data-page="admin-interventions"] .mbl-ai-status {
+        border: 1px solid #d2e0ec;
+        background: #fff;
+        border-radius: 999px;
+        padding: 6px 10px;
+        font-size: 12px;
+        font-weight: 700;
+        color: #4e6882;
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        cursor: pointer;
+        transition: all .2s ease;
+      }
+      html[data-page="admin-interventions"] .mbl-ai-status:hover {
+        border-color: #0ea5e9;
+        color: #0c4a6e;
+      }
+      html[data-page="admin-interventions"] .mbl-ai-status.is-active {
+        background: linear-gradient(120deg, #0f766e, #0c4a6e);
+        border-color: #0c4a6e;
+        color: #fff;
+        box-shadow: 0 7px 16px rgba(12, 74, 110, 0.2);
+      }
+      html[data-page="admin-interventions"] .mbl-ai-status-count {
+        display: inline-flex;
+        min-width: 18px;
+        justify-content: center;
+        align-items: center;
+        height: 18px;
+        padding: 0 6px;
+        border-radius: 999px;
+        border: 1px solid rgba(12, 74, 110, 0.22);
+        background: rgba(255,255,255,.72);
+        color: #0c4a6e;
+        font-size: 11px;
+        font-weight: 800;
+      }
+      html[data-page="admin-interventions"] .mbl-ai-status.is-active .mbl-ai-status-count {
+        border-color: rgba(255,255,255,.38);
+        background: rgba(255,255,255,.16);
+        color: #fff;
+      }
+
+      html[data-page="admin-interventions"] .mbl-ai-tools {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        margin-left: auto;
+      }
+      html[data-page="admin-interventions"] .mbl-ai-tools label {
+        font-size: 12px;
+        color: #55708c;
+        font-weight: 700;
+      }
+      html[data-page="admin-interventions"] .mbl-ai-sort {
+        border: 1px solid #cfdeeb;
+        background: #fff;
+        color: #12375b;
+        border-radius: 10px;
+        padding: 8px 10px;
+        outline: none;
+      }
+      html[data-page="admin-interventions"] .mbl-ai-count {
+        font-size: 12px;
+        color: #5c7590;
+        font-weight: 700;
+      }
+
+      html[data-page="admin-interventions"] .intervention-row.is-appear {
+        animation: mblRowIn .26s ease both;
+      }
+      @keyframes mblRowIn {
+        from { opacity: 0; transform: translateY(4px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      @media (max-width: 980px) {
+        html[data-page="admin-interventions"] .mbl-ai-kpis {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+      @media (max-width: 680px) {
+        html[data-page="admin-interventions"] .mbl-ai-kpis {
+          grid-template-columns: 1fr;
+        }
+        html[data-page="admin-interventions"] .mbl-ai-tools {
+          width: 100%;
+          margin-left: 0;
+          justify-content: space-between;
+        }
+      }
     `;
 
     document.head.appendChild(style);
@@ -332,6 +494,210 @@ window.Webflow.push(async function () {
   }
 
   const searchInput = document.querySelector(".intervention-search");
+  const rowsContainer = firstRow.parentElement;
+
+  const LIST_STATUS_META = [
+    { key: "all", label: "Tous" },
+    { key: "planned", label: "Planifiées" },
+    { key: "pending", label: "En attente" },
+    { key: "in_progress", label: "En cours" },
+    { key: "done", label: "Terminées" },
+    { key: "canceled", label: "Annulées" },
+  ];
+
+  const listState = {
+    items: [],
+    filtered: [],
+    search: "",
+    status: "all",
+    sort: "date_desc",
+  };
+
+  let listUi = null;
+
+  function canonicalStatusForList(value) {
+    const key = normalizeStatus(value).replace(/\s+/g, "_");
+    const canonical = STATUS_CANONICAL_DB[key] || key || "";
+    if (canonical === "confirmed") return "in_progress";
+    if (
+      canonical === "planned" ||
+      canonical === "pending" ||
+      canonical === "in_progress" ||
+      canonical === "done" ||
+      canonical === "canceled"
+    ) {
+      return canonical;
+    }
+    return "other";
+  }
+
+  function parseTarifToCentsLoose(value) {
+    if (value === null || value === undefined || value === "") return 0;
+    if (typeof value === "number") {
+      if (!Number.isFinite(value)) return 0;
+      if (Number.isInteger(value)) {
+        return Math.abs(value) >= 1000 ? value : Math.round(value * 100);
+      }
+      return Math.round(value * 100);
+    }
+
+    let s = String(value)
+      .trim()
+      .replace(/\s+/g, "")
+      .replace(/\u00A0/g, "")
+      .replace(/€/g, "")
+      .replace(/eur/gi, "");
+    if (!s) return 0;
+
+    if (/^-?\d+$/.test(s)) {
+      const n = Number(s);
+      return Number.isFinite(n)
+        ? (Math.abs(n) >= 1000 ? n : Math.round(n * 100))
+        : 0;
+    }
+
+    if (s.includes(",") && s.includes(".")) {
+      if (s.lastIndexOf(",") > s.lastIndexOf(".")) {
+        s = s.replace(/\./g, "").replace(",", ".");
+      } else {
+        s = s.replace(/,/g, "");
+      }
+    } else if (s.includes(",")) {
+      const p = s.split(",");
+      if (p.length === 2 && p[1].length <= 2) {
+        s = p[0].replace(/\./g, "") + "." + p[1];
+      } else {
+        s = s.replace(/,/g, "");
+      }
+    }
+
+    const n = Number(s);
+    return Number.isFinite(n) ? Math.round(n * 100) : 0;
+  }
+
+  function buildSearchTextFromItem(itv) {
+    return norm([
+      itv.internal_ref || "",
+      itv.client_name || "",
+      itv.address || "",
+      itv.technician_name || "",
+      statusLabel(itv.status || ""),
+      formatFRDateTime(itv.start_at),
+    ].join(" "));
+  }
+
+  function ensureListingUi() {
+    if (listUi?.host && listUi.host.isConnected) return listUi;
+    if (!rowsContainer || !rowsContainer.parentElement) return null;
+
+    const host = document.createElement("section");
+    host.className = "mbl-ai-board";
+    host.innerHTML = `
+      <div class="mbl-ai-kpis"></div>
+      <div class="mbl-ai-toolbar">
+        <div class="mbl-ai-statuses"></div>
+        <div class="mbl-ai-tools">
+          <label for="mbl-ai-sort">Tri</label>
+          <select id="mbl-ai-sort" class="mbl-ai-sort">
+            <option value="date_desc">Date la plus recente</option>
+            <option value="date_asc">Date la plus ancienne</option>
+            <option value="ca_desc">CA le plus eleve</option>
+            <option value="ca_asc">CA le plus faible</option>
+            <option value="client_asc">Client A -> Z</option>
+            <option value="ref_asc">Reference A -> Z</option>
+          </select>
+          <span class="mbl-ai-count">0 / 0</span>
+        </div>
+      </div>
+    `;
+    rowsContainer.parentElement.insertBefore(host, rowsContainer);
+
+    const statusesEl = host.querySelector(".mbl-ai-statuses");
+    const sortEl = host.querySelector(".mbl-ai-sort");
+    const kpisEl = host.querySelector(".mbl-ai-kpis");
+    const countEl = host.querySelector(".mbl-ai-count");
+
+    statusesEl.addEventListener("click", (event) => {
+      const btn = event.target.closest(".mbl-ai-status");
+      if (!btn) return;
+      const status = btn.dataset.status || "all";
+      if (listState.status === status) return;
+      listState.status = status;
+      refreshListingView();
+    });
+
+    sortEl.addEventListener("change", () => {
+      listState.sort = sortEl.value || "date_desc";
+      refreshListingView();
+    });
+
+    listUi = { host, statusesEl, sortEl, kpisEl, countEl };
+    return listUi;
+  }
+
+  function renderListingStatusButtons() {
+    const ui = ensureListingUi();
+    if (!ui) return;
+
+    const counts = {
+      all: listState.items.length,
+      planned: 0,
+      pending: 0,
+      in_progress: 0,
+      done: 0,
+      canceled: 0,
+    };
+
+    listState.items.forEach((itv) => {
+      const key = canonicalStatusForList(itv.status);
+      if (counts[key] !== undefined) counts[key] += 1;
+    });
+
+    ui.statusesEl.innerHTML = LIST_STATUS_META.map((meta) => {
+      const active = listState.status === meta.key ? " is-active" : "";
+      const count = counts[meta.key] || 0;
+      return `
+        <button type="button" class="mbl-ai-status${active}" data-status="${meta.key}">
+          <span>${meta.label}</span>
+          <span class="mbl-ai-status-count">${count}</span>
+        </button>
+      `;
+    }).join("");
+  }
+
+  function renderListingKpis() {
+    const ui = ensureListingUi();
+    if (!ui) return;
+
+    const filtered = listState.filtered || [];
+    const total = listState.items || [];
+    const caTotal = filtered.reduce((sum, itv) => sum + (itv._tarifCents || 0), 0);
+    const done = filtered.filter((itv) => canonicalStatusForList(itv.status) === "done").length;
+    const inProgress = filtered.filter((itv) => canonicalStatusForList(itv.status) === "in_progress").length;
+    const avg = filtered.length ? Math.round(caTotal / filtered.length) : 0;
+
+    ui.kpisEl.innerHTML = `
+      <article class="mbl-ai-kpi">
+        <div class="mbl-ai-kpi-label">Interventions</div>
+        <div class="mbl-ai-kpi-value">${filtered.length} / ${total.length}</div>
+      </article>
+      <article class="mbl-ai-kpi">
+        <div class="mbl-ai-kpi-label">CA Filtre</div>
+        <div class="mbl-ai-kpi-value">${formatCents(caTotal)}</div>
+      </article>
+      <article class="mbl-ai-kpi">
+        <div class="mbl-ai-kpi-label">En Cours</div>
+        <div class="mbl-ai-kpi-value">${inProgress}</div>
+      </article>
+      <article class="mbl-ai-kpi">
+        <div class="mbl-ai-kpi-label">Ticket Moyen</div>
+        <div class="mbl-ai-kpi-value">${formatCents(avg)}</div>
+      </article>
+    `;
+
+    ui.countEl.textContent = `${filtered.length} / ${total.length} affichees`;
+    ui.sortEl.value = listState.sort;
+  }
 
   function fillRow(rowEl, itv) {
     const refEl = rowEl.querySelector(".ref-intervention");
@@ -366,11 +732,90 @@ window.Webflow.push(async function () {
     if (upgradeA) upgradeA.href = href;
   }
 
-  async function loadInterventions() {
-    document.querySelectorAll(".intervention-row").forEach((row, idx) => {
+  function setRowActionsEnabled(rowEl, enabled) {
+    rowEl
+      .querySelectorAll("a.show-intervention, a.update-intervention, a.upgrade-intervention, a.delete-intervention")
+      .forEach((a) => {
+        a.style.pointerEvents = enabled ? "" : "none";
+        a.style.opacity = enabled ? "" : "0.45";
+      });
+  }
+
+  function renderInterventionRows(rows) {
+    if (!rowsContainer) return;
+    rowsContainer.querySelectorAll(".intervention-row").forEach((row, idx) => {
       if (idx > 0) row.remove();
     });
 
+    if (!rows.length) {
+      const hasData = (listState.items || []).length > 0;
+      fillRow(firstRow, {
+        id: "",
+        internal_ref: hasData ? "Aucun resultat" : "Aucune intervention",
+        client_name: "—",
+        address: "—",
+        technician_name: "—",
+        status: "—",
+        start_at: null,
+        tarif: null,
+      });
+      setRowActionsEnabled(firstRow, false);
+      return;
+    }
+
+    fillRow(firstRow, rows[0]);
+    firstRow.classList.add("is-appear");
+    firstRow.style.animationDelay = "0ms";
+    setRowActionsEnabled(firstRow, true);
+
+    for (let i = 1; i < rows.length; i++) {
+      const clone = firstRow.cloneNode(true);
+      fillRow(clone, rows[i]);
+      clone.classList.add("is-appear");
+      clone.style.animationDelay = `${Math.min(i * 25, 260)}ms`;
+      setRowActionsEnabled(clone, true);
+      rowsContainer.appendChild(clone);
+    }
+  }
+
+  function sortInterventions(rows) {
+    const list = rows.slice();
+    list.sort((a, b) => {
+      switch (listState.sort) {
+        case "date_asc":
+          return (a._startTs || 0) - (b._startTs || 0);
+        case "ca_desc":
+          return (b._tarifCents || 0) - (a._tarifCents || 0);
+        case "ca_asc":
+          return (a._tarifCents || 0) - (b._tarifCents || 0);
+        case "client_asc":
+          return String(a.client_name || "").localeCompare(String(b.client_name || ""), "fr", { sensitivity: "base" });
+        case "ref_asc":
+          return String(a.internal_ref || "").localeCompare(String(b.internal_ref || ""), "fr", { sensitivity: "base" });
+        case "date_desc":
+        default:
+          return (b._startTs || 0) - (a._startTs || 0);
+      }
+    });
+    return list;
+  }
+
+  function refreshListingView() {
+    const query = listState.search;
+    const status = listState.status;
+    const filtered = (listState.items || []).filter((itv) => {
+      if (status !== "all" && canonicalStatusForList(itv.status) !== status) return false;
+      if (query && !(itv._search || "").includes(query)) return false;
+      return true;
+    });
+
+    listState.filtered = sortInterventions(filtered);
+    renderInterventionRows(listState.filtered);
+    renderListingStatusButtons();
+    renderListingKpis();
+  }
+
+  async function loadInterventions() {
     const { data: interventions, error } = await supabase
       .from("interventions")
       .select("id, internal_ref, client_name, address, start_at, status, tarif")
@@ -379,12 +824,22 @@ window.Webflow.push(async function () {
     if (error) {
       console.error("[INTERVENTIONS] load error:", error);
       fillRow(firstRow, { id:"", internal_ref:"Erreur chargement", client_name:"—", address:"—", status:"—", tarif:null });
+      setRowActionsEnabled(firstRow, false);
+      listState.items = [];
+      listState.filtered = [];
+      renderListingStatusButtons();
+      renderListingKpis();
       return;
     }
 
     const list = interventions || [];
     if (!list.length) {
       fillRow(firstRow, { id:"", internal_ref:"Aucune intervention", client_name:"—", address:"—", status:"—", tarif:null });
+      setRowActionsEnabled(firstRow, false);
+      listState.items = [];
+      listState.filtered = [];
+      renderListingStatusButtons();
+      renderListingKpis();
       return;
     }
 
@@ -422,39 +877,29 @@ window.Webflow.push(async function () {
     const enriched = list.map((itv) => {
       const uids = userIdsByInterv.get(itv.id) || [];
       const names = uids.map((id) => nameById.get(id)).filter((n) => n && n !== "—");
-      return { ...itv, technician_name: names.length ? Array.from(new Set(names)).join(", ") : "—" };
+      const technician_name = names.length ? Array.from(new Set(names)).join(", ") : "—";
+      const startTs = itv.start_at ? new Date(itv.start_at).getTime() : 0;
+      return {
+        ...itv,
+        technician_name,
+        _startTs: Number.isFinite(startTs) ? startTs : 0,
+        _tarifCents: parseTarifToCentsLoose(itv.tarif),
+        _search: buildSearchTextFromItem({ ...itv, technician_name }),
+      };
     });
 
-    fillRow(firstRow, enriched[0]);
-    for (let i = 1; i < enriched.length; i++) {
-      const clone = firstRow.cloneNode(true);
-      fillRow(clone, enriched[i]);
-      firstRow.parentElement.appendChild(clone);
-    }
-
-    if (searchInput) applyFilter(searchInput.value);
+    ensureListingUi();
+    listState.items = enriched;
+    listState.search = norm(searchInput?.value || "");
+    refreshListingView();
   }
 
   // =========================
   // SEARCH
   // =========================
-  function rowSearchText(row) {
-    const ref = row.dataset.reference || row.querySelector(".ref-intervention")?.textContent || "";
-    const client = row.dataset.client || row.querySelector(".client-intervention")?.textContent || "";
-    const tech = row.dataset.tech || row.querySelector(".technician-intervention")?.textContent || "";
-    const status = row.dataset.status || row.querySelector(".status-intervention")?.textContent || "";
-    const datefr = row.dataset.datefr || row.querySelector(".date-intervention")?.textContent || "";
-    return norm(`${ref} ${client} ${tech} ${status} ${datefr}`);
-  }
-
   function applyFilter(qRaw) {
-    const q = norm(qRaw);
-    const rows = Array.from(document.querySelectorAll(".intervention-row"));
-    if (!rows.length) return;
-    rows.forEach((row) => {
-      const hay = rowSearchText(row);
-      row.style.display = (!q || hay.includes(q)) ? "" : "none";
-    });
+    listState.search = norm(qRaw || "");
+    refreshListingView();
   }
 
   const applyFilterDebounced = debounce(applyFilter, 120);
@@ -607,7 +1052,14 @@ window.Webflow.push(async function () {
 
     modal.querySelectorAll(".itv-step").forEach((b, i) => {
       b.classList.toggle("is-active", i === currentStep);
+      b.classList.toggle("is-done", i < currentStep);
     });
+
+    const progress = modal.querySelector(".itv-progress__bar");
+    if (progress) {
+      const pct = ((currentStep + 1) / STEPS.length) * 100;
+      progress.style.width = `${pct}%`;
+    }
 
     const nextBtn = modal.querySelector(".itv-next");
     nextBtn.textContent = currentStep === STEPS.length - 1 ? (modalState.mode === "view" ? "Fermer" : "Enregistrer") : "Suivant";
@@ -704,6 +1156,25 @@ window.Webflow.push(async function () {
           color:#fff;
           border-color:#0c4a6e;
           box-shadow: 0 8px 16px rgba(12, 74, 110, 0.18);
+        }
+        .itv-step.is-done {
+          border-color: #0f766e;
+          background: #e8f9f4;
+          color: #0f766e;
+        }
+        .itv-progress {
+          margin-top: 10px;
+          width: 100%;
+          height: 8px;
+          border-radius: 999px;
+          background: #dce8f3;
+          overflow: hidden;
+        }
+        .itv-progress__bar {
+          height: 100%;
+          width: 14.2857%;
+          background: linear-gradient(120deg, #0f766e, #0ea5e9);
+          transition: width .24s ease;
         }
         .itv-tab { display:none; margin-top:14px; }
         .itv-tab.is-active { display:block; }
@@ -887,6 +1358,7 @@ window.Webflow.push(async function () {
           <button class="itv-step" data-step="5">6. PV</button>
           <button class="itv-step" data-step="6">7. Résumé</button>
         </div>
+        <div class="itv-progress"><div class="itv-progress__bar"></div></div>
 
         <div class="itv-modal__error"></div>
 
