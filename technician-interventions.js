@@ -1,4 +1,3 @@
-<script>
 (() => {
   if (window.__techInterventionsLoaded) return;
   window.__techInterventionsLoaded = true;
@@ -1613,4 +1612,3 @@
       document.querySelector(".interventions-list");
   }
 })();
-</script>
