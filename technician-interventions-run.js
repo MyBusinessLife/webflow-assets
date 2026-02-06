@@ -1,6 +1,6 @@
 (() => {
-  if (window.__techInterventionsRunLoaded) return;
-  window.__techInterventionsRunLoaded = true;
+  if (window.__techInterventionRunLoaded) return;
+  window.__techInterventionRunLoaded = true;
 
   const CONFIG = {
     SUPABASE_URL: "https://jrjdhdechcdlygpgaoes.supabase.co",
@@ -13,7 +13,6 @@
 
     STATUS_DONE: "done",
     STATUS_IN_PROGRESS: "in_progress",
-    ENABLE_STATUS_UPDATE: true,
 
     REQUIRE_CHECKLIST_DEFAULT: true,
     REQUIRE_PHOTOS_DEFAULT: false,
@@ -30,37 +29,24 @@
     STEPS_STORAGE_KEY: "mbl-intervention-steps"
   };
 
-  let supabase = window.__MBL_SUPABASE__ || window.__techSupabase;
-  if (!supabase) {
-    supabase = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true,
-        storageKey: "mbl-extranet-auth"
-      }
-    });
-    window.__techSupabase = supabase;
-  }
-
   const STR = {
-    title: "Intervention",
-    subtitle: "Réalisation",
-    countLabel: "intervention",
-    emptyTitle: "Aucune intervention",
-    emptyBody: "Intervention introuvable.",
-    errorTitle: "Erreur de chargement",
-    errorBody: "Impossible de recuperer l'intervention. Reessaye plus tard.",
+    title: "Intervention en cours",
+    subtitle: "Parcours terrain et validation",
+    stepArrive: "Arrivee",
+    stepDiagnostic: "Diagnostic",
+    stepResolution: "Resolution",
+    stepPhotos: "Photos",
+    stepProducts: "Produits",
+    stepSignature: "Signature",
+    stepObservations: "Observations",
+    stepValidate: "Validation",
     callCTA: "Appeler",
     mapCTA: "Itineraire",
     pvCTA: "PV vierge",
     arriveCTA: "Arrive sur place",
     nextCTA: "Continuer",
-    backCTA: "Retour",
+    prevCTA: "Retour",
     validateCTA: "Valider l'intervention",
-    notesLabel: "Observations",
-    diagnosticLabel: "Diagnostic",
-    resolutionLabel: "Resolution",
     photosLabel: "Photos",
     photosHint: "Ajoute 1 ou plusieurs photos",
     checklistLabel: "Checklist",
@@ -69,170 +55,229 @@
     signatureClear: "Effacer",
     signedPvLabel: "PV signe",
     signedPvHint: "Ajoute un PV signe (PDF ou photo)",
+    notesLabel: "Observations",
+    diagnosticLabel: "Diagnostic",
+    resolutionLabel: "Resolution",
     confirmValidate: "Confirmer la validation ?",
     toastSaved: "Intervention validee",
     toastSavedPartial: "Validation enregistree mais statut non mis a jour",
     toastError: "Une erreur est survenue",
-    toastReportMissing: "Rapport non enregistre (table manquante)",
-    toastExpensesMissing: "Produits non enregistres (table manquante)",
-    toastProductsInvalid: "Produits incomplets. Verifie les quantites et prix.",
     toastNeedDiagnostic: "Renseigne le diagnostic",
     toastNeedResolution: "Renseigne la resolution",
     toastNeedPhotos: "Ajoute au moins une photo",
     toastNeedSignature: "Signature obligatoire",
-    toastNeedChecklist: "Checklist incomplete"
+    toastProductsInvalid: "Produits incomplets. Verifie les quantites et prix.",
+    toastReportMissing: "Rapport non enregistre (table manquante)",
+    toastExpensesMissing: "Produits non enregistres (table manquante)"
   };
 
-  const root = findRoot();
-  if (!root) return;
+  let supabase =
+    window.__MBL_SUPABASE__ ||
+    window.__techSupabase ||
+    window.supabase?.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        storageKey: "mbl-extranet-auth"
+      }
+    });
 
-  if (!window.supabase) {
-    root.textContent = "Supabase non charge.";
-    return;
-  }
+  window.__techSupabase = supabase;
 
-  injectStyles();
+  let root = null;
+  let mapAddress = "";
 
-  const els = renderShell(root);
   const state = {
-    item: null,
-    files: [],
-    previews: [],
-    checklist: [],
-    signatures: { canvas: null, hasSignature: false },
-    signedPv: null,
-    diagnostic: "",
-    resolution: "",
-    observations: "",
-    products: [],
-    productsLoaded: false,
+    userId: null,
+    row: null,
+    files: {},
+    previews: {},
+    checklist: {},
+    signatures: {},
+    signedPv: {},
+    diagnostic: {},
+    resolution: {},
+    observations: {},
+    products: {},
+    productsLoaded: {},
     catalog: [],
     catalogLoaded: false,
-    userId: null,
-    step: 1
+    steps: loadSteps()
   };
 
-  init();
+  waitForRoot();
+
+  function waitForRoot() {
+    let tries = 0;
+    const timer = setInterval(() => {
+      root = findRoot();
+      if (root) {
+        clearInterval(timer);
+        start(root);
+      } else if (++tries > 40) {
+        clearInterval(timer);
+      }
+    }, 100);
+  }
+
+  function start(rootEl) {
+    if (!window.supabase) {
+      rootEl.textContent = "Supabase non charge.";
+      return;
+    }
+    applyConfigOverrides(rootEl);
+    injectStyles();
+    renderShell(rootEl);
+    init();
+  }
 
   async function init() {
-    const id = new URLSearchParams(location.search).get("id");
-    if (!id) return renderEmpty(els.list);
+    setStatus("Chargement...");
+    const session = (await supabase.auth.getSession()).data.session;
+    if (!session?.user) {
+      setStatus("Session expiree. Merci de vous reconnecter.");
+      return;
+    }
+    state.userId = session.user.id;
 
-    const { data: authData, error: authError } = await supabase.auth.getUser();
-    if (authError || !authData?.user) return renderError(els.list);
+    const interventionId = getInterventionId();
+    if (!interventionId) {
+      setStatus("ID intervention manquant dans l'URL.");
+      return;
+    }
 
-    state.userId = authData.user.id;
+    loadCatalog();
 
-    const { data, error } = await supabase
+    const row = await fetchIntervention(state.userId, interventionId);
+    if (!row) {
+      setStatus("Intervention introuvable.");
+      return;
+    }
+
+    state.row = row;
+    mapAddress = row.address || "";
+
+    hydrateState(row.id);
+    renderIntervention(row);
+  }
+
+  async function fetchIntervention(userId, interventionId) {
+    let res = await supabase
       .from("intervention_assignees")
       .select("id, intervention_id, interventions:intervention_id(*)")
-      .eq("user_id", state.userId)
-      .eq("intervention_id", id)
-      .single();
+      .eq("user_id", userId)
+      .eq("intervention_id", interventionId)
+      .maybeSingle();
 
-    if (error || !data?.interventions) return renderError(els.list);
+    if (res?.data?.interventions) return res.data.interventions;
 
-    state.item = data.interventions;
+    // fallback direct
+    const res2 = await supabase
+      .from("interventions")
+      .select("*")
+      .eq("id", interventionId)
+      .maybeSingle();
 
-    renderSingle();
+    return res2.data || null;
   }
 
-  function renderSingle() {
-    els.list.innerHTML = "";
-    els.count.textContent = "1";
-    const card = buildRunCard(state.item);
-    els.list.appendChild(card);
+  function hydrateState(id) {
+    state.checklist[id] = state.checklist[id] || getChecklist(state.row).map(() => false);
+    state.files[id] = state.files[id] || [];
+    state.previews[id] = state.previews[id] || [];
+    state.signatures[id] = state.signatures[id] || { canvas: null, hasSignature: false };
+    state.signedPv[id] = state.signedPv[id] || null;
+    state.products[id] = state.products[id] || [];
+    state.diagnostic[id] = state.diagnostic[id] || "";
+    state.resolution[id] = state.resolution[id] || "";
+    state.observations[id] = state.observations[id] || "";
   }
 
-  function buildRunCard(row) {
-    const card = document.createElement("article");
-    card.className = "ti-card is-flow-open";
-
-    const dateLabel = formatDateFR(row.start_at) || "Date a definir";
-    const clientTitle = `${row.client_name || "Client"} - ${row.title || "Intervention"}`;
-
-    const phoneNormalized = normalizePhone(row.support_phone);
-    const address = row.address ? String(row.address).trim() : "";
+  function renderIntervention(row) {
+    const id = row.id;
     const pvUrl = getPvUrl(row);
+    const steps = buildSteps(row);
+    const currentStep = getStep(id, steps.length);
 
-    card.innerHTML = `
-      <div class="ti-card-head">
-        <div class="ti-card-main">
-          <div class="ti-title">${escapeHTML(clientTitle)}</div>
-          <div class="ti-meta">
-            <span class="ti-meta-item">${escapeHTML(dateLabel)}</span>
-            ${address ? `<span class="ti-meta-item">${escapeHTML(address)}</span>` : ""}
-          </div>
-        </div>
-      </div>
+    root.querySelector("[data-ti-title]").textContent = STR.title;
+    root.querySelector("[data-ti-subtitle]").textContent = STR.subtitle;
+    root.querySelector("[data-ti-client]").textContent = row.client_name || "Client";
+    root.querySelector("[data-ti-title2]").textContent = row.title || "Intervention";
+    root.querySelector("[data-ti-date]").textContent = formatDateFR(row.start_at) || "Date a definir";
+    root.querySelector("[data-ti-address]").textContent = row.address || "";
+    root.querySelector("[data-ti-status]").textContent = getStatusLabel(row.status);
+    root.querySelector("[data-ti-phone]").textContent = formatPhoneReadable(row.support_phone || "") || "";
 
-      <div class="ti-actions">
-        <a class="ti-btn ti-btn--ghost ${phoneNormalized ? "" : "is-disabled"}" ${phoneNormalized ? `href="tel:${phoneNormalized}"` : ""}>${STR.callCTA}</a>
-        ${address ? `<a class="ti-btn ti-btn--ghost" href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}" target="_blank">${STR.mapCTA}</a>` : ""}
-        ${pvUrl ? `<a class="ti-btn ti-btn--ghost" href="${pvUrl}" target="_blank" rel="noopener" download>${STR.pvCTA}</a>` : ""}
-      </div>
+    const callBtn = root.querySelector("[data-action='call']");
+    const mapBtn = root.querySelector("[data-action='map']");
+    const pvBtn = root.querySelector("[data-action='pv']");
 
-      <div class="ti-flow"></div>
-    `;
+    const phone = normalizePhone(row.support_phone);
+    if (phone) callBtn.href = `tel:${phone}`; else callBtn.classList.add("is-disabled");
 
-    const flow = card.querySelector(".ti-flow");
-    renderFlow(flow, row);
-    return card;
+    if (!row.address) mapBtn.classList.add("is-disabled");
+    mapBtn.onclick = () => openMapSheet(row.address);
+
+    if (pvUrl) {
+      pvBtn.href = pvUrl;
+      pvBtn.hidden = false;
+    } else {
+      pvBtn.hidden = true;
+    }
+
+    renderStepper(steps, currentStep);
+    renderFlow(row, steps, currentStep);
   }
 
-  function renderFlow(container, row) {
+  function renderStepper(steps, currentStep) {
+    const wrap = root.querySelector("[data-ti-steps]");
+    wrap.innerHTML = steps.map((s, i) => {
+      const n = i + 1;
+      const cls = n < currentStep ? "is-done" : n === currentStep ? "is-active" : "";
+      return `<div class="ti-step ${cls}">${n}. ${s.label}</div>`;
+    }).join("");
+  }
+
+  function renderFlow(row, steps, currentStep) {
+    const id = row.id;
+    const flow = root.querySelector("[data-ti-flow]");
     const requiresSignature = getFlag(row.requires_signature, CONFIG.REQUIRE_SIGNATURE_DEFAULT);
     const requiresPhotos = getFlag(row.requires_photos, CONFIG.REQUIRE_PHOTOS_DEFAULT);
 
-    state.checklist = getChecklist(row).map(() => false);
-
-    const steps = [
-      { key: "arrive", label: "Arrivee" },
-      { key: "diagnostic", label: "Diagnostic" },
-      { key: "resolution", label: "Resolution" },
-      { key: "photos", label: "Photos" },
-      { key: "products", label: "Produits" }
-    ];
-    if (requiresSignature) steps.push({ key: "signature", label: "Signature" });
-    steps.push({ key: "observations", label: "Observations" });
-    steps.push({ key: "validate", label: "Validation" });
-
-    container.innerHTML = `
-      <div class="ti-steps">
-        ${steps.map((s, i) => `<div class="ti-step" data-step-index="${i+1}">${i+1}. ${s.label}</div>`).join("")}
-      </div>
-
-      <div class="ti-flow-section" data-flow-step="arrive">
+    flow.innerHTML = `
+      ${stepSection("arrive", `
         <div class="ti-flow-title">Informations & PV</div>
         <div class="ti-flow-info">
           ${infoRow("Adresse", row.address || "")}
           ${infoRow("Date", formatDateFR(row.start_at) || "")}
           ${infoRow("Telephone", formatPhoneReadable(row.support_phone || "") || "")}
+          ${getPvUrl(row) ? infoRow("PV vierge", `<a class="ti-link" href="${getPvUrl(row)}" target="_blank" rel="noopener">${STR.pvCTA}</a>`, true) : ""}
         </div>
-        <div class="ti-flow-actions">
+        <div class="ti-step-actions">
           <button class="ti-btn ti-btn--primary" data-action="arrive">${STR.arriveCTA}</button>
         </div>
-      </div>
+      `)}
 
-      <div class="ti-flow-section" data-flow-step="diagnostic">
+      ${stepSection("diagnostic", `
         <div class="ti-flow-title">${STR.diagnosticLabel}</div>
-        <textarea class="ti-textarea" data-field="diagnostic" rows="4"></textarea>
-        <div class="ti-flow-actions">
-          <button class="ti-btn ti-btn--ghost" data-action="prev-step">${STR.backCTA}</button>
+        <textarea class="ti-textarea" data-field="diagnostic" rows="4" placeholder="Decris le diagnostic...">${escapeHTML(state.diagnostic[id])}</textarea>
+        <div class="ti-step-actions">
+          <button class="ti-btn ti-btn--ghost" data-action="prev">${STR.prevCTA}</button>
           <button class="ti-btn ti-btn--primary" data-action="next-diagnostic">${STR.nextCTA}</button>
         </div>
-      </div>
+      `)}
 
-      <div class="ti-flow-section" data-flow-step="resolution">
+      ${stepSection("resolution", `
         <div class="ti-flow-title">${STR.resolutionLabel}</div>
-        <textarea class="ti-textarea" data-field="resolution" rows="4"></textarea>
-        <div class="ti-flow-actions">
-          <button class="ti-btn ti-btn--ghost" data-action="prev-step">${STR.backCTA}</button>
+        <textarea class="ti-textarea" data-field="resolution" rows="4" placeholder="Decris la resolution...">${escapeHTML(state.resolution[id])}</textarea>
+        <div class="ti-step-actions">
+          <button class="ti-btn ti-btn--ghost" data-action="prev">${STR.prevCTA}</button>
           <button class="ti-btn ti-btn--primary" data-action="next-resolution">${STR.nextCTA}</button>
         </div>
-      </div>
+      `)}
 
-      <div class="ti-flow-section" data-flow-step="photos">
+      ${stepSection("photos", `
         <div class="ti-flow-title">${STR.photosLabel}</div>
         <div class="ti-hint">${STR.photosHint}</div>
         <div class="ti-photo-actions">
@@ -242,266 +287,669 @@
           <input type="file" class="ti-file" data-gallery accept="image/*" multiple />
         </div>
         <div class="ti-previews" data-previews></div>
-        <div class="ti-flow-actions">
-          <button class="ti-btn ti-btn--ghost" data-action="prev-step">${STR.backCTA}</button>
+        <div class="ti-step-actions">
+          <button class="ti-btn ti-btn--ghost" data-action="prev">${STR.prevCTA}</button>
           <button class="ti-btn ti-btn--primary" data-action="next-photos">${STR.nextCTA}</button>
         </div>
-      </div>
+      `)}
 
-      <div class="ti-flow-section" data-flow-step="products">
+      ${stepSection("products", `
         <div class="ti-flow-title">Produits / Depenses</div>
         <div class="ti-products" data-products></div>
         <button type="button" class="ti-btn ti-btn--ghost ti-btn--xs" data-action="add-product">Ajouter un produit</button>
         <div class="ti-products-total" data-products-total></div>
-        <div class="ti-flow-actions">
-          <button class="ti-btn ti-btn--ghost" data-action="prev-step">${STR.backCTA}</button>
+        <div class="ti-step-actions">
+          <button class="ti-btn ti-btn--ghost" data-action="prev">${STR.prevCTA}</button>
           <button class="ti-btn ti-btn--primary" data-action="next-products">${STR.nextCTA}</button>
         </div>
-      </div>
+      `)}
 
-      ${requiresSignature ? `
-        <div class="ti-flow-section" data-flow-step="signature">
-          <div class="ti-flow-title">${STR.signatureLabel}</div>
-          <div class="ti-hint">${STR.signatureHint}</div>
-          <div class="ti-signature">
-            <canvas class="ti-signature-canvas"></canvas>
-            <button type="button" class="ti-btn ti-btn--ghost ti-btn--xs" data-action="sig-clear">${STR.signatureClear}</button>
-          </div>
-          <div class="ti-flow-actions">
-            <button class="ti-btn ti-btn--ghost" data-action="prev-step">${STR.backCTA}</button>
-            <button class="ti-btn ti-btn--primary" data-action="next-signature">${STR.nextCTA}</button>
-          </div>
+      ${requiresSignature ? stepSection("signature", `
+        <div class="ti-flow-title">${STR.signatureLabel}</div>
+        <div class="ti-hint">${STR.signatureHint}</div>
+        <div class="ti-signature">
+          <canvas class="ti-signature-canvas"></canvas>
+          <button type="button" class="ti-btn ti-btn--ghost ti-btn--xs" data-action="sig-clear">${STR.signatureClear}</button>
         </div>
-      ` : ""}
+        <div class="ti-step-actions">
+          <button class="ti-btn ti-btn--ghost" data-action="prev">${STR.prevCTA}</button>
+          <button class="ti-btn ti-btn--primary" data-action="next-signature">${STR.nextCTA}</button>
+        </div>
+      `) : ""}
 
-      <div class="ti-flow-section" data-flow-step="observations">
+      ${stepSection("observations", `
         <div class="ti-flow-title">${STR.notesLabel}</div>
-        <textarea class="ti-textarea" data-field="observations" rows="4"></textarea>
+        <textarea class="ti-textarea" data-field="observations" rows="4" placeholder="Observations libres...">${escapeHTML(state.observations[id])}</textarea>
         <div class="ti-block">
           <div class="ti-label">${STR.signedPvLabel}</div>
           <div class="ti-hint">${STR.signedPvHint}</div>
           <input type="file" class="ti-file" data-signed-pv accept="application/pdf,image/*" />
         </div>
-        <div class="ti-flow-actions">
-          <button class="ti-btn ti-btn--ghost" data-action="prev-step">${STR.backCTA}</button>
+        <div class="ti-step-actions">
+          <button class="ti-btn ti-btn--ghost" data-action="prev">${STR.prevCTA}</button>
           <button class="ti-btn ti-btn--primary" data-action="next-observations">${STR.nextCTA}</button>
         </div>
-      </div>
+      `)}
 
-      <div class="ti-flow-section" data-flow-step="validate">
+      ${stepSection("validate", `
         <div class="ti-flow-title">Validation</div>
         <div class="ti-block">
           <div class="ti-label">${STR.checklistLabel}</div>
           <div class="ti-checklist" data-checklist></div>
         </div>
-        <div class="ti-flow-actions">
-          <button class="ti-btn ti-btn--ghost" data-action="prev-step">${STR.backCTA}</button>
+        <div class="ti-step-actions">
+          <button class="ti-btn ti-btn--ghost" data-action="prev">${STR.prevCTA}</button>
           <button class="ti-btn ti-btn--primary" data-action="confirm-validate">${STR.validateCTA}</button>
         </div>
-      </div>
+      `)}
     `;
 
-    const goTo = (next) => {
-      const idx = Math.max(1, Math.min(next, steps.length));
-      state.step = idx;
-      showFlowStep(container, steps, idx);
-    };
-    const goNext = () => goTo(state.step + 1);
-    const goPrev = () => goTo(state.step - 1);
+    bindFlowEvents(row, steps, currentStep, requiresPhotos, requiresSignature);
+  }
 
-    showFlowStep(container, steps, state.step);
+  function stepSection(key, content) {
+    return `<div class="ti-flow-section" data-flow="${key}">${content}</div>`;
+  }
 
-    container.querySelectorAll("[data-action='prev-step']").forEach((btn) => {
-      btn.addEventListener("click", () => goPrev());
+  function bindFlowEvents(row, steps, currentStep, requiresPhotos, requiresSignature) {
+    const id = row.id;
+    const flow = root.querySelector("[data-ti-flow]");
+    showFlowStep(steps[currentStep - 1].key);
+
+    // Stepper refresh
+    renderStepper(steps, currentStep);
+
+    // Arrive
+    flow.querySelector("[data-action='arrive']")?.addEventListener("click", () => {
+      markArrived(row);
+      goNext(steps);
     });
 
-    const checklistWrap = container.querySelector("[data-checklist]");
-    const list = getChecklist(row);
-    checklistWrap.innerHTML = "";
-    list.forEach((label, idx) => {
-      const item = document.createElement("label");
-      item.className = "ti-check";
-      item.innerHTML = `
-        <input type="checkbox" data-check-index="${idx}" />
-        <span>${escapeHTML(label)}</span>
-      `;
-      checklistWrap.appendChild(item);
+    // Diagnostic
+    const diag = flow.querySelector("[data-field='diagnostic']");
+    diag?.addEventListener("input", () => (state.diagnostic[id] = diag.value));
+    flow.querySelector("[data-action='next-diagnostic']")?.addEventListener("click", () => {
+      if (!state.diagnostic[id].trim()) return showToast("warn", STR.toastNeedDiagnostic);
+      goNext(steps);
     });
 
-    checklistWrap.addEventListener("change", (e) => {
-      const el = e.target;
-      if (el && el.matches("input[type='checkbox']")) {
-        const i = Number(el.dataset.checkIndex);
-        state.checklist[i] = el.checked;
-      }
+    // Resolution
+    const reso = flow.querySelector("[data-field='resolution']");
+    reso?.addEventListener("input", () => (state.resolution[id] = reso.value));
+    flow.querySelector("[data-action='next-resolution']")?.addEventListener("click", () => {
+      if (!state.resolution[id].trim()) return showToast("warn", STR.toastNeedResolution);
+      goNext(steps);
     });
 
-    const previews = container.querySelector("[data-previews]");
-    renderPreviews(previews, state.files);
+    // Photos
+    const previews = flow.querySelector("[data-previews]");
+    renderPreviews(id, previews, state.files[id]);
 
-    const cameraInput = container.querySelector("[data-camera]");
-    const galleryInput = container.querySelector("[data-gallery]");
-    const btnCamera = container.querySelector("[data-action='photo-camera']");
-    const btnGallery = container.querySelector("[data-action='photo-gallery']");
+    const cameraInput = flow.querySelector("[data-camera]");
+    const galleryInput = flow.querySelector("[data-gallery]");
+    flow.querySelector("[data-action='photo-camera']")?.addEventListener("click", () => cameraInput.click());
+    flow.querySelector("[data-action='photo-gallery']")?.addEventListener("click", () => galleryInput.click());
 
-    btnCamera.addEventListener("click", () => cameraInput.click());
-    btnGallery.addEventListener("click", () => galleryInput.click());
-
-    cameraInput.addEventListener("change", () => {
-      state.files = state.files.concat(Array.from(cameraInput.files || []));
-      renderPreviews(previews, state.files);
+    cameraInput?.addEventListener("change", () => {
+      appendFiles(id, cameraInput.files, previews);
       cameraInput.value = "";
     });
 
-    galleryInput.addEventListener("change", () => {
-      state.files = state.files.concat(Array.from(galleryInput.files || []));
-      renderPreviews(previews, state.files);
+    galleryInput?.addEventListener("change", () => {
+      appendFiles(id, galleryInput.files, previews);
       galleryInput.value = "";
     });
 
-    const productsWrap = container.querySelector("[data-products]");
-    const addProductBtn = container.querySelector('[data-action="add-product"]');
-    renderProducts(productsWrap);
-
-    addProductBtn.addEventListener("click", () => {
-      state.products.push(createEmptyProduct());
-      renderProducts(productsWrap);
-    });
-
-    const diag = container.querySelector("[data-field='diagnostic']");
-    const reso = container.querySelector("[data-field='resolution']");
-    const obs = container.querySelector("[data-field='observations']");
-    diag.addEventListener("input", () => (state.diagnostic = diag.value));
-    reso.addEventListener("input", () => (state.resolution = reso.value));
-    obs.addEventListener("input", () => (state.observations = obs.value));
-
-    const arriveBtn = container.querySelector("[data-action='arrive']");
-    arriveBtn.addEventListener("click", () => goNext());
-
-    const nextDiag = container.querySelector("[data-action='next-diagnostic']");
-    nextDiag.addEventListener("click", () => {
-      if (!state.diagnostic.trim()) return showToast("warn", STR.toastNeedDiagnostic);
-      goNext();
-    });
-
-    const nextRes = container.querySelector("[data-action='next-resolution']");
-    nextRes.addEventListener("click", () => {
-      if (!state.resolution.trim()) return showToast("warn", STR.toastNeedResolution);
-      goNext();
-    });
-
-    const nextPhotos = container.querySelector("[data-action='next-photos']");
-    nextPhotos.addEventListener("click", () => {
-      if (requiresPhotos && (!state.files || state.files.length === 0)) {
+    flow.querySelector("[data-action='next-photos']")?.addEventListener("click", () => {
+      if (requiresPhotos && (!state.files[id] || state.files[id].length === 0)) {
         return showToast("warn", STR.toastNeedPhotos);
       }
-      goNext();
+      goNext(steps);
     });
 
-    const nextProducts = container.querySelector("[data-action='next-products']");
-    nextProducts.addEventListener("click", () => {
-      if (!validateProducts().ok) return showToast("warn", STR.toastProductsInvalid);
-      goNext();
+    // Products
+    const productsWrap = flow.querySelector("[data-products]");
+    const addProductBtn = flow.querySelector("[data-action='add-product']");
+    ensureProductsLoaded(id).then(() => renderProducts(productsWrap, id));
+    addProductBtn?.addEventListener("click", () => {
+      state.products[id].push(createEmptyProduct());
+      renderProducts(productsWrap, id);
     });
 
+    flow.querySelector("[data-action='next-products']")?.addEventListener("click", () => {
+      if (!validateProducts(id).ok) return showToast("warn", STR.toastProductsInvalid);
+      goNext(steps);
+    });
+
+    // Signature
     if (requiresSignature) {
-      const canvas = container.querySelector(".ti-signature-canvas");
-      const clearBtn = container.querySelector('[data-action="sig-clear"]');
-      setupSignatureCanvas(canvas);
-      clearBtn.addEventListener("click", () => clearSignature(canvas));
-      const nextSig = container.querySelector("[data-action='next-signature']");
-      nextSig.addEventListener("click", () => {
-        if (!state.signatures.hasSignature) return showToast("warn", STR.toastNeedSignature);
-        goNext();
+      const canvas = flow.querySelector(".ti-signature-canvas");
+      const clearBtn = flow.querySelector("[data-action='sig-clear']");
+      setupSignatureCanvas(canvas, id);
+      clearBtn?.addEventListener("click", () => clearSignature(canvas, id));
+
+      flow.querySelector("[data-action='next-signature']")?.addEventListener("click", () => {
+        if (!state.signatures[id].hasSignature) return showToast("warn", STR.toastNeedSignature);
+        goNext(steps);
       });
     }
 
-    const signedPvInput = container.querySelector("[data-signed-pv]");
-    signedPvInput.addEventListener("change", () => {
-      state.signedPv = signedPvInput.files?.[0] || null;
+    // Observations + Signed PV
+    const obs = flow.querySelector("[data-field='observations']");
+    obs?.addEventListener("input", () => (state.observations[id] = obs.value));
+    const signedPvInput = flow.querySelector("[data-signed-pv]");
+    signedPvInput?.addEventListener("change", () => {
+      state.signedPv[id] = signedPvInput.files?.[0] || null;
     });
 
-    const nextObs = container.querySelector("[data-action='next-observations']");
-    nextObs.addEventListener("click", () => goNext());
+    flow.querySelector("[data-action='next-observations']")?.addEventListener("click", () => {
+      goNext(steps);
+    });
 
-    const confirmBtn = container.querySelector('[data-action="confirm-validate"]');
-    confirmBtn.addEventListener("click", async () => {
+    // Checklist
+    const checklistWrap = flow.querySelector("[data-checklist]");
+    if (checklistWrap) {
+      const list = getChecklist(row);
+      checklistWrap.innerHTML = "";
+      list.forEach((label, idx) => {
+        const item = document.createElement("label");
+        item.className = "ti-check";
+        item.innerHTML = `
+          <input type="checkbox" data-check-index="${idx}" ${state.checklist[id][idx] ? "checked" : ""} />
+          <span>${escapeHTML(label)}</span>
+        `;
+        checklistWrap.appendChild(item);
+      });
+      checklistWrap.addEventListener("change", (e) => {
+        const el = e.target;
+        if (el && el.matches("input[type='checkbox']")) {
+          const i = Number(el.dataset.checkIndex);
+          state.checklist[id][i] = el.checked;
+        }
+      });
+    }
+
+    // Validation
+    flow.querySelector("[data-action='confirm-validate']")?.addEventListener("click", async () => {
       if (!confirm(STR.confirmValidate)) return;
       await validateIntervention(row);
     });
+
+    // Prev buttons
+    flow.querySelectorAll("[data-action='prev']").forEach((btn) => {
+      btn.addEventListener("click", () => goPrev(steps));
+    });
   }
 
-  function showFlowStep(container, steps, step) {
-    const key = steps[step - 1]?.key || steps[0].key;
-    container.querySelectorAll("[data-flow-step]").forEach((el) => {
-      el.classList.toggle("is-active", el.dataset.flowStep === key);
-    });
-    container.querySelectorAll("[data-step-index]").forEach((el) => {
-      const s = Number(el.dataset.stepIndex);
-      el.classList.toggle("is-done", s < step);
-      el.classList.toggle("is-active", s === step);
+  function goNext(steps) {
+    const id = state.row.id;
+    const next = Math.min(getStep(id, steps.length) + 1, steps.length);
+    setStep(id, next);
+    showFlowStep(steps[next - 1].key);
+    renderStepper(steps, next);
+  }
+
+  function goPrev(steps) {
+    const id = state.row.id;
+    const prev = Math.max(getStep(id, steps.length) - 1, 1);
+    setStep(id, prev);
+    showFlowStep(steps[prev - 1].key);
+    renderStepper(steps, prev);
+  }
+
+  function showFlowStep(key) {
+    root.querySelectorAll("[data-flow]").forEach((el) => {
+      el.hidden = el.dataset.flow !== key;
     });
   }
 
   async function validateIntervention(row) {
+    const id = row.id;
+
     const requiresChecklist = getFlag(row.requires_checklist, CONFIG.REQUIRE_CHECKLIST_DEFAULT);
     const requiresPhotos = getFlag(row.requires_photos, CONFIG.REQUIRE_PHOTOS_DEFAULT);
     const requiresSignature = getFlag(row.requires_signature, CONFIG.REQUIRE_SIGNATURE_DEFAULT);
 
-    const checklistOk = !requiresChecklist || state.checklist.every(Boolean);
-    const photosOk = !requiresPhotos || (state.files && state.files.length > 0);
-    const signatureOk = !requiresSignature || state.signatures.hasSignature;
+    const checklistOk = !requiresChecklist || state.checklist[id].every(Boolean);
+    const photosOk = !requiresPhotos || (state.files[id] && state.files[id].length > 0);
+    const signatureOk = !requiresSignature || state.signatures[id].hasSignature;
 
-    if (!checklistOk) return showToast("warn", STR.toastNeedChecklist);
-    if (!photosOk) return showToast("warn", STR.toastNeedPhotos);
-    if (!signatureOk) return showToast("warn", STR.toastNeedSignature);
+    if (!checklistOk || !photosOk || !signatureOk) return;
 
-    const productsValidation = validateProducts();
-    if (!productsValidation.ok) return showToast("warn", STR.toastProductsInvalid);
+    if (!validateProducts(id).ok) {
+      showToast("warn", STR.toastProductsInvalid);
+      return;
+    }
 
     try {
       const completedAt = new Date().toISOString();
-      const photoUploads = await uploadPhotos(row.id, state.files || []);
-      const signedPvUpload = await uploadSignedPv(row.id, state.signedPv);
+
+      const photoUploads = await uploadPhotos(id, state.files[id] || []);
+      const signedPvUpload = await uploadSignedPv(id, state.signedPv[id]);
+
+      const observationsText = buildObservations(row, {
+        diagnostic: state.diagnostic[id],
+        resolution: state.resolution[id],
+        products: cleanProducts(state.products[id] || []),
+        photos: photoUploads,
+        signedPv: signedPvUpload,
+        notes: state.observations[id]
+      });
 
       const reportPayload = {
-        intervention_id: row.id,
+        intervention_id: id,
         user_id: state.userId,
-        checklist: state.checklist,
-        diagnostic: state.diagnostic || "",
-        resolution: state.resolution || "",
-        observations: buildObservations(row, {
-          diagnostic: state.diagnostic,
-          resolution: state.resolution,
-          products: cleanProducts(state.products),
-          photos: photoUploads,
-          signedPv: signedPvUpload,
-          notes: state.observations
-        }),
-        notes: state.observations || "",
+        checklist: state.checklist[id],
+        diagnostic: state.diagnostic[id] || "",
+        resolution: state.resolution[id] || "",
+        observations: observationsText,
+        notes: state.observations[id] || "",
         photos: photoUploads,
-        products: cleanProducts(state.products),
+        products: cleanProducts(state.products[id] || []),
         signed_pv: signedPvUpload,
         completed_at: completedAt
       };
 
       const reportOk = await saveReport(reportPayload);
-      const expensesOk = await saveExpenses(row.id);
+      const expensesOk = await saveExpenses(id);
 
-      let statusUpdated = true;
-      if (CONFIG.ENABLE_STATUS_UPDATE) {
-        statusUpdated = await updateIntervention(row.id, completedAt, row, reportPayload.observations, signedPvUpload);
-      }
+      const statusUpdated = await updateIntervention(id, completedAt, row, observationsText, signedPvUpload);
 
       if (statusUpdated) showToast("success", STR.toastSaved);
       else showToast("warn", STR.toastSavedPartial);
 
       if (!reportOk) showToast("warn", STR.toastReportMissing);
       if (!expensesOk) showToast("warn", STR.toastExpensesMissing);
+
     } catch (e) {
       console.error(e);
       showToast("error", STR.toastError);
     }
+  }
+
+  // -------- Products (no re-render on input) --------
+  function renderProducts(container, interventionId) {
+    container.innerHTML = "";
+    const items = state.products[interventionId] || [];
+
+    if (!items.length) {
+      container.innerHTML = `<div class="ti-products-empty">Aucun produit ajoute</div>`;
+    } else {
+      items.forEach((item, idx) => appendProductRow(container, interventionId, item, idx));
+    }
+
+    updateProductsTotal(container, interventionId);
+  }
+
+  function appendProductRow(container, interventionId, item, idx) {
+    const row = document.createElement("div");
+    row.className = "ti-product-row";
+    row.dataset.index = String(idx);
+
+    row.innerHTML = `
+      <input class="ti-input" list="ti-products-list" data-field="name" placeholder="Produit / piece" value="${escapeHTML(item.name || "")}" />
+      <input class="ti-input ti-input--xs" data-field="qty" type="number" inputmode="numeric" min="1" step="1" placeholder="Qté" value="${item.qty || ""}" />
+      <input class="ti-input ti-input--xs" data-field="unitPrice" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Prix" value="${item.unitPrice || ""}" />
+      <div class="ti-product-total">${formatMoney(computeLineTotal(item))}</div>
+      <label class="ti-check-inline">
+        <input type="checkbox" data-field="paidByTech" ${item.paidByTech ? "checked" : ""} />
+        Paye par tech
+      </label>
+      <input class="ti-input" data-field="note" placeholder="Note" value="${escapeHTML(item.note || "")}" />
+      <button class="ti-btn ti-btn--ghost ti-btn--xs" data-action="remove-product">Supprimer</button>
+    `;
+
+    row.addEventListener("input", (e) => {
+      const field = e.target.dataset.field;
+      const arr = state.products[interventionId];
+
+      if (field === "paidByTech") {
+        arr[idx].paidByTech = e.target.checked;
+      } else if (field === "qty") {
+        arr[idx].qty = toNumber(e.target.value);
+      } else if (field === "unitPrice") {
+        arr[idx].unitPrice = toNumber(e.target.value);
+      } else if (field === "name") {
+        arr[idx].name = e.target.value;
+        const catalog = findCatalogItem(arr[idx].name);
+        if (catalog && !arr[idx].unitPrice) {
+          arr[idx].unitPrice = Number(catalog.price || 0);
+          row.querySelector('[data-field="unitPrice"]').value = arr[idx].unitPrice || "";
+        }
+      } else if (field === "note") {
+        arr[idx].note = e.target.value;
+      }
+
+      row.querySelector(".ti-product-total").textContent = formatMoney(computeLineTotal(arr[idx]));
+      updateProductsTotal(container, interventionId);
+    });
+
+    row.querySelector("[data-action='remove-product']")?.addEventListener("click", () => {
+      state.products[interventionId].splice(idx, 1);
+      renderProducts(container, interventionId);
+    });
+
+    container.appendChild(row);
+  }
+
+  function updateProductsTotal(container, interventionId) {
+    const items = state.products[interventionId] || [];
+    const total = computeProductsTotal(items);
+    const totalPaidByTech = computeProductsTotal(items, true);
+    const totalEl = container.closest(".ti-flow-section").querySelector("[data-products-total]");
+    totalEl.textContent = `Total: ${formatMoney(total)} | A rembourser: ${formatMoney(totalPaidByTech)}`;
+  }
+
+  function createEmptyProduct() {
+    return { name: "", qty: 1, unitPrice: 0, paidByTech: false, note: "" };
+  }
+
+  function validateProducts(interventionId) {
+    const items = state.products[interventionId] || [];
+    for (const it of items) {
+      const hasAny = (it.name || it.qty || it.unitPrice || it.note);
+      if (!hasAny) continue;
+      if (!it.name || toNumber(it.qty) <= 0 || toNumber(it.unitPrice) < 0) return { ok: false };
+    }
+    return { ok: true };
+  }
+
+  function cleanProducts(items) {
+    return (items || [])
+      .filter((it) => it.name && toNumber(it.qty) > 0)
+      .map((it) => ({
+        name: it.name,
+        qty: toNumber(it.qty),
+        unitPrice: toNumber(it.unitPrice),
+        total: computeLineTotal(it),
+        paidByTech: !!it.paidByTech,
+        note: it.note || ""
+      }));
+  }
+
+  function computeLineTotal(item) {
+    const qty = toNumber(item.qty);
+    const price = toNumber(item.unitPrice);
+    return qty * price;
+  }
+
+  function computeProductsTotal(items, onlyPaidByTech = false) {
+    return (items || []).reduce((acc, it) => {
+      if (onlyPaidByTech && !it.paidByTech) return acc;
+      return acc + computeLineTotal(it);
+    }, 0);
+  }
+
+  async function ensureProductsLoaded(interventionId) {
+    if (state.productsLoaded[interventionId]) return;
+    state.productsLoaded[interventionId] = true;
+
+    try {
+      const res = await supabase
+        .from(CONFIG.EXPENSES_TABLE)
+        .select("*")
+        .eq("intervention_id", interventionId)
+        .eq("user_id", state.userId);
+
+      if (res.error) return;
+
+      if (Array.isArray(res.data) && res.data.length) {
+        state.products[interventionId] = res.data.map((r) => ({
+          name: r.label || r.name || "",
+          qty: Number(r.quantity || 1),
+          unitPrice: Number(r.unit_price || r.price || 0),
+          paidByTech: !!r.paid_by_tech,
+          note: r.note || ""
+        }));
+      }
+    } catch (_) {}
+  }
+
+  async function loadCatalog() {
+    if (state.catalogLoaded) return;
+    state.catalogLoaded = true;
+
+    const res = await supabase.from(CONFIG.PRODUCTS_TABLE).select("*").limit(500);
+    if (res.error) return;
+
+    state.catalog = (res.data || [])
+      .map((r) => ({
+        name: r.name || r.title || r.label,
+        price: r.price ?? r.unit_price ?? r.cost ?? null
+      }))
+      .filter((r) => r.name);
+
+    renderCatalogList();
+  }
+
+  function renderCatalogList() {
+    const list = root.querySelector("#ti-products-list");
+    if (!list) return;
+    list.innerHTML = state.catalog
+      .map((p) => `<option value="${escapeHTML(p.name)}"></option>`)
+      .join("");
+  }
+
+  function findCatalogItem(name) {
+    if (!name) return null;
+    const n = String(name).trim().toLowerCase();
+    return state.catalog.find((p) => String(p.name).trim().toLowerCase() === n) || null;
+  }
+
+  // -------- Photos (preview + delete) --------
+  function appendFiles(id, fileList, previews) {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    state.files[id] = (state.files[id] || []).concat(files);
+    renderPreviews(id, previews, state.files[id]);
+  }
+
+  function renderPreviews(id, container, files) {
+    clearPreviews(id);
+    container.innerHTML = "";
+    if (!files || !files.length) return;
+
+    state.previews[id] = files.map((file, idx) => {
+      const url = URL.createObjectURL(file);
+      const item = document.createElement("div");
+      item.className = "ti-preview";
+      item.innerHTML = `
+        <img src="${url}" alt="photo" />
+        <div class="ti-preview-meta">${escapeHTML(file.name)} (${formatBytes(file.size)})</div>
+        <button class="ti-preview-remove" data-remove="${idx}">Supprimer</button>
+      `;
+      item.querySelector("img").addEventListener("click", () => window.open(url, "_blank"));
+      item.querySelector("[data-remove]").addEventListener("click", () => {
+        state.files[id].splice(idx, 1);
+        renderPreviews(id, container, state.files[id]);
+      });
+      container.appendChild(item);
+      return url;
+    });
+  }
+
+  function clearPreviews(id) {
+    const urls = state.previews[id] || [];
+    urls.forEach((u) => URL.revokeObjectURL(u));
+    state.previews[id] = [];
+  }
+
+  // -------- Signature --------
+  function setupSignatureCanvas(canvas, id) {
+    if (!canvas) return;
+    const ratio = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = Math.max(1, Math.floor(rect.width * ratio));
+    canvas.height = Math.max(1, Math.floor(160 * ratio));
+    canvas.style.height = "160px";
+    canvas.style.touchAction = "none";
+
+    const ctx = canvas.getContext("2d");
+    ctx.lineWidth = 2 * ratio;
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "#0f172a";
+
+    let drawing = false;
+
+    const getPos = (e) => {
+      const r = canvas.getBoundingClientRect();
+      return { x: (e.clientX - r.left) * ratio, y: (e.clientY - r.top) * ratio };
+    };
+
+    canvas.addEventListener("pointerdown", (e) => {
+      drawing = true;
+      const p = getPos(e);
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      state.signatures[id].hasSignature = true;
+    });
+
+    canvas.addEventListener("pointermove", (e) => {
+      if (!drawing) return;
+      const p = getPos(e);
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+    });
+
+    const end = () => (drawing = false);
+    canvas.addEventListener("pointerup", end);
+    canvas.addEventListener("pointerleave", end);
+
+    state.signatures[id].canvas = canvas;
+  }
+
+  function clearSignature(canvas, id) {
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    state.signatures[id].hasSignature = false;
+  }
+
+  // -------- Uploads / Save --------
+  async function uploadPhotos(interventionId, files) {
+    if (!files || !files.length) return [];
+
+    const bucket = CONFIG.STORAGE_BUCKET;
+    const uploads = await Promise.all(files.map(async (file) => {
+      const ext = getFileExtension(file.name);
+      const name = `${Date.now()}_${randomId()}.${ext || "jpg"}`;
+      const path = `interventions/${interventionId}/${name}`;
+
+      const { error } = await supabase.storage.from(bucket).upload(path, file, { cacheControl: "3600", upsert: false });
+      if (error) throw error;
+
+      const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+      return { path, url: data?.publicUrl || null, name: file.name, size: file.size, type: file.type || null };
+    }));
+
+    return uploads;
+  }
+
+  async function uploadSignedPv(interventionId, file) {
+    if (!file) return null;
+
+    const bucket = CONFIG.STORAGE_BUCKET;
+    const ext = getFileExtension(file.name);
+    const name = `pv_signed_${Date.now()}_${randomId()}.${ext || "pdf"}`;
+    const path = `interventions/${interventionId}/${name}`;
+
+    const { error } = await supabase.storage.from(bucket).upload(path, file, { cacheControl: "3600", upsert: true });
+    if (error) return null;
+
+    const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+    return { path, url: data?.publicUrl || null, name: file.name, size: file.size, type: file.type || null };
+  }
+
+  async function saveReport(payload) {
+    const { error } = await supabase.from(CONFIG.REPORTS_TABLE).upsert(payload, { onConflict: "intervention_id,user_id" });
+    if (error) return !isTableMissing(error);
+    return true;
+  }
+
+  async function saveExpenses(interventionId) {
+    const rows = cleanProducts(state.products[interventionId] || []);
+    if (!rows.length) return true;
+
+    const del = await supabase.from(CONFIG.EXPENSES_TABLE).delete().eq("intervention_id", interventionId).eq("user_id", state.userId);
+    if (del.error && isTableMissing(del.error)) return false;
+
+    const payload = rows.map((r) => ({
+      intervention_id: interventionId,
+      user_id: state.userId,
+      label: r.name,
+      quantity: r.qty,
+      unit_price: r.unitPrice,
+      total: r.total,
+      paid_by_tech: r.paidByTech,
+      note: r.note || null
+    }));
+
+    const ins = await supabase.from(CONFIG.EXPENSES_TABLE).insert(payload);
+    if (ins.error && isTableMissing(ins.error)) return false;
+    return !ins.error;
+  }
+
+  async function updateIntervention(id, completedAt, row, observationsText, signedPv) {
+    const payload = { status: CONFIG.STATUS_DONE };
+    if (hasField(row, "completed_at")) payload.completed_at = completedAt;
+
+    const obsField = findExistingField(row, ["observations", "tech_observations", "report_notes", "notes_tech"]);
+    if (obsField) payload[obsField] = observationsText;
+
+    if (signedPv) {
+      const pvField = findExistingField(row, [CONFIG.SIGNED_PV_URL_FIELD, "pv_signed_url"]);
+      const pvPathField = findExistingField(row, [CONFIG.SIGNED_PV_PATH_FIELD, "pv_signed_path"]);
+      if (pvField && signedPv.url) payload[pvField] = signedPv.url;
+      if (pvPathField && signedPv.path) payload[pvPathField] = signedPv.path;
+    }
+
+    const res = await supabase.from("interventions").update(payload).eq("id", id);
+    if (!res.error) return true;
+
+    // fallback sans statut si contrainte
+    if (String(res.error?.code || "") === "23514") {
+      const fallback = { ...payload };
+      delete fallback.status;
+      const res2 = await supabase.from("interventions").update(fallback).eq("id", id);
+      return !res2.error;
+    }
+
+    return false;
+  }
+
+  async function markArrived(row) {
+    const arrivedAt = new Date().toISOString();
+    const payload = {};
+    if (hasField(row, "arrived_at")) payload.arrived_at = arrivedAt;
+    if (Object.keys(payload).length) {
+      await supabase.from("interventions").update(payload).eq("id", row.id);
+    }
+  }
+
+  // -------- Utils --------
+  function buildSteps(row) {
+    const steps = [
+      { key: "arrive", label: STR.stepArrive },
+      { key: "diagnostic", label: STR.stepDiagnostic },
+      { key: "resolution", label: STR.stepResolution },
+      { key: "photos", label: STR.stepPhotos },
+      { key: "products", label: STR.stepProducts }
+    ];
+    if (getFlag(row.requires_signature, CONFIG.REQUIRE_SIGNATURE_DEFAULT)) {
+      steps.push({ key: "signature", label: STR.stepSignature });
+    }
+    steps.push({ key: "observations", label: STR.stepObservations });
+    steps.push({ key: "validate", label: STR.stepValidate });
+    return steps;
+  }
+
+  function getInterventionId() {
+    const params = new URLSearchParams(location.search);
+    return params.get("id") || root?.dataset?.interventionId || "";
+  }
+
+  function setStatus(msg) {
+    const box = root.querySelector("[data-ti-status-box]");
+    if (box) box.textContent = msg;
   }
 
   function getChecklist(row) {
@@ -518,108 +966,91 @@
     ];
   }
 
-  function renderPreviews(container, files) {
-    if (!container) return;
+  function getFlag(value, fallback) {
+    if (typeof value === "boolean") return value;
+    return !!fallback;
+  }
 
-    const prev = state.previews || [];
-    prev.forEach((u) => URL.revokeObjectURL(u));
-    state.previews = [];
+  function getStatusLabel(status) {
+    const s = String(status || "").toLowerCase();
+    if (s === "planned") return "Planifiee";
+    if (s === "pending") return "En attente";
+    if (s === "in_progress") return "En cours";
+    if (s === "confirmed") return "Confirmee";
+    if (s === "done") return "Terminee";
+    if (s === "canceled") return "Annulee";
+    return status ? capitalize(status) : "A faire";
+  }
 
-    container.innerHTML = "";
-    if (!files || !files.length) return;
+  function formatDateFR(value) {
+    if (!value) return "";
+    let s = String(value).trim();
+    if (/^\d{4}-\d{2}-\d{2} \d/.test(s)) s = s.replace(" ", "T");
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return String(value);
 
-    files.forEach((file, index) => {
-      const url = URL.createObjectURL(file);
-      state.previews.push(url);
+    return new Intl.DateTimeFormat("fr-FR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit"
+    }).format(d);
+  }
 
-      const item = document.createElement("div");
-      item.className = "ti-preview";
-      item.innerHTML = `
-        <div class="ti-preview-media">
-          <img src="${url}" alt="photo" data-preview-index="${index}" />
-          <button type="button" class="ti-preview-remove" data-remove-index="${index}">Supprimer</button>
-        </div>
-        <div class="ti-preview-meta">${escapeHTML(file.name)} (${formatBytes(file.size)})</div>
-      `;
-      container.appendChild(item);
-    });
+  function normalizePhone(phone) {
+    if (!phone) return null;
+    let p = String(phone).replace(/[^\d+]/g, "");
+    if (p.startsWith("00")) p = "+" + p.slice(2);
+    if (/^0\d{9}$/.test(p)) p = "+33" + p.slice(1);
+    return p || null;
+  }
 
-    if (container.dataset.bound !== "1") {
-      container.dataset.bound = "1";
-      container.addEventListener("click", (e) => {
-        const removeBtn = e.target.closest("[data-remove-index]");
-        if (removeBtn) {
-          const idx = Number(removeBtn.dataset.removeIndex);
-          state.files.splice(idx, 1);
-          renderPreviews(container, state.files);
-          return;
+  function formatPhoneReadable(phone) {
+    if (!phone) return "";
+    let p = String(phone).replace(/[^\d+]/g, "");
+    if (p.startsWith("00")) p = "+" + p.slice(2);
+
+    if (p.startsWith("+33")) {
+      const rest = p.slice(3);
+      const grouped = rest.replace(/(\d)(?=(\d{2})+$)/g, "$1 ").trim();
+      return `+33 ${grouped}`;
+    }
+
+    if (/^0\d{9}$/.test(p)) {
+      return p.replace(/(\d{2})(?=\d)/g, "$1 ").trim();
+    }
+
+    return p.replace(/(\d{2})(?=\d)/g, "$1 ").trim();
+  }
+
+  function getPvUrl(row) {
+    const keys = [
+      CONFIG.PV_URL_FIELD,
+      "pv_url",
+      "pv",
+      "pv_file",
+      "pv_blank",
+      CONFIG.PV_PATH_FIELD,
+      "pv_path"
+    ];
+    for (const k of keys) {
+      const v = row?.[k];
+      if (!v) continue;
+      if (typeof v === "string") {
+        if (/^https?:\/\//i.test(v)) return v;
+        const { data } = supabase.storage.from(CONFIG.STORAGE_BUCKET).getPublicUrl(String(v));
+        return data?.publicUrl || "";
+      }
+      if (typeof v === "object") {
+        if (v.url) return v.url;
+        if (v.path) {
+          const { data } = supabase.storage.from(CONFIG.STORAGE_BUCKET).getPublicUrl(String(v.path));
+          return data?.publicUrl || "";
         }
-        const img = e.target.closest("img[data-preview-index]");
-        if (img) window.open(img.src, "_blank");
-      });
-    }
-  }
-
-  function renderProducts(container) {
-    if (!container) return;
-    if (!state.products.length) {
-      container.innerHTML = `<div class="ti-products-empty">Aucun produit ajoute</div>`;
-    } else {
-      container.innerHTML = state.products.map((item, idx) => productRowTemplate(item, idx)).join("");
-    }
-  }
-
-  function productRowTemplate(item, idx) {
-    const total = computeLineTotal(item);
-    return `
-      <div class="ti-product-row" data-product-row data-index="${idx}">
-        <input class="ti-input" data-field="name" placeholder="Produit / piece" value="${escapeHTML(item.name || "")}" />
-        <input class="ti-input ti-input--xs" data-field="qty" type="number" min="1" step="1" placeholder="Qté" value="${item.qty || ""}" />
-        <input class="ti-input ti-input--xs" data-field="unitPrice" type="number" min="0" step="0.01" placeholder="Prix" value="${item.unitPrice || ""}" />
-        <div class="ti-product-total" data-total>${formatMoney(total)}</div>
-        <label class="ti-check-inline">
-          <input type="checkbox" data-field="paidByTech" ${item.paidByTech ? "checked" : ""} />
-          Paye par tech
-        </label>
-        <input class="ti-input" data-field="note" placeholder="Note" value="${escapeHTML(item.note || "")}" />
-        <button class="ti-btn ti-btn--ghost ti-btn--xs" data-action="remove-product" data-index="${idx}">Supprimer</button>
-      </div>
-    `;
-  }
-
-  function createEmptyProduct() {
-    return { name: "", qty: 1, unitPrice: 0, paidByTech: false, note: "" };
-  }
-
-  function computeLineTotal(item) {
-    const qty = toNumber(item.qty);
-    const price = toNumber(item.unitPrice);
-    return qty * price;
-  }
-
-  function validateProducts() {
-    const items = state.products || [];
-    for (const it of items) {
-      const hasAny = (it.name || it.qty || it.unitPrice || it.note);
-      if (!hasAny) continue;
-      if (!it.name || toNumber(it.qty) <= 0 || toNumber(it.unitPrice) < 0) {
-        return { ok: false };
       }
     }
-    return { ok: true };
-  }
-
-  function cleanProducts(items) {
-    return (items || [])
-      .filter((it) => it.name && toNumber(it.qty) > 0)
-      .map((it) => ({
-        name: it.name,
-        qty: toNumber(it.qty),
-        unitPrice: toNumber(it.unitPrice),
-        total: computeLineTotal(it),
-        paidByTech: !!it.paidByTech,
-        note: it.note || ""
-      }));
+    return "";
   }
 
   function buildObservations(row, parts) {
@@ -652,204 +1083,16 @@
     return lines.join("\n");
   }
 
-  async function updateIntervention(id, completedAt, row, observationsText, signedPv) {
-    const payload = { status: CONFIG.STATUS_DONE, completed_at: completedAt };
-
-    let { error } = await supabase
-      .from("interventions")
-      .update(payload)
-      .eq("id", id);
-
-    if (error && isStatusConstraintError(error)) {
-      const fallback = ["done", "completed", "complete"];
-      for (const s of fallback) {
-        const retry = await supabase.from("interventions").update({ ...payload, status: s }).eq("id", id);
-        if (!retry.error) return true;
-      }
-    }
-
-    return !error;
-  }
-
-  function isStatusConstraintError(err) {
-    const msg = String(err?.message || "");
-    return String(err?.code || "") === "23514" || msg.includes("status_check");
-  }
-
-  async function uploadPhotos(interventionId, files) {
-    if (!files || !files.length) return [];
-    const bucket = CONFIG.STORAGE_BUCKET;
-    const uploads = await Promise.all(files.map(async (file) => {
-      const ext = getFileExtension(file.name);
-      const name = `${Date.now()}_${randomId()}.${ext || "jpg"}`;
-      const path = `interventions/${interventionId}/${name}`;
-      const { error } = await supabase.storage.from(bucket).upload(path, file, { cacheControl: "3600", upsert: false });
-      if (error) throw error;
-      const { data } = supabase.storage.from(bucket).getPublicUrl(path);
-      return { path, url: data?.publicUrl || null };
-    }));
-    return uploads;
-  }
-
-  async function uploadSignedPv(interventionId, file) {
-    if (!file) return null;
-    const bucket = CONFIG.STORAGE_BUCKET;
-    const ext = getFileExtension(file.name);
-    const name = `pv_signed_${Date.now()}_${randomId()}.${ext || "pdf"}`;
-    const path = `interventions/${interventionId}/${name}`;
-    const { error } = await supabase.storage.from(bucket).upload(path, file, { cacheControl: "3600", upsert: true });
-    if (error) return null;
-    const { data } = supabase.storage.from(bucket).getPublicUrl(path);
-    return { path, url: data?.publicUrl || null };
-  }
-
-  async function saveReport(payload) {
-    const { error } = await supabase
-      .from(CONFIG.REPORTS_TABLE)
-      .upsert(payload, { onConflict: "intervention_id,user_id" });
-    return !error;
-  }
-
-  async function saveExpenses(interventionId) {
-    const rows = cleanProducts(state.products || []);
-    if (!rows.length) return true;
-
-    await supabase.from(CONFIG.EXPENSES_TABLE).delete().eq("intervention_id", interventionId).eq("user_id", state.userId);
-
-    const payload = rows.map((r) => ({
-      intervention_id: interventionId,
-      user_id: state.userId,
-      label: r.name,
-      quantity: r.qty,
-      unit_price: r.unitPrice,
-      total: r.total,
-      paid_by_tech: r.paidByTech,
-      note: r.note || null
-    }));
-
-    const ins = await supabase.from(CONFIG.EXPENSES_TABLE).insert(payload);
-    return !ins.error;
-  }
-
-  function showToast(type, message) {
-    const el = document.createElement("div");
-    el.className = `ti-toast ti-toast--${type}`;
-    el.textContent = message;
-    els.toasts.appendChild(el);
-    setTimeout(() => el.remove(), 3200);
-  }
-
-  function renderShell(rootEl) {
-    rootEl.innerHTML = `
-      <div class="ti-shell">
-        <div class="ti-header">
-          <div>
-            <div class="ti-eyebrow">${STR.subtitle}</div>
-            <div class="ti-h1">${STR.title}</div>
-          </div>
-        </div>
-        <div class="ti-list" data-ti-list></div>
-        <div class="ti-toasts" data-ti-toasts></div>
-      </div>
-    `;
-    const list = rootEl.querySelector("[data-ti-list]");
-    const toasts = rootEl.querySelector("[data-ti-toasts]");
-    return { list, toasts };
-  }
-
-  function renderEmpty(listEl) {
-    listEl.innerHTML = `
-      <div class="ti-empty">
-        <div class="ti-empty-title">${STR.emptyTitle}</div>
-        <div class="ti-empty-body">${STR.emptyBody}</div>
-      </div>
-    `;
-  }
-
-  function renderError(listEl) {
-    listEl.innerHTML = `
-      <div class="ti-empty">
-        <div class="ti-empty-title">${STR.errorTitle}</div>
-        <div class="ti-empty-body">${STR.errorBody}</div>
-      </div>
-    `;
-  }
-
-  function getChecklist(row) {
-    if (Array.isArray(row.checklist) && row.checklist.length) return row.checklist;
-    return [
-      "Confirmer le contact sur place",
-      "Photos avant intervention",
-      "Diagnostic / verification",
-      "Realisation de l'intervention",
-      "Tests de fonctionnement",
-      "Explication au client",
-      "Photos apres intervention",
-      "Nettoyage de la zone"
-    ];
-  }
-
-  function getFlag(value, fallback) {
-    if (typeof value === "boolean") return value;
-    return !!fallback;
-  }
-
-  function formatDateFR(value) {
+  function infoRow(label, value, isHtml = false) {
     if (!value) return "";
-    let s = String(value).trim();
-    if (/^\d{4}-\d{2}-\d{2} \d/.test(s)) s = s.replace(" ", "T");
-    const d = new Date(s);
-    if (isNaN(d.getTime())) return String(value);
-    return new Intl.DateTimeFormat("fr-FR", {
-      day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit"
-    }).format(d);
-  }
-
-  function normalizePhone(phone) {
-    if (!phone) return null;
-    let p = String(phone).replace(/[^\d+]/g, "");
-    if (p.startsWith("00")) p = "+" + p.slice(2);
-    if (/^0\d{9}$/.test(p)) p = "+33" + p.slice(1);
-    return p || null;
-  }
-
-  function formatPhoneReadable(phone) {
-    if (!phone) return "";
-    let p = String(phone).replace(/[^\d+]/g, "");
-    if (p.startsWith("00")) p = "+" + p.slice(2);
-
-    if (p.startsWith("+33")) {
-      const rest = p.slice(3);
-      const grouped = rest.replace(/(\d)(?=(\d{2})+$)/g, "$1 ").trim();
-      return `+33 ${grouped}`;
-    }
-
-    if (/^0\d{9}$/.test(p)) {
-      return p.replace(/(\d{2})(?=\d)/g, "$1 ").trim();
-    }
-
-    return p.replace(/(\d{2})(?=\d)/g, "$1 ").trim();
-  }
-
-  function getPvUrl(row) {
-    const keys = ["pv_blank_url", "pv_url", "pv", "pv_file", "pv_blank", "pv_blank_path", "pv_path"];
-    for (const k of keys) {
-      const v = row?.[k];
-      if (!v) continue;
-      if (typeof v === "string") {
-        if (/^https?:\/\//i.test(v)) return v;
-        const { data } = supabase.storage.from(CONFIG.STORAGE_BUCKET).getPublicUrl(String(v));
-        return data?.publicUrl || "";
-      }
-      if (typeof v === "object") {
-        if (v.url) return v.url;
-        if (v.path) {
-          const { data } = supabase.storage.from(CONFIG.STORAGE_BUCKET).getPublicUrl(String(v.path));
-          return data?.publicUrl || "";
-        }
-      }
-    }
-    return "";
+    const safeLabel = escapeHTML(label);
+    const safeValue = isHtml ? value : escapeHTML(value);
+    return `
+      <div class="ti-info">
+        <div class="ti-label">${safeLabel}</div>
+        <div class="ti-value">${safeValue}</div>
+      </div>
+    `;
   }
 
   function formatMoney(value) {
@@ -859,23 +1102,31 @@
     return new Intl.NumberFormat("fr-FR", { style: "currency", currency: CONFIG.CURRENCY }).format(num);
   }
 
-  function escapeHTML(str) {
-    return String(str || "")
-      .replace(/&/g, "&amp;").replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;").replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
-  }
-
-  function infoRow(label, value, isHtml = false) {
-    if (!value) return "";
-    const safeLabel = escapeHTML(label);
-    const safeValue = isHtml ? value : escapeHTML(value);
-    return `<div class="ti-info"><div class="ti-label">${safeLabel}</div><div class="ti-value">${safeValue}</div></div>`;
-  }
-
   function toNumber(v) {
     const n = Number(v);
     return Number.isNaN(n) ? 0 : n;
+  }
+
+  function escapeHTML(str) {
+    return String(str || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function formatBytes(bytes) {
+    if (!bytes && bytes !== 0) return "";
+    const sizes = ["B", "KB", "MB", "GB"];
+    const i = Math.min(sizes.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+    const val = bytes / Math.pow(1024, i);
+    return `${val.toFixed(val >= 10 || i === 0 ? 0 : 1)} ${sizes[i]}`;
+  }
+
+  function capitalize(str) {
+    const s = String(str || "");
+    return s.charAt(0).toUpperCase() + s.slice(1);
   }
 
   function randomId() {
@@ -888,63 +1139,155 @@
     return parts.length > 1 ? parts.pop().toLowerCase() : "";
   }
 
-  function formatBytes(bytes) {
-    if (!bytes && bytes !== 0) return "";
-    const sizes = ["B", "KB", "MB", "GB"];
-    const i = Math.min(sizes.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
-    const val = bytes / Math.pow(1024, i);
-    return `${val.toFixed(val >= 10 || i === 0 ? 0 : 1)} ${sizes[i]}`;
+  function isTableMissing(error) {
+    const msg = String(error?.message || "");
+    return msg.includes("Could not find the table") || String(error?.code || "") === "PGRST205";
   }
 
-  function setupSignatureCanvas(canvas) {
-    if (!canvas) return;
-    const ratio = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = Math.max(1, Math.floor(rect.width * ratio));
-    canvas.height = Math.max(1, Math.floor(160 * ratio));
-    canvas.style.height = "160px";
-    const ctx = canvas.getContext("2d");
-    ctx.lineWidth = 2 * ratio;
-    ctx.lineCap = "round";
-    ctx.strokeStyle = "#0f172a";
-
-    let drawing = false;
-
-    const getPos = (e) => {
-      const r = canvas.getBoundingClientRect();
-      return {
-        x: (e.clientX - r.left) * ratio,
-        y: (e.clientY - r.top) * ratio
-      };
-    };
-
-    canvas.addEventListener("pointerdown", (e) => {
-      drawing = true;
-      const p = getPos(e);
-      ctx.beginPath();
-      ctx.moveTo(p.x, p.y);
-      state.signatures.hasSignature = true;
-    });
-
-    canvas.addEventListener("pointermove", (e) => {
-      if (!drawing) return;
-      const p = getPos(e);
-      ctx.lineTo(p.x, p.y);
-      ctx.stroke();
-    });
-
-    const end = () => (drawing = false);
-    canvas.addEventListener("pointerup", end);
-    canvas.addEventListener("pointerleave", end);
-
-    state.signatures.canvas = canvas;
+  function hasField(row, key) {
+    return row && Object.prototype.hasOwnProperty.call(row, key);
   }
 
-  function clearSignature(canvas) {
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    state.signatures.hasSignature = false;
+  function findExistingField(row, keys) {
+    for (const k of keys) if (hasField(row, k)) return k;
+    return "";
+  }
+
+  function showToast(type, message) {
+    const el = document.createElement("div");
+    el.className = `ti-toast ti-toast--${type}`;
+    el.textContent = message;
+    root.querySelector("[data-ti-toasts]").appendChild(el);
+    setTimeout(() => el.remove(), 3200);
+  }
+
+  function loadSteps() {
+    try {
+      const raw = localStorage.getItem(CONFIG.STEPS_STORAGE_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch (_) { return {}; }
+  }
+
+  function saveSteps() {
+    try { localStorage.setItem(CONFIG.STEPS_STORAGE_KEY, JSON.stringify(state.steps)); }
+    catch (_) {}
+  }
+
+  function getStep(id, max = 999) {
+    const v = Number(state.steps[id] || 1);
+    return Math.max(1, Math.min(v, max));
+  }
+
+  function setStep(id, step) {
+    state.steps[id] = step;
+    saveSteps();
+  }
+
+  function openMapSheet(address) {
+    if (!address) return;
+    mapAddress = address;
+    const sheet = root.querySelector("[data-ti-sheet]");
+    sheet.hidden = false;
+    document.body.classList.add("ti-sheet-open");
+  }
+
+  function closeMapSheet() {
+    const sheet = root.querySelector("[data-ti-sheet]");
+    sheet.hidden = true;
+    document.body.classList.remove("ti-sheet-open");
+  }
+
+  function openMapProvider(provider) {
+    const url = buildMapUrl(provider, mapAddress);
+    if (url) window.open(url, "_blank");
+    closeMapSheet();
+  }
+
+  function buildMapUrl(provider, address) {
+    const q = encodeURIComponent(String(address).trim());
+    if (provider === "apple") return `https://maps.apple.com/?daddr=${q}`;
+    if (provider === "google") return `https://www.google.com/maps/dir/?api=1&destination=${q}`;
+    if (provider === "waze") return `https://waze.com/ul?q=${q}&navigate=yes`;
+    return "";
+  }
+
+  function applyConfigOverrides(rootEl) {
+    const d = rootEl.dataset;
+    if (d.storageBucket) CONFIG.STORAGE_BUCKET = d.storageBucket;
+    if (d.reportsTable) CONFIG.REPORTS_TABLE = d.reportsTable;
+    if (d.expensesTable) CONFIG.EXPENSES_TABLE = d.expensesTable;
+    if (d.productsTable) CONFIG.PRODUCTS_TABLE = d.productsTable;
+    if (d.requireChecklist) CONFIG.REQUIRE_CHECKLIST_DEFAULT = d.requireChecklist === "true";
+    if (d.requirePhotos) CONFIG.REQUIRE_PHOTOS_DEFAULT = d.requirePhotos === "true";
+    if (d.requireSignature) CONFIG.REQUIRE_SIGNATURE_DEFAULT = d.requireSignature === "true";
+    if (d.pvUrlField) CONFIG.PV_URL_FIELD = d.pvUrlField;
+    if (d.pvPathField) CONFIG.PV_PATH_FIELD = d.pvPathField;
+    if (d.signedPvUrlField) CONFIG.SIGNED_PV_URL_FIELD = d.signedPvUrlField;
+    if (d.signedPvPathField) CONFIG.SIGNED_PV_PATH_FIELD = d.signedPvPathField;
+    if (d.remunerationField) CONFIG.REMUNERATION_FIELD = d.remunerationField;
+    if (d.currency) CONFIG.CURRENCY = d.currency;
+  }
+
+  function renderShell(rootEl) {
+    rootEl.innerHTML = `
+      <datalist id="ti-products-list"></datalist>
+      <div class="ti-shell">
+        <div class="ti-header">
+          <div>
+            <div class="ti-eyebrow" data-ti-subtitle></div>
+            <div class="ti-h1" data-ti-title></div>
+          </div>
+        </div>
+
+        <div class="ti-run-card">
+          <div class="ti-run-top">
+            <div class="ti-run-main">
+              <div class="ti-run-client" data-ti-client></div>
+              <div class="ti-run-title" data-ti-title2></div>
+              <div class="ti-run-meta">
+                <span data-ti-date></span>
+                <span data-ti-address></span>
+              </div>
+            </div>
+            <div class="ti-run-status" data-ti-status></div>
+          </div>
+
+          <div class="ti-run-actions">
+            <a class="ti-btn ti-btn--primary" data-action="call">${STR.callCTA}</a>
+            <button class="ti-btn ti-btn--ghost" data-action="map">${STR.mapCTA}</button>
+            <a class="ti-btn ti-btn--ghost" data-action="pv" hidden>${STR.pvCTA}</a>
+          </div>
+        </div>
+
+        <div class="ti-status-box" data-ti-status-box></div>
+
+        <div class="ti-steps" data-ti-steps></div>
+        <div class="ti-flow" data-ti-flow></div>
+
+        <div class="ti-toasts" data-ti-toasts></div>
+
+        <div class="ti-sheet" data-ti-sheet hidden>
+          <div class="ti-sheet-backdrop" data-ti-sheet-close></div>
+          <div class="ti-sheet-panel">
+            <div class="ti-sheet-title">Choisir une app</div>
+            <button class="ti-sheet-btn" data-map="apple">Plans</button>
+            <button class="ti-sheet-btn" data-map="google">Google Maps</button>
+            <button class="ti-sheet-btn" data-map="waze">Waze</button>
+            <button class="ti-sheet-btn ti-sheet-cancel" data-ti-sheet-close>Annuler</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    rootEl.querySelector("[data-ti-sheet]").addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-map]");
+      if (!btn) return;
+      openMapProvider(btn.dataset.map);
+    });
+
+    rootEl.querySelectorAll("[data-ti-sheet-close]").forEach((el) => {
+      el.addEventListener("click", closeMapSheet);
+    });
   }
 
   function injectStyles() {
@@ -953,27 +1296,79 @@
     style.id = "ti-styles";
     style.textContent = `
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Space+Grotesk:wght@500;700&display=swap');
+
 .ti-shell{font-family:"Manrope",sans-serif;background:radial-gradient(1200px 600px at 10% -10%, #e3f2ff 0%, #f6f7fb 55%, #f6f7fb 100%);color:#0f172a;padding:20px;border-radius:18px}
-.ti-card{background:#fff;border-radius:16px;padding:16px;box-shadow:0 10px 30px rgba(15,23,42,.08)}
-.ti-flow-section{display:none}
-.ti-flow-section.is-active{display:grid}
-.ti-preview-media{position:relative}
-.ti-preview-remove{position:absolute;top:8px;right:8px;background:#0f172a;color:#fff;border:none;border-radius:999px;padding:4px 8px;font-size:11px;cursor:pointer}
-.ti-actions{display:flex;gap:8px;flex-wrap:wrap}
-.ti-btn{border:none;padding:8px 12px;border-radius:10px;font-size:13px;cursor:pointer;text-decoration:none}
-.ti-btn--primary{background:#0ea5e9;color:#fff}
+.ti-header{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:12px}
+.ti-eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#64748b;margin-bottom:6px}
+.ti-h1{font-family:"Space Grotesk",sans-serif;font-size:24px;font-weight:700}
+.ti-run-card{background:#fff;border-radius:16px;padding:14px;box-shadow:0 10px 30px rgba(15,23,42,.08);display:grid;gap:12px}
+.ti-run-top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.ti-run-client{font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.06em}
+.ti-run-title{font-size:16px;font-weight:600}
+.ti-run-meta{font-size:12px;color:#64748b;display:grid;gap:4px;margin-top:6px}
+.ti-run-status{font-size:11px;padding:6px 10px;border-radius:999px;background:#e0f2fe;color:#075985;font-weight:600;white-space:nowrap}
+.ti-run-actions{display:flex;gap:8px;flex-wrap:wrap}
+.ti-btn{border:none;padding:8px 12px;border-radius:10px;font-size:13px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
 .ti-btn--ghost{background:#f1f5f9;color:#0f172a}
-.ti-step.is-done{background:#22c55e;color:#fff}
-.ti-step.is-active{background:#0ea5e9;color:#fff}
-.ti-steps{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px;font-size:12px;background:#eef2ff;padding:6px;border-radius:12px}
-`;
+.ti-btn--primary{background:#0ea5e9;color:#fff}
+.ti-btn--xs{padding:6px 10px;font-size:12px}
+.ti-btn.is-disabled{opacity:.4;pointer-events:none}
+.ti-status-box{margin:10px 0;font-size:13px;color:#475569}
+.ti-steps{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:12px 0;font-size:12px}
+.ti-step{background:#f1f5f9;padding:6px 8px;border-radius:8px;text-align:center}
+.ti-step.is-done{background:#dcfce7;color:#166534;font-weight:600}
+.ti-step.is-active{background:#e0f2fe;color:#075985;font-weight:600}
+.ti-flow{border-top:1px dashed #e2e8f0;padding-top:12px}
+.ti-flow-section{display:grid;gap:10px}
+.ti-flow-title{font-weight:700}
+.ti-flow-info{display:grid;gap:6px}
+.ti-step-actions{display:flex;gap:8px;flex-wrap:wrap}
+.ti-block{margin-top:12px;display:grid;gap:8px}
+.ti-checklist{display:grid;gap:6px}
+.ti-check{display:flex;gap:8px;align-items:center;font-size:14px}
+.ti-label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#64748b;margin-bottom:6px}
+.ti-value{font-size:14px}
+.ti-link{color:#0ea5e9;text-decoration:none;font-weight:600}
+.ti-textarea{width:100%;border:1px solid #cbd5f5;border-radius:12px;padding:10px;font-size:14px}
+.ti-file{width:100%}
+.ti-previews{display:grid;gap:10px}
+.ti-preview{display:grid;gap:6px}
+.ti-preview img{width:100%;border-radius:12px;object-fit:cover}
+.ti-preview-meta{font-size:11px;color:#64748b}
+.ti-preview-remove{border:none;background:#fee2e2;color:#991b1b;padding:6px 10px;border-radius:8px;font-size:12px;justify-self:start}
+.ti-signature{border:1px solid #cbd5f5;border-radius:12px;padding:10px;display:grid;gap:8px}
+.ti-signature-canvas{width:100%;height:160px;background:#fff;border-radius:10px}
+.ti-products{display:grid;gap:8px}
+.ti-products-empty{font-size:12px;color:#64748b}
+.ti-product-row{display:grid;grid-template-columns:1.6fr .6fr .8fr .7fr 1fr 1.2fr auto;gap:6px;align-items:center}
+.ti-input{border:1px solid #cbd5f5;border-radius:10px;padding:8px;font-size:13px}
+.ti-input--xs{width:100%}
+.ti-product-total{font-weight:600;font-size:13px}
+.ti-check-inline{display:flex;align-items:center;gap:6px;font-size:12px}
+.ti-products-total{font-size:12px;color:#475569;margin-top:4px}
+.ti-photo-actions{display:flex;gap:8px;flex-wrap:wrap}
+.ti-toasts{position:sticky;bottom:16px;display:grid;gap:8px;margin-top:16px}
+.ti-toast{background:#0f172a;color:#fff;padding:10px 14px;border-radius:12px;font-size:13px;box-shadow:0 10px 30px rgba(15,23,42,.2)}
+.ti-toast--success{background:#16a34a}
+.ti-toast--warn{background:#f59e0b}
+.ti-toast--error{background:#dc2626}
+.ti-sheet{position:fixed;inset:0;z-index:9999;display:flex;align-items:flex-end;justify-content:center}
+.ti-sheet[hidden]{display:none}
+.ti-sheet-backdrop{position:absolute;inset:0;background:rgba(15,23,42,.45)}
+.ti-sheet-panel{position:relative;width:min(480px,92vw);background:#fff;border-radius:16px;padding:16px;margin:0 12px 12px;display:grid;gap:10px;box-shadow:0 20px 60px rgba(15,23,42,.2)}
+.ti-sheet-title{font-weight:700;font-size:14px;color:#0f172a}
+.ti-sheet-btn{width:100%;text-align:left;padding:12px 14px;border-radius:12px;border:1px solid #e2e8f0;background:#f8fafc;font-size:14px;cursor:pointer}
+.ti-sheet-cancel{background:#0f172a;color:#fff;border-color:#0f172a;text-align:center}
+body.ti-sheet-open{overflow:hidden}
+@media (max-width:820px){.ti-product-row{grid-template-columns:1fr 1fr}.ti-product-total,.ti-check-inline,.ti-btn--xs{grid-column:span 2}}
+@media (min-width:768px){.ti-steps{grid-template-columns:repeat(6,1fr)}}
+    `;
     document.head.appendChild(style);
   }
 
   function findRoot() {
     return document.querySelector("[data-tech-interventions]") ||
       document.querySelector("#technician-interventions-root") ||
-      document.querySelector(".technician-interventions") ||
-      document.querySelector(".interventions-list");
+      document.querySelector(".technician-interventions");
   }
 })();
