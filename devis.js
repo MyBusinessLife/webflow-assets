@@ -70,6 +70,7 @@ window.Webflow.push(async function () {
     subtitle: "Creation rapide et export PDF",
     btnAddItem: "Ajouter une ligne",
     btnSave: "Enregistrer",
+    btnValidate: "Valider devis",
     btnDownload: "Telecharger PDF",
     btnPreview: "Apercu",
     btnReset: "Reinitialiser",
@@ -97,9 +98,13 @@ window.Webflow.push(async function () {
     msgSavedNoPdf: "Devis enregistre, mais impossible de publier le PDF.",
     msgPdfOnly: "PDF genere localement (devis non enregistre en base).",
     msgStorageDenied: "PDF genere, mais upload bloque par les droits du bucket.",
+    msgValidated: "Devis valide avec succes.",
     msgPdfReady: "PDF genere.",
     msgPdfFail: "Impossible de generer le PDF.",
   };
+  const VAT_OPTIONS = [0, 5.5, 10, 20];
+  const STATUS_DRAFT = "draft";
+  const STATUS_VALIDATED = "sent";
 
   injectStyles();
 
@@ -114,6 +119,7 @@ window.Webflow.push(async function () {
     products: [],
     productByName: new Map(),
     quoteId: null,
+    statusField: "",
     pdf: { url: "", path: "" },
     draft: loadDraft(),
   };
@@ -124,10 +130,14 @@ window.Webflow.push(async function () {
     setStatus(STR.msgLoading);
     await resolveAuthContext();
     await Promise.all([loadClients(), loadInterventions(), loadProducts()]);
+    state.statusField = await detectStatusField();
     hydrateDraft();
+    applyAutoPrefillFromContext();
+    ensureReference();
     renderItems();
     updateTotals();
     updatePreview();
+    persistDraft();
     setStatus(state.organizationId ? "" : STR.msgOrgMissing);
   }
 
@@ -174,6 +184,54 @@ window.Webflow.push(async function () {
     }
   }
 
+  async function detectStatusField() {
+    const tests = ["status", "quote_status", "state"];
+    for (const field of tests) {
+      const res = await supabase.from(CONFIG.QUOTES_TABLE).select(`id,${field}`).limit(1);
+      if (!res.error) return field;
+      if (!isMissingColumnError(res.error)) break;
+    }
+    return "";
+  }
+
+  function ensureReference() {
+    if (String(state.draft.reference || "").trim()) return;
+    const base = `DV-${todayCompact()}`;
+    const suffix = randomId().slice(0, 4).toUpperCase();
+    state.draft.reference = `${base}-${suffix}`;
+    els.ref.value = state.draft.reference;
+  }
+
+  function applyAutoPrefillFromContext() {
+    const params = new URLSearchParams(window.location.search || "");
+    const interventionId = params.get("intervention_id") || params.get("interventionId") || "";
+    const clientId = params.get("client_id") || params.get("clientId") || "";
+
+    if (interventionId) {
+      const foundIntervention = state.interventions.find((i) => String(i.id) === String(interventionId));
+      if (foundIntervention) {
+        els.intervention.value = String(foundIntervention.id);
+        onInterventionSelect();
+        return;
+      }
+    }
+
+    if (clientId) {
+      const foundClient = state.clients.find((c) => String(c.id) === String(clientId));
+      if (foundClient) {
+        els.clientSelect.value = String(foundClient.id);
+        onClientSelect();
+        return;
+      }
+    }
+
+    const noClientInfo = !state.draft.client_name && !state.draft.client_email && !state.draft.client_phone;
+    if (noClientInfo && state.interventions.length === 1) {
+      els.intervention.value = String(state.interventions[0].id);
+      onInterventionSelect();
+    }
+  }
+
   async function loadClients() {
     const res = await readTable(CONFIG.CLIENTS_TABLE, "*", { limit: 300 });
     if (res.error) return;
@@ -212,6 +270,12 @@ window.Webflow.push(async function () {
     if (!d.items || !d.items.length) {
       d.items = [createItem()];
     }
+    d.items = d.items.map((it) => ({
+      ...it,
+      qty: Math.max(1, Number(it.qty || 1)),
+      unit_cents: Math.max(0, Number(it.unit_cents || 0)),
+      vat_rate: sanitizeVatRate(it.vat_rate),
+    }));
     els.client.value = d.client_name || "";
     els.contact.value = d.contact_name || "";
     els.email.value = d.client_email || "";
@@ -223,7 +287,8 @@ window.Webflow.push(async function () {
     els.terms.value = d.terms || "";
     els.discountType.value = d.discount_type || "none";
     els.discountValue.value = d.discount_value || "";
-    els.vatRate.value = d.vat_rate ?? CONFIG.VAT_RATE;
+    d.vat_rate = sanitizeVatRate(d.vat_rate ?? CONFIG.VAT_RATE);
+    els.vatRate.value = d.vat_rate;
   }
 
   function renderItems() {
@@ -236,11 +301,12 @@ window.Webflow.push(async function () {
         <input class="dv-input" list="dv-products" data-field="name" placeholder="Produit / Service" value="${escapeHTML(item.name)}" />
         <input class="dv-input dv-input--xs" data-field="qty" type="number" min="1" step="1" inputmode="numeric" value="${item.qty}" />
         <input class="dv-input dv-input--xs" data-field="price" type="number" min="0" step="0.01" inputmode="decimal" value="${centsToInput(item.unit_cents)}" />
-        <input class="dv-input dv-input--xs" data-field="vat" type="number" min="0" step="0.1" inputmode="decimal" value="${item.vat_rate}" />
+        <select class="dv-input dv-input--xs" data-field="vat">${renderVatOptions(item.vat_rate)}</select>
         <div class="dv-line-total">${formatMoney(calcLineTotal(item), CONFIG.CURRENCY)}</div>
         <button type="button" class="dv-btn dv-btn--ghost dv-btn--xs" data-action="remove">Supprimer</button>
       `;
       row.addEventListener("input", onItemInput);
+      row.addEventListener("change", onItemInput);
       row.querySelector("[data-action='remove']").addEventListener("click", () => removeItem(idx));
       els.items.appendChild(row);
     });
@@ -259,7 +325,7 @@ window.Webflow.push(async function () {
       const hit = state.productByName.get(normalize(item.name));
       if (hit) {
         item.unit_cents = eurosToCents(hit.price);
-        item.vat_rate = Number.isFinite(hit.vat) ? hit.vat : CONFIG.VAT_RATE;
+        item.vat_rate = sanitizeVatRate(Number.isFinite(hit.vat) ? hit.vat : CONFIG.VAT_RATE);
         row.querySelector('[data-field="price"]').value = centsToInput(item.unit_cents);
         row.querySelector('[data-field="vat"]').value = item.vat_rate;
       }
@@ -268,7 +334,7 @@ window.Webflow.push(async function () {
     } else if (field === "price") {
       item.unit_cents = eurosToCents(Number(e.target.value || 0));
     } else if (field === "vat") {
-      item.vat_rate = Math.max(0, Number(e.target.value || 0));
+      item.vat_rate = sanitizeVatRate(e.target.value);
     }
 
     row.querySelector(".dv-line-total").textContent = formatMoney(calcLineTotal(item), CONFIG.CURRENCY);
@@ -289,8 +355,8 @@ window.Webflow.push(async function () {
   function updateTotals() {
     const subtotal = state.draft.items.reduce((acc, item) => acc + calcLineTotal(item), 0);
     const discount = calcDiscount(subtotal);
+    const vat = calcVatCents(state.draft.items, subtotal, discount, state.draft.vat_rate);
     const taxable = Math.max(0, subtotal - discount);
-    const vat = Math.round(taxable * (Number(state.draft.vat_rate || CONFIG.VAT_RATE) / 100));
     const total = taxable + vat;
 
     state.draft.subtotal_cents = subtotal;
@@ -471,7 +537,7 @@ window.Webflow.push(async function () {
     setTimeout(() => URL.revokeObjectURL(url), 2000);
   }
 
-  async function saveQuote() {
+  async function saveQuote(mode = STATUS_DRAFT) {
     if (!state.organizationId) {
       return { ok: false, denied: true, reason: "org_missing" };
     }
@@ -493,29 +559,90 @@ window.Webflow.push(async function () {
       total_cents: state.draft.total_cents || 0,
       currency: CONFIG.CURRENCY,
       created_by: state.currentUserId || null,
-      created_at: new Date().toISOString(),
+      created_at: new Date().toISOString()
     };
 
     if (!CONFIG.QUOTES_TABLE) {
       return { ok: false, reason: "missing_table_name" };
     }
 
-    const res = await supabase.from(CONFIG.QUOTES_TABLE).insert(payload).select("id").maybeSingle();
-    if (res.error) {
+    const statusValue = mode === STATUS_VALIDATED ? STATUS_VALIDATED : STATUS_DRAFT;
+    const payloadVariants = [];
+
+    if (state.statusField) {
+      payloadVariants.push({ ...payload, [state.statusField]: statusValue });
+    } else {
+      payloadVariants.push({ ...payload, status: statusValue });
+      payloadVariants.push({ ...payload, quote_status: statusValue });
+    payloadVariants.push({ ...payload, state: statusValue });
+    }
+    payloadVariants.push(payload);
+
+    let lastError = null;
+    const seen = new Set();
+    for (const candidate of payloadVariants) {
+      const uniqueKey = Object.keys(candidate).sort().join("|");
+      if (seen.has(uniqueKey)) continue;
+      seen.add(uniqueKey);
+      const res = await upsertQuoteRow(candidate);
+      if (!res.error) {
+        state.quoteId = res.data?.id || state.quoteId || null;
+        if (candidate.status !== undefined) state.statusField = "status";
+        if (candidate.quote_status !== undefined) state.statusField = "quote_status";
+        if (candidate.state !== undefined) state.statusField = "state";
+        state.draft.quote_status = statusValue;
+        return { ok: true, mode: statusValue };
+      }
+      lastError = res.error;
       if (isPermissionDenied(res.error)) {
         return { ok: false, denied: true, reason: "rls" };
       }
-      if (isTableMissing(res.error) || isMissingColumnError(res.error)) {
+      if (isMissingColumnError(res.error)) {
+        continue;
+      }
+      if (isTableMissing(res.error)) {
         return { ok: false, reason: "missing_table" };
       }
-      throw res.error;
+      break;
     }
-    state.quoteId = res.data?.id || null;
-    return { ok: true };
+
+    if (lastError) throw lastError;
+    return { ok: false };
+  }
+
+  async function upsertQuoteRow(payload) {
+    if (state.quoteId) {
+      const updatePayload = { ...payload, updated_at: new Date().toISOString() };
+      delete updatePayload.created_at;
+      delete updatePayload.created_by;
+      const upd = await supabase
+        .from(CONFIG.QUOTES_TABLE)
+        .update(updatePayload)
+        .eq("id", state.quoteId)
+        .select("id")
+        .maybeSingle();
+      return upd;
+    }
+    return supabase.from(CONFIG.QUOTES_TABLE).insert(payload).select("id").maybeSingle();
+  }
+
+  async function updateQuotePdfReference(uploaded) {
+    if (!state.quoteId || !uploaded?.url) return;
+    const variants = [
+      { pdf_path: uploaded.path, pdf_url: uploaded.url, updated_at: new Date().toISOString() },
+      { pdf_path: uploaded.path, pdf_url: uploaded.url },
+    ];
+
+    for (const payload of variants) {
+      const res = await supabase.from(CONFIG.QUOTES_TABLE).update(payload).eq("id", state.quoteId);
+      if (!res.error) return;
+      if (!isMissingColumnError(res.error)) return;
+    }
   }
 
   async function uploadPdfToStorage(blob) {
-    const path = `devis/${state.quoteId || "draft"}/${Date.now()}_${randomId()}.pdf`;
+    const orgPart = state.organizationId || "org";
+    const path = `devis/${orgPart}/${state.quoteId || "draft"}/${Date.now()}_${randomId()}.pdf`;
     const up = await supabase.storage.from(CONFIG.BUCKET).upload(path, blob, {
       cacheControl: "3600",
       upsert: true,
@@ -541,6 +668,7 @@ window.Webflow.push(async function () {
     els.btnReset.addEventListener("click", () => {
       state.draft = defaultDraft();
       hydrateDraft();
+      ensureReference();
       renderItems();
       updateTotals();
       updatePreview();
@@ -549,12 +677,14 @@ window.Webflow.push(async function () {
 
     els.btnDownload.addEventListener("click", downloadPdf);
 
-    els.btnSave.addEventListener("click", async () => {
-      const oldLabel = els.btnSave.textContent;
+    async function runSaveFlow(mode, button, busyLabel) {
+      const oldSaveLabel = els.btnSave.textContent;
+      const oldValidateLabel = els.btnValidate.textContent;
       els.btnSave.disabled = true;
-      els.btnSave.textContent = "Enregistrement...";
+      els.btnValidate.disabled = true;
+      if (button) button.textContent = busyLabel;
       try {
-        const saved = await saveQuote();
+        const saved = await saveQuote(mode);
         const blob = await generatePdfBlob();
         const uploaded = await uploadPdfToStorage(blob);
 
@@ -562,15 +692,12 @@ window.Webflow.push(async function () {
           state.pdf = uploaded;
           els.previewLink.href = uploaded.url;
           els.previewLink.hidden = false;
-          if (saved?.ok && state.quoteId) {
-            await supabase
-              .from(CONFIG.QUOTES_TABLE)
-              .update({ pdf_path: uploaded.path, pdf_url: uploaded.url, updated_at: new Date().toISOString() })
-              .eq("id", state.quoteId);
-          }
+          await updateQuotePdfReference(uploaded);
         }
 
-        if (saved?.ok && uploaded?.url) {
+        if (saved?.ok && uploaded?.url && mode === STATUS_VALIDATED) {
+          showToast("success", STR.msgValidated);
+        } else if (saved?.ok && uploaded?.url) {
           showToast("success", STR.msgSavedWithPdf);
         } else if (saved?.ok && uploaded?.denied) {
           showToast("warning", STR.msgStorageDenied);
@@ -596,9 +723,14 @@ window.Webflow.push(async function () {
         showToast("error", STR.msgPdfFail);
       } finally {
         els.btnSave.disabled = false;
-        els.btnSave.textContent = oldLabel;
+        els.btnValidate.disabled = false;
+        els.btnSave.textContent = oldSaveLabel;
+        els.btnValidate.textContent = oldValidateLabel;
       }
-    });
+    }
+
+    els.btnSave.addEventListener("click", () => runSaveFlow(STATUS_DRAFT, els.btnSave, "Enregistrement..."));
+    els.btnValidate.addEventListener("click", () => runSaveFlow(STATUS_VALIDATED, els.btnValidate, "Validation..."));
 
     els.client.addEventListener("input", onHeaderInput);
     els.contact.addEventListener("input", onHeaderInput);
@@ -611,7 +743,12 @@ window.Webflow.push(async function () {
     els.terms.addEventListener("input", onHeaderInput);
     els.discountType.addEventListener("change", onHeaderInput);
     els.discountValue.addEventListener("input", onHeaderInput);
-    els.vatRate.addEventListener("input", onHeaderInput);
+    els.vatRate.addEventListener("change", () => {
+      state.draft.vat_rate = sanitizeVatRate(els.vatRate.value);
+      applyVatToAllItems(state.draft.vat_rate);
+      renderItems();
+      onHeaderInput();
+    });
 
     els.intervention.addEventListener("change", onInterventionSelect);
     els.clientSelect.addEventListener("change", onClientSelect);
@@ -629,7 +766,8 @@ window.Webflow.push(async function () {
     state.draft.terms = els.terms.value;
     state.draft.discount_type = els.discountType.value;
     state.draft.discount_value = Number(els.discountValue.value || 0);
-    state.draft.vat_rate = Number(els.vatRate.value || CONFIG.VAT_RATE);
+    state.draft.vat_rate = sanitizeVatRate(els.vatRate.value || CONFIG.VAT_RATE);
+    els.vatRate.value = state.draft.vat_rate;
     updateTotals();
     updatePreview();
     persistDraft();
@@ -643,6 +781,8 @@ window.Webflow.push(async function () {
     els.client.value = found.client_name || "";
     els.address.value = found.address || "";
     els.ref.value = found.client_ref || "";
+    els.email.value = found.client_email || "";
+    els.phone.value = found.client_phone || "";
     onHeaderInput();
   }
 
@@ -654,6 +794,7 @@ window.Webflow.push(async function () {
     els.client.value = found.name || "";
     els.email.value = found.email || "";
     els.phone.value = found.phone || "";
+    els.address.value = found.address || found.billing_address || "";
     onHeaderInput();
   }
 
@@ -678,6 +819,23 @@ window.Webflow.push(async function () {
       .join("");
   }
 
+  function renderVatOptions(currentValue) {
+    const current = sanitizeVatRate(currentValue);
+    return VAT_OPTIONS.map((v) => {
+      const selected = Number(v) === Number(current) ? "selected" : "";
+      const label = String(v).replace(".", ",");
+      return `<option value="${v}" ${selected}>${label}%</option>`;
+    }).join("");
+  }
+
+  function applyVatToAllItems(rate) {
+    const safeRate = sanitizeVatRate(rate);
+    state.draft.items = (state.draft.items || []).map((item) => ({
+      ...item,
+      vat_rate: safeRate,
+    }));
+  }
+
   function calcLineTotal(item) {
     const qty = Math.max(1, Number(item.qty || 1));
     return Math.round(qty * (item.unit_cents || 0));
@@ -691,12 +849,26 @@ window.Webflow.push(async function () {
     return 0;
   }
 
+  function calcVatCents(items, subtotal, discount, fallbackRate) {
+    const safeSubtotal = Math.max(0, Number(subtotal || 0));
+    if (safeSubtotal === 0) return 0;
+
+    const rawVat = (items || []).reduce((acc, item) => {
+      const rate = sanitizeVatRate(item?.vat_rate ?? fallbackRate);
+      return acc + Math.round(calcLineTotal(item) * (rate / 100));
+    }, 0);
+
+    const taxable = Math.max(0, safeSubtotal - Math.max(0, Number(discount || 0)));
+    const ratio = taxable / safeSubtotal;
+    return Math.round(rawVat * ratio);
+  }
+
   function createItem() {
     return {
       name: "",
       qty: 1,
       unit_cents: 0,
-      vat_rate: CONFIG.VAT_RATE,
+      vat_rate: sanitizeVatRate(CONFIG.VAT_RATE),
     };
   }
 
@@ -714,7 +886,8 @@ window.Webflow.push(async function () {
       items: [createItem()],
       discount_type: "none",
       discount_value: 0,
-      vat_rate: CONFIG.VAT_RATE,
+      vat_rate: sanitizeVatRate(CONFIG.VAT_RATE),
+      quote_status: STATUS_DRAFT,
     };
   }
 
@@ -807,6 +980,15 @@ window.Webflow.push(async function () {
       .trim();
   }
 
+  function sanitizeVatRate(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return VAT_OPTIONS[VAT_OPTIONS.length - 1];
+    const matched = VAT_OPTIONS.find((v) => Number(v) === Number(n));
+    if (matched !== undefined) return matched;
+    // fallback to nearest allowed rate
+    return VAT_OPTIONS.reduce((best, v) => (Math.abs(v - n) < Math.abs(best - n) ? v : best), VAT_OPTIONS[0]);
+  }
+
   function asUuid(value) {
     const v = String(value || "").trim();
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v)
@@ -892,7 +1074,8 @@ window.Webflow.push(async function () {
           <div class="dv-actions">
             <button class="dv-btn dv-btn--ghost" data-reset>${copy.btnReset}</button>
             <button class="dv-btn dv-btn--ghost" data-download>${copy.btnDownload}</button>
-            <button class="dv-btn dv-btn--primary" data-save>${copy.btnSave}</button>
+            <button class="dv-btn dv-btn--ghost" data-save>${copy.btnSave}</button>
+            <button class="dv-btn dv-btn--primary" data-validate>${copy.btnValidate}</button>
           </div>
         </header>
 
@@ -953,7 +1136,7 @@ window.Webflow.push(async function () {
               </div>
               <div class="dv-field">
                 <label>TVA (%)</label>
-                <input class="dv-input" data-vat-rate />
+                <select class="dv-input" data-vat-rate>${renderVatOptions(CONFIG.VAT_RATE)}</select>
               </div>
               <div class="dv-total-row"><span>${copy.labelSubtotal}</span><strong data-subtotal>—</strong></div>
               <div class="dv-total-row"><span>${copy.labelDiscount}</span><strong data-discount>—</strong></div>
@@ -994,6 +1177,7 @@ window.Webflow.push(async function () {
       toasts: rootEl.querySelector("[data-toasts]"),
       btnAddItem: rootEl.querySelector("[data-add-item]"),
       btnSave: rootEl.querySelector("[data-save]"),
+      btnValidate: rootEl.querySelector("[data-validate]"),
       btnDownload: rootEl.querySelector("[data-download]"),
       btnReset: rootEl.querySelector("[data-reset]"),
     };

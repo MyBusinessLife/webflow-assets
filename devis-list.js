@@ -190,6 +190,11 @@ window.Webflow.push(async function () {
   function render() {
     const rows = filterQuotes(state.quotes);
     els.count.textContent = String(rows.length);
+    const totalAmount = rows.reduce((acc, q) => acc + Number(q.total_cents || 0), 0);
+    const acceptedCount = rows.filter((q) => q.status.key === "accepted").length;
+    els.kpiCount.textContent = String(rows.length);
+    els.kpiTotal.textContent = formatMoney(totalAmount, CONFIG.CURRENCY);
+    els.kpiAccepted.textContent = String(acceptedCount);
 
     if (!rows.length) {
       els.list.innerHTML = `
@@ -217,6 +222,7 @@ window.Webflow.push(async function () {
         <div class="dl-meta">
           <span>${STR.createdAt}: ${escapeHTML(formatDateTimeFR(quote.created_at) || "—")}</span>
           <span>${STR.validUntil}: ${escapeHTML(formatDateFR(quote.validity_until) || "—")}</span>
+          <span>${STR.updatedAt}: ${escapeHTML(formatDateTimeFR(quote.updated_at) || "—")}</span>
         </div>
 
         <div class="dl-total">${STR.total}: <strong>${formatMoney(Number(quote.total_cents || 0), CONFIG.CURRENCY)}</strong></div>
@@ -372,13 +378,13 @@ window.Webflow.push(async function () {
   function inferStatus(row) {
     const raw = normalize(row.status || row.quote_status || row.state || "");
 
-    if (["accepted", "accepte", "acceptee", "signed", "valide"].includes(raw)) {
+    if (["accepted", "accepte", "acceptee", "signed", "valide", "validated", "validee"].includes(raw)) {
       return { key: "accepted", label: "Accepte", tone: "success" };
     }
-    if (["sent", "envoye", "envoyee"].includes(raw)) {
+    if (["sent", "envoye", "envoyee", "issued", "finalized", "finalise"].includes(raw)) {
       return { key: "sent", label: "Envoye", tone: "info" };
     }
-    if (["draft", "brouillon"].includes(raw)) {
+    if (["draft", "brouillon", "pending"].includes(raw)) {
       return { key: "draft", label: "Brouillon", tone: "neutral" };
     }
 
@@ -512,6 +518,21 @@ window.Webflow.push(async function () {
           <input class="dl-search" type="search" placeholder="${copy.searchPlaceholder}" data-search />
         </div>
 
+        <div class="dl-kpis">
+          <div class="dl-kpi">
+            <div class="dl-kpi-label">Nombre</div>
+            <div class="dl-kpi-value" data-kpi-count>0</div>
+          </div>
+          <div class="dl-kpi">
+            <div class="dl-kpi-label">Montant total</div>
+            <div class="dl-kpi-value" data-kpi-total>0,00 €</div>
+          </div>
+          <div class="dl-kpi">
+            <div class="dl-kpi-label">Acceptes</div>
+            <div class="dl-kpi-value" data-kpi-accepted>0</div>
+          </div>
+        </div>
+
         <div class="dl-list" data-list></div>
 
         <div class="dl-modal" data-modal hidden>
@@ -545,6 +566,9 @@ window.Webflow.push(async function () {
       list: rootEl.querySelector("[data-list]"),
       status: rootEl.querySelector("[data-status]"),
       count: rootEl.querySelector("[data-count]"),
+      kpiCount: rootEl.querySelector("[data-kpi-count]"),
+      kpiTotal: rootEl.querySelector("[data-kpi-total]"),
+      kpiAccepted: rootEl.querySelector("[data-kpi-accepted]"),
       btnNewQuote: rootEl.querySelector("[data-new-quote]"),
       search: rootEl.querySelector("[data-search]"),
       filters: Array.from(rootEl.querySelectorAll("[data-filter]")),
@@ -628,6 +652,31 @@ window.Webflow.push(async function () {
         gap: 10px;
         margin-bottom: 14px;
       }
+      .dl-kpis {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        margin-bottom: 14px;
+      }
+      .dl-kpi {
+        background: #ffffff;
+        border: 1px solid #dbe7fd;
+        border-radius: 12px;
+        padding: 10px 12px;
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+      }
+      .dl-kpi-label {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #64748b;
+        margin-bottom: 4px;
+      }
+      .dl-kpi-value {
+        font-weight: 800;
+        font-size: 18px;
+        color: #0f172a;
+      }
       .dl-filters {
         display: flex;
         flex-wrap: wrap;
@@ -676,6 +725,7 @@ window.Webflow.push(async function () {
       .dl-ref {
         font-size: 14px;
         font-weight: 700;
+        letter-spacing: 0.01em;
       }
       .dl-client {
         font-size: 13px;
@@ -687,6 +737,9 @@ window.Webflow.push(async function () {
         gap: 4px;
         font-size: 12px;
         color: #64748b;
+        border-top: 1px dashed #dbe5f5;
+        border-bottom: 1px dashed #dbe5f5;
+        padding: 8px 0;
       }
       .dl-total {
         font-size: 14px;
@@ -855,6 +908,7 @@ window.Webflow.push(async function () {
 
       @media (max-width: 760px) {
         .dl-title { font-size: 24px; }
+        .dl-kpis { grid-template-columns: 1fr; }
         .dl-header-actions { width: 100%; justify-content: space-between; }
         .dl-btn--new { padding: 8px 10px; font-size: 12px; }
         .dl-modal-panel {
