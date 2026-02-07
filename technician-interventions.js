@@ -8,15 +8,16 @@
 
     DETAIL_PAGE_PATH: "/extranet/intervention",
     STORAGE_BUCKET: "interventions-files",
-    REPORTS_TABLE: "intervention_reports",
+    REPORTS_TABLE: "",
     EXPENSES_TABLE: "intervention_expenses",
     PRODUCTS_TABLE: "products",
+    ORGANIZATION_ID: (window.__MBL_CFG__?.ORGANIZATION_ID || window.__MBL_ORG_ID__ || ""),
 
     STATUS_DONE: "done",
     STATUS_IN_PROGRESS: "in_progress",
     ENABLE_STATUS_UPDATE: true,
 
-    REQUIRE_CHECKLIST_DEFAULT: true,
+    REQUIRE_CHECKLIST_DEFAULT: false,
     REQUIRE_PHOTOS_DEFAULT: false,
     REQUIRE_SIGNATURE_DEFAULT: false,
 
@@ -128,6 +129,7 @@
     resolution: {},
     observations: {},
     userId: null,
+    organizationId: "",
     activeId: loadActiveId(),
     steps: loadSteps(),
     products: {},
@@ -156,6 +158,7 @@
       loadCatalog();
       const data = await fetchAssignments(state.userId);
       state.items = normalizeAssignments(data);
+      state.organizationId = resolveOrganizationId(state.items[0] || {});
       syncActiveId();
       renderList();
     } catch (e) {
@@ -866,9 +869,15 @@
   }
 
   async function saveReport(payload) {
-    const { error } = await supabase
-      .from(CONFIG.REPORTS_TABLE)
-      .upsert(payload, { onConflict: "intervention_id,user_id" });
+    if (!CONFIG.REPORTS_TABLE) return true;
+
+    const orgId = getOrganizationIdForIntervention(payload?.intervention_id);
+    const { error } = await upsertWithOrgFallback(
+      CONFIG.REPORTS_TABLE,
+      payload,
+      { onConflict: "intervention_id,user_id" },
+      orgId
+    );
 
     if (error) {
       if (isTableMissing(error)) return false;
@@ -900,7 +909,8 @@
       note: r.note || null
     }));
 
-    const ins = await supabase.from(CONFIG.EXPENSES_TABLE).insert(payload);
+    const orgId = getOrganizationIdForIntervention(interventionId);
+    const ins = await insertWithOrgFallback(CONFIG.EXPENSES_TABLE, payload, orgId);
     if (ins.error && isTableMissing(ins.error)) return false;
     return !ins.error;
   }
@@ -1599,6 +1609,77 @@
     return row && Object.prototype.hasOwnProperty.call(row, key);
   }
 
+  function resolveOrganizationId(source) {
+    if (!source) return "";
+    return String(source.organization_id || source.organizationId || "").trim();
+  }
+
+  function getOrganizationIdForIntervention(interventionId) {
+    const row = state.items.find((item) => String(item.id) === String(interventionId));
+    return (
+      resolveOrganizationId(row || {}) ||
+      String(state.organizationId || "").trim() ||
+      String(CONFIG.ORGANIZATION_ID || "").trim()
+    );
+  }
+
+  function attachOrganization(payload, organizationId) {
+    const orgId = String(organizationId || "").trim();
+    if (!orgId) return payload;
+
+    if (Array.isArray(payload)) {
+      return payload.map((row) => {
+        const item = { ...(row || {}) };
+        if (!item.organization_id) item.organization_id = orgId;
+        return item;
+      });
+    }
+
+    const item = { ...(payload || {}) };
+    if (!item.organization_id) item.organization_id = orgId;
+    return item;
+  }
+
+  function stripOrganization(payload) {
+    if (Array.isArray(payload)) {
+      return payload.map((row) => {
+        const item = { ...(row || {}) };
+        delete item.organization_id;
+        return item;
+      });
+    }
+    const item = { ...(payload || {}) };
+    delete item.organization_id;
+    return item;
+  }
+
+  function isOrganizationColumnMissing(error) {
+    const code = String(error?.code || "");
+    const msg = String(error?.message || "").toLowerCase();
+    return (
+      (code === "42703" || code === "PGRST204" || code === "PGRST205") &&
+      msg.includes("organization_id")
+    );
+  }
+
+  async function insertWithOrgFallback(table, payload, organizationId) {
+    const orgPayload = attachOrganization(payload, organizationId);
+    let res = await supabase.from(table).insert(orgPayload);
+    if (res.error && isOrganizationColumnMissing(res.error)) {
+      res = await supabase.from(table).insert(stripOrganization(payload));
+    }
+    return res;
+  }
+
+  async function upsertWithOrgFallback(table, payload, options, organizationId) {
+    const orgPayload = attachOrganization(payload, organizationId);
+    let res = await supabase.from(table).upsert(orgPayload, options || {});
+    if (res.error && isOrganizationColumnMissing(res.error)) {
+      res = await supabase.from(table).upsert(stripOrganization(payload), options || {});
+    }
+    return res;
+  }
+
   function findExistingField(row, keys) {
     for (const k of keys) {
       if (hasField(row, k)) return k;
@@ -1708,9 +1789,12 @@
     const d = rootEl.dataset;
     if (d.detailPath) CONFIG.DETAIL_PAGE_PATH = d.detailPath;
     if (d.storageBucket) CONFIG.STORAGE_BUCKET = d.storageBucket;
-    if (d.reportsTable) CONFIG.REPORTS_TABLE = d.reportsTable;
+    if (Object.prototype.hasOwnProperty.call(d, "reportsTable")) {
+      CONFIG.REPORTS_TABLE = normalizeOptionalRelationName(d.reportsTable);
+    }
     if (d.expensesTable) CONFIG.EXPENSES_TABLE = d.expensesTable;
     if (d.productsTable) CONFIG.PRODUCTS_TABLE = d.productsTable;
+    if (d.organizationId) CONFIG.ORGANIZATION_ID = d.organizationId;
     if (d.statusDone) CONFIG.STATUS_DONE = d.statusDone;
     if (d.statusInProgress) CONFIG.STATUS_IN_PROGRESS = d.statusInProgress;
     if (d.requireChecklist) CONFIG.REQUIRE_CHECKLIST_DEFAULT = d.requireChecklist === "true";
@@ -1722,6 +1806,14 @@
     if (d.signedPvPathField) CONFIG.SIGNED_PV_PATH_FIELD = d.signedPvPathField;
     if (d.remunerationField) CONFIG.REMUNERATION_FIELD = d.remunerationField;
     if (d.currency) CONFIG.CURRENCY = d.currency;
+  }
+
+  function normalizeOptionalRelationName(value) {
+    const raw = String(value || "").trim();
+    const s = norm(raw);
+    if (!raw) return "";
+    if (["none", "null", "off", "false", "0"].includes(s)) return "";
+    return raw;
   }
 
   function injectStyles() {

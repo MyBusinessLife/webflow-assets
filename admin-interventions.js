@@ -14,6 +14,12 @@ window.Webflow.push(async function () {
     SIGNED_URL_TTL: USER_CFG.SIGNED_URL_TTL || 3600,
     PRODUCTS_TABLE: USER_CFG.PRODUCTS_TABLE || "products",
   };
+  const ORG_ID = String(
+    USER_CFG.ORGANIZATION_ID ||
+    window.__MBL_ORG_ID__ ||
+    document.querySelector("[data-admin-interventions]")?.dataset?.organizationId ||
+    ""
+  ).trim();
 
   const PAGE_INTERVENTION = "/intervention";
 
@@ -165,6 +171,59 @@ window.Webflow.push(async function () {
   function parseEurosToCents(value) {
     const cents = eurosToCents(value);
     return cents === null ? 0 : cents;
+  }
+
+  function attachOrganization(payload, organizationId) {
+    const orgId = String(organizationId || "").trim();
+    if (!orgId) return payload;
+
+    if (Array.isArray(payload)) {
+      return payload.map((row) => {
+        const item = { ...(row || {}) };
+        if (!item.organization_id) item.organization_id = orgId;
+        return item;
+      });
+    }
+
+    const item = { ...(payload || {}) };
+    if (!item.organization_id) item.organization_id = orgId;
+    return item;
+  }
+
+  function stripOrganization(payload) {
+    if (Array.isArray(payload)) {
+      return payload.map((row) => {
+        const item = { ...(row || {}) };
+        delete item.organization_id;
+        return item;
+      });
+    }
+    const item = { ...(payload || {}) };
+    delete item.organization_id;
+    return item;
+  }
+
+  function isOrganizationColumnMissing(error) {
+    const code = String(error?.code || "");
+    const msg = String(error?.message || "").toLowerCase();
+    return (
+      (code === "42703" || code === "PGRST204" || code === "PGRST205") &&
+      msg.includes("organization_id")
+    );
+  }
+
+  async function insertWithOrgFallback(table, payload, organizationId) {
+    const orgPayload = attachOrganization(payload, organizationId);
+    let res = await supabase.from(table).insert(orgPayload);
+    if (res.error && isOrganizationColumnMissing(res.error)) {
+      res = await supabase.from(table).insert(stripOrganization(payload));
+    }
+    return res;
+  }
+
+  function resolveOrganizationId(value) {
+    if (!value) return "";
+    return String(value.organization_id || value.organizationId || "").trim();
   }
 
   function cleanNullableText(v) {
@@ -855,7 +914,7 @@ window.Webflow.push(async function () {
   async function loadInterventions() {
     const { data: interventions, error } = await supabase
       .from("interventions")
-      .select("id, internal_ref, client_name, address, start_at, status, tarif")
+      .select("id, organization_id, internal_ref, client_name, address, start_at, status, tarif")
       .order("start_at", { ascending: false });
 
     if (error) {
@@ -1050,7 +1109,7 @@ window.Webflow.push(async function () {
       pvRes
     ] = await Promise.all([
       supabase.from("interventions")
-        .select("id, internal_ref, monday_item_id, title, client_name, client_ref, address, support_phone, status, start_at, end_at, equipment_needed, infos, observations, tarif, pv_status, pv_source, created_at, updated_at")
+        .select("id, organization_id, internal_ref, monday_item_id, title, client_name, client_ref, address, support_phone, status, start_at, end_at, equipment_needed, infos, observations, tarif, pv_status, pv_source, created_at, updated_at")
         .eq("id", id)
         .single(),
       supabase.from("intervention_assignees").select("intervention_id, user_id").eq("intervention_id", id),
@@ -1078,6 +1137,7 @@ window.Webflow.push(async function () {
   let modalState = {
     mode: "view",
     id: null,
+    organization_id: null,
     pendingFiles: [],
     pendingPvDraft: null,
     pendingPvSigned: null,
@@ -2675,16 +2735,27 @@ window.Webflow.push(async function () {
       }).filter(r => r.qty > 0 || r.amount_cents > 0);
 
       let interventionId = modalState.id;
+      let resolvedOrgId = resolveOrganizationId({ organization_id: modalState.organization_id }) || ORG_ID;
 
       if (modalState.mode === "add") {
         payload.pv_status = "none";
         payload.pv_source = null;
 
-        const { data, error } = await supabase
+        let response = await supabase
           .from("interventions")
-          .insert(payload)
+          .insert(attachOrganization(payload, resolvedOrgId))
           .select("id")
           .single();
+
+        if (response.error && isOrganizationColumnMissing(response.error)) {
+          response = await supabase
+            .from("interventions")
+            .insert(stripOrganization(payload))
+            .select("id")
+            .single();
+        }
+
+        const { data, error } = response;
         if (error) throw new Error(error.message);
         interventionId = data.id;
         modalState.id = interventionId;
@@ -2697,24 +2768,27 @@ window.Webflow.push(async function () {
         if (error) throw new Error(error.message);
       }
 
+      const selectedIntervention = listState.items.find((itv) => String(itv.id) === String(interventionId));
+      resolvedOrgId = resolveOrganizationId(selectedIntervention || {}) || resolvedOrgId || ORG_ID;
+
       await supabase.from("intervention_assignees").delete().eq("intervention_id", interventionId);
       if (techIds.length) {
         const rows = techIds.map(uid => ({ intervention_id: interventionId, user_id: uid }));
-        const { error } = await supabase.from("intervention_assignees").insert(rows);
+        const { error } = await insertWithOrgFallback("intervention_assignees", rows, resolvedOrgId);
         if (error) throw new Error("Assignations: " + error.message);
       }
 
       await supabase.from("intervention_compensations").delete().eq("intervention_id", interventionId);
       if (compRows.length) {
         const rows = compRows.map(c => ({ ...c, intervention_id: interventionId }));
-        const { error } = await supabase.from("intervention_compensations").insert(rows);
+        const { error } = await insertWithOrgFallback("intervention_compensations", rows, resolvedOrgId);
         if (error) throw new Error("Compensations: " + error.message);
       }
 
       await supabase.from("intervention_expenses").delete().eq("intervention_id", interventionId);
       if (expRows.length) {
         const rows = expRows.map(e => ({ ...e, intervention_id: interventionId }));
-        const { error } = await supabase.from("intervention_expenses").insert(rows);
+        const { error } = await insertWithOrgFallback("intervention_expenses", rows, resolvedOrgId);
         if (error) throw new Error("Dépenses: " + error.message);
       }
 
@@ -2724,11 +2798,11 @@ window.Webflow.push(async function () {
           const { error: upErr } = await supabase.storage.from(CONFIG.BUCKET).upload(path, pf.file);
           if (upErr) throw new Error("Upload fichier: " + upErr.message);
 
-          const { error: insErr } = await supabase.from("intervention_files").insert({
+          const { error: insErr } = await insertWithOrgFallback("intervention_files", {
             intervention_id: interventionId,
             type: pf.type || "document",
             file_path: path
-          });
+          }, resolvedOrgId);
           if (insErr) throw new Error("Enregistrement fichier: " + insErr.message);
         }
         modalState.pendingFiles = [];
@@ -2766,9 +2840,7 @@ window.Webflow.push(async function () {
             .eq("intervention_id", interventionId);
           if (error) throw new Error("PV: " + error.message);
         } else {
-          const { error } = await supabase
-            .from("intervention_pv")
-            .insert(pvPayload);
+          const { error } = await insertWithOrgFallback("intervention_pv", pvPayload, resolvedOrgId);
           if (error) throw new Error("PV: " + error.message);
         }
 
@@ -3045,6 +3117,7 @@ window.Webflow.push(async function () {
     openModal();
 
     if (mode === "add") {
+      modalState.organization_id = ORG_ID || null;
       restoreDraft();
       assignNextReferenceCandidate(true);
       renderCompRows([]);
@@ -3058,6 +3131,7 @@ window.Webflow.push(async function () {
 
     try {
       const bundle = await loadInterventionBundle(id);
+      modalState.organization_id = resolveOrganizationId(bundle.intervention || {}) || ORG_ID || null;
       fillModal(bundle.intervention, bundle.assigns, bundle.compensations, bundle.expenses, bundle.files, bundle.pv);
       goStep(mode === "view" ? STEPS.length - 1 : 0);
       resetDirtyBaseline();

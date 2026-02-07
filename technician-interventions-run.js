@@ -10,18 +10,19 @@
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJqcmpkaGRlY2hjZGx5Z3BnYW9lcyIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzY3Nzc3MzM0LCJleHAiOjIwODMzNTMzMzR9.E13XKKpIjB1auVtTmgBgV7jxmvS-EOv52t0mT1neKXE",
 
     STORAGE_BUCKET: GLOBAL_CFG.BUCKET || "interventions-files",
-    REPORTS_TABLE: "intervention_reports",
+    REPORTS_TABLE: "",
     EXPENSES_TABLE: "intervention_expenses",
     PRODUCTS_TABLE: "products",
     FILES_TABLE: "intervention_files",
     PV_TABLE: "intervention_pv",
+    ORGANIZATION_ID: GLOBAL_CFG.ORGANIZATION_ID || window.__MBL_ORG_ID__ || "",
 
     LIST_PAGE_PATH: "/extranet/technician/interventions",
 
     STATUS_IN_PROGRESS: "in_progress",
     STATUS_DONE: "done",
 
-    REQUIRE_CHECKLIST_DEFAULT: true,
+    REQUIRE_CHECKLIST_DEFAULT: false,
     REQUIRE_PHOTOS_DEFAULT: false,
     REQUIRE_SIGNATURE_DEFAULT: false,
 
@@ -130,6 +131,7 @@
 
   const state = {
     userId: "",
+    organizationId: "",
     intervention: null,
     steps: [],
     currentStepIndex: 0,
@@ -250,6 +252,7 @@
       }
 
       state.intervention = row;
+      state.organizationId = resolveOrganizationId(row);
       state.existing.fileRows = fileRows;
       state.existing.photoCount = fileRows.filter((r) => String(r.type || "").toLowerCase() === "photo").length;
       state.existing.signatureCount = fileRows.filter((r) => String(r.type || "").toLowerCase() === "signature").length;
@@ -1644,7 +1647,7 @@
 
     if (!payload.length) return true;
 
-    const ins = await supabase.from(CONFIG.FILES_TABLE).insert(payload);
+    const ins = await insertWithOrgFallback(CONFIG.FILES_TABLE, payload, getOrganizationIdForWrites());
     if (ins.error) throw new Error(`Enregistrement fichiers impossible: ${ins.error.message}`);
 
     return true;
@@ -1683,7 +1686,7 @@
       return true;
     }
 
-    const ins = await supabase.from(CONFIG.PV_TABLE).insert(payload);
+    const ins = await insertWithOrgFallback(CONFIG.PV_TABLE, payload, getOrganizationIdForWrites());
     if (ins.error) throw new Error(`Insertion PV impossible: ${ins.error.message}`);
 
     return true;
@@ -1737,16 +1740,21 @@
       };
     });
 
-    const ins = await supabase.from(CONFIG.EXPENSES_TABLE).insert(payload);
+    const ins = await insertWithOrgFallback(CONFIG.EXPENSES_TABLE, payload, getOrganizationIdForWrites());
     if (ins.error) throw new Error(`Insertion depenses impossible: ${ins.error.message}`);
 
     return true;
   }
 
   async function saveReportOptional(payload) {
-    const res = await supabase
-      .from(CONFIG.REPORTS_TABLE)
-      .upsert(payload, { onConflict: "intervention_id,user_id" });
+    if (!CONFIG.REPORTS_TABLE) return true;
+
+    const res = await upsertWithOrgFallback(
+      CONFIG.REPORTS_TABLE,
+      payload,
+      { onConflict: "intervention_id,user_id" },
+      getOrganizationIdForWrites()
+    );
 
     if (res.error) {
       if (isTableMissing(res.error)) return false;
@@ -2236,11 +2244,16 @@
     const pick = (value) => String(value || "").trim();
     const pickRelation = (value) => normalizeRelationName(pick(value));
     if (d.storageBucket) CONFIG.STORAGE_BUCKET = pick(d.storageBucket);
-    if (d.reportsTable) CONFIG.REPORTS_TABLE = pickRelation(d.reportsTable);
+    if (Object.prototype.hasOwnProperty.call(d, "reportsTable")) {
+      CONFIG.REPORTS_TABLE = normalizeOptionalRelationName(d.reportsTable);
+    }
     if (d.expensesTable) CONFIG.EXPENSES_TABLE = pickRelation(d.expensesTable);
     if (d.productsTable) CONFIG.PRODUCTS_TABLE = pickRelation(d.productsTable);
     if (d.filesTable) CONFIG.FILES_TABLE = pickRelation(d.filesTable);
-    if (d.pvTable) CONFIG.PV_TABLE = pickRelation(d.pvTable);
+    if (Object.prototype.hasOwnProperty.call(d, "pvTable")) {
+      CONFIG.PV_TABLE = normalizeOptionalRelationName(d.pvTable);
+    }
+    if (d.organizationId) CONFIG.ORGANIZATION_ID = pick(d.organizationId);
     if (d.requireChecklist) CONFIG.REQUIRE_CHECKLIST_DEFAULT = d.requireChecklist === "true";
     if (d.requirePhotos) CONFIG.REQUIRE_PHOTOS_DEFAULT = d.requirePhotos === "true";
     if (d.requireSignature) CONFIG.REQUIRE_SIGNATURE_DEFAULT = d.requireSignature === "true";
@@ -2254,6 +2267,14 @@
       relation = relation.slice("public.".length).trim();
     }
     return relation;
+  }
+
+  function normalizeOptionalRelationName(value) {
+    const raw = String(value || "").trim();
+    const s = norm(raw);
+    if (!raw) return "";
+    if (["none", "null", "off", "false", "0"].includes(s)) return "";
+    return normalizeRelationName(raw);
   }
 
   function renderShell(rootEl) {
@@ -2431,6 +2452,78 @@
 
   function hasField(row, key) {
     return row && Object.prototype.hasOwnProperty.call(row, key);
+  }
+
+  function resolveOrganizationId(source) {
+    if (!source) return "";
+    const value = String(source.organization_id || source.organizationId || "").trim();
+    if (value) return value;
+    return "";
+  }
+
+  function getOrganizationIdForWrites() {
+    return (
+      String(state.organizationId || "").trim() ||
+      resolveOrganizationId(state.intervention || {}) ||
+      String(CONFIG.ORGANIZATION_ID || "").trim()
+    );
+  }
+
+  function attachOrganization(payload, organizationId) {
+    const orgId = String(organizationId || "").trim();
+    if (!orgId) return payload;
+
+    if (Array.isArray(payload)) {
+      return payload.map((row) => {
+        const item = { ...(row || {}) };
+        if (!item.organization_id) item.organization_id = orgId;
+        return item;
+      });
+    }
+
+    const item = { ...(payload || {}) };
+    if (!item.organization_id) item.organization_id = orgId;
+    return item;
+  }
+
+  function stripOrganization(payload) {
+    if (Array.isArray(payload)) {
+      return payload.map((row) => {
+        const item = { ...(row || {}) };
+        delete item.organization_id;
+        return item;
+      });
+    }
+    const item = { ...(payload || {}) };
+    delete item.organization_id;
+    return item;
+  }
+
+  function isOrganizationColumnMissing(error) {
+    const code = String(error?.code || "");
+    const message = String(error?.message || "").toLowerCase();
+    return (
+      (code === "42703" || code === "PGRST204" || code === "PGRST205") &&
+      message.includes("organization_id")
+    );
+  }
+
+  async function insertWithOrgFallback(table, payload, organizationId) {
+    const orgPayload = attachOrganization(payload, organizationId);
+    let res = await supabase.from(table).insert(orgPayload);
+    if (res.error && isOrganizationColumnMissing(res.error)) {
+      res = await supabase.from(table).insert(stripOrganization(payload));
+    }
+    return res;
+  }
+
+  async function upsertWithOrgFallback(table, payload, options, organizationId) {
+    const orgPayload = attachOrganization(payload, organizationId);
+    let res = await supabase.from(table).upsert(orgPayload, options || {});
+    if (res.error && isOrganizationColumnMissing(res.error)) {
+      res = await supabase.from(table).upsert(stripOrganization(payload), options || {});
+    }
+    return res;
   }
 
   function parseEuroInputToCents(value) {

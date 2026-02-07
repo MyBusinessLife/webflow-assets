@@ -40,6 +40,13 @@ window.Webflow.push(async function () {
   const session = await requireSessionOrRedirect(supabase);
   if (!session) return;
 
+  const ORG_ID = String(
+    window.__MBL_CFG__?.ORGANIZATION_ID ||
+    window.__MBL_ORG_ID__ ||
+    document.querySelector("[data-admin-products]")?.dataset?.organizationId ||
+    ""
+  ).trim();
+
   const STORAGE_BUCKET = "product-images";
   const ROW_SELECTOR = ".product-row";
 
@@ -58,6 +65,29 @@ window.Webflow.push(async function () {
       clearTimeout(t);
       t = setTimeout(() => fn(...args), waitMs);
     };
+  }
+
+  function attachOrganization(payload, organizationId) {
+    const orgId = String(organizationId || "").trim();
+    if (!orgId) return payload;
+    const row = { ...(payload || {}) };
+    if (!row.organization_id) row.organization_id = orgId;
+    return row;
+  }
+
+  function stripOrganization(payload) {
+    const row = { ...(payload || {}) };
+    delete row.organization_id;
+    return row;
+  }
+
+  function isOrganizationColumnMissing(error) {
+    const code = String(error?.code || "");
+    const msg = String(error?.message || "").toLowerCase();
+    return (
+      (code === "42703" || code === "PGRST204" || code === "PGRST205") &&
+      msg.includes("organization_id")
+    );
   }
 
   function formatCents(cents) {
@@ -1987,11 +2017,21 @@ window.Webflow.push(async function () {
       let productId = formState.id;
 
       if (formState.mode === "add") {
-        const { data, error } = await supabase
+        let response = await supabase
           .from("products")
-          .insert(payload)
+          .insert(attachOrganization(payload, ORG_ID))
           .select("id")
           .single();
+
+        if (response.error && isOrganizationColumnMissing(response.error)) {
+          response = await supabase
+            .from("products")
+            .insert(stripOrganization(payload))
+            .select("id")
+            .single();
+        }
+
+        const { data, error } = response;
 
         if (error) throw new Error(error.message);
         productId = data.id;

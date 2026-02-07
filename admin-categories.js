@@ -39,6 +39,13 @@ document.documentElement.setAttribute("data-page", "admin-categories");
     const session = await requireSessionOrRedirect(supabase);
     if (!session) return;
 
+    const ORG_ID = String(
+      window.__MBL_CFG__?.ORGANIZATION_ID ||
+      window.__MBL_ORG_ID__ ||
+      document.querySelector("[data-admin-categories]")?.dataset?.organizationId ||
+      ""
+    ).trim();
+
     function norm(value) {
       return String(value || "")
         .toLowerCase()
@@ -66,6 +73,38 @@ document.documentElement.setAttribute("data-page", "admin-categories");
         clearTimeout(t);
         t = setTimeout(() => fn(...args), waitMs);
       };
+    }
+
+    function attachOrganization(payload, organizationId) {
+      const orgId = String(organizationId || "").trim();
+      if (!orgId) return payload;
+      const row = { ...(payload || {}) };
+      if (!row.organization_id) row.organization_id = orgId;
+      return row;
+    }
+
+    function stripOrganization(payload) {
+      const row = { ...(payload || {}) };
+      delete row.organization_id;
+      return row;
+    }
+
+    function isOrganizationColumnMissing(error) {
+      const code = String(error?.code || "");
+      const msg = String(error?.message || "").toLowerCase();
+      return (
+        (code === "42703" || code === "PGRST204" || code === "PGRST205") &&
+        msg.includes("organization_id")
+      );
+    }
+
+    async function insertWithOrgFallback(table, payload, organizationId) {
+      const withOrg = attachOrganization(payload, organizationId);
+      let res = await supabase.from(table).insert(withOrg);
+      if (res.error && isOrganizationColumnMissing(res.error)) {
+        res = await supabase.from(table).insert(stripOrganization(payload));
+      }
+      return res;
     }
 
     function injectThemeStyles() {
@@ -1114,7 +1153,7 @@ document.documentElement.setAttribute("data-page", "admin-categories");
         };
 
         if (modalState.mode === "add") {
-          const { error } = await supabase.from("categories").insert(payload);
+          const { error } = await insertWithOrgFallback("categories", payload, ORG_ID);
           if (error) throw new Error(error.message);
         } else {
           const { error } = await supabase
