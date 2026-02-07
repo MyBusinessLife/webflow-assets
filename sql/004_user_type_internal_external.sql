@@ -4,6 +4,60 @@
 alter table if exists public.profiles
   add column if not exists user_type text;
 
+-- Drop previous user_type check constraints (legacy naming or rules).
+do $$
+declare
+  _con record;
+begin
+  if to_regclass('public.profiles') is null then
+    return;
+  end if;
+
+  for _con in
+    select c.conname
+    from pg_constraint c
+    join pg_class t on t.oid = c.conrelid
+    join pg_namespace n on n.oid = t.relnamespace
+    where n.nspname = 'public'
+      and t.relname = 'profiles'
+      and c.contype = 'c'
+      and pg_get_constraintdef(c.oid) ilike '%user_type%'
+  loop
+    execute format('alter table public.profiles drop constraint if exists %I', _con.conname);
+  end loop;
+end
+$$;
+
+-- Force text type for compatibility with old enum/varchar implementations.
+do $$
+declare
+  _typ text;
+begin
+  if to_regclass('public.profiles') is null then
+    return;
+  end if;
+
+  select format_type(a.atttypid, a.atttypmod)
+  into _typ
+  from pg_attribute a
+  join pg_class t on t.oid = a.attrelid
+  join pg_namespace n on n.oid = t.relnamespace
+  where n.nspname = 'public'
+    and t.relname = 'profiles'
+    and a.attname = 'user_type'
+    and a.attnum > 0
+    and not a.attisdropped;
+
+  if _typ is null then
+    return;
+  end if;
+
+  if lower(_typ) <> 'text' then
+    execute 'alter table public.profiles alter column user_type type text using user_type::text';
+  end if;
+end
+$$;
+
 update public.profiles
 set user_type =
   case
