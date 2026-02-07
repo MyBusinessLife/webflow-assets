@@ -789,7 +789,7 @@ document.documentElement.setAttribute("data-page", "admin-categories");
     async function loadCategories() {
       const { data, error } = await supabase
         .from("categories")
-        .select("id, name, slug, is_active, created_at, updated_at")
+        .select("id, name, slug, is_active, created_at")
         .order("created_at", { ascending: false });
 
       if (error) {
