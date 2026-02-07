@@ -364,18 +364,20 @@ window.Webflow.push(async function () {
   async function resolveQuotePdfUrl(quote) {
     if (!quote) return "";
 
+    const path = String(quote.pdf_path || "").trim();
+    if (path) {
+      const signed = await supabase.storage.from(CONFIG.BUCKET).createSignedUrl(path, CONFIG.PDF_SIGNED_URL_TTL);
+      if (!signed.error && signed.data?.signedUrl) return signed.data.signedUrl;
+
+      const pub = supabase.storage.from(CONFIG.BUCKET).getPublicUrl(path);
+      const pubUrl = pub?.data?.publicUrl || "";
+      if (pubUrl) return pubUrl;
+    }
+
     if (quote.pdf_url && /^https?:\/\//i.test(quote.pdf_url)) {
       return quote.pdf_url;
     }
-
-    const path = String(quote.pdf_path || "").trim();
-    if (!path) return "";
-
-    const signed = await supabase.storage.from(CONFIG.BUCKET).createSignedUrl(path, CONFIG.PDF_SIGNED_URL_TTL);
-    if (!signed.error && signed.data?.signedUrl) return signed.data.signedUrl;
-
-    const pub = supabase.storage.from(CONFIG.BUCKET).getPublicUrl(path);
-    return pub?.data?.publicUrl || "";
+    return "";
   }
 
   function renderStatusOptions(currentKey) {

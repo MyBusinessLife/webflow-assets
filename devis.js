@@ -678,11 +678,17 @@ window.Webflow.push(async function () {
   }
 
   async function updateQuotePdfReference(uploaded) {
-    if (!state.quoteId || !uploaded?.url) return;
+    if (!state.quoteId || !uploaded?.path) return;
+
+    const nowIso = new Date().toISOString();
+    const base = { pdf_path: uploaded.path };
+    const withUrl = uploaded.url ? { ...base, pdf_url: uploaded.url } : null;
     const variants = [
-      { pdf_path: uploaded.path, pdf_url: uploaded.url, updated_at: new Date().toISOString() },
-      { pdf_path: uploaded.path, pdf_url: uploaded.url },
-    ];
+      withUrl ? { ...withUrl, updated_at: nowIso } : null,
+      withUrl ? withUrl : null,
+      { ...base, updated_at: nowIso },
+      base,
+    ].filter(Boolean);
 
     for (const payload of variants) {
       const res = await supabase.from(CONFIG.QUOTES_TABLE).update(payload).eq("id", state.quoteId);
@@ -717,6 +723,17 @@ window.Webflow.push(async function () {
     return null;
   }
 
+  async function resolvePdfUrlFromPath(path) {
+    const clean = String(path || "").trim();
+    if (!clean) return "";
+
+    const signed = await supabase.storage.from(CONFIG.BUCKET).createSignedUrl(clean, 300);
+    if (!signed.error && signed.data?.signedUrl) return signed.data.signedUrl;
+
+    const pub = supabase.storage.from(CONFIG.BUCKET).getPublicUrl(clean);
+    return pub?.data?.publicUrl || "";
+  }
+
   function wireActions() {
     els.btnAddItem.addEventListener("click", () => {
       state.draft.items.push(createItem());
@@ -749,20 +766,23 @@ window.Webflow.push(async function () {
         const blob = await generatePdfBlob();
         const uploaded = await uploadPdfToStorage(blob);
 
-        if (uploaded?.url) {
-          state.pdf = uploaded;
-          els.previewLink.href = uploaded.url;
-          els.previewLink.hidden = false;
-          await updateQuotePdfReference(uploaded);
+        if (uploaded?.path) {
+          const bestUrl = uploaded.url || (await resolvePdfUrlFromPath(uploaded.path));
+          state.pdf = { ...uploaded, url: bestUrl || uploaded.url || "" };
+          if (bestUrl) {
+            els.previewLink.href = bestUrl;
+            els.previewLink.hidden = false;
+          }
+          await updateQuotePdfReference({ ...uploaded, url: uploaded.url || "" });
         }
 
-        if (saved?.ok && uploaded?.url && mode === STATUS_VALIDATED) {
+        if (saved?.ok && uploaded?.path && mode === STATUS_VALIDATED) {
           showToast("success", STR.msgValidated);
-        } else if (saved?.ok && uploaded?.url) {
+        } else if (saved?.ok && uploaded?.path) {
           showToast("success", STR.msgSavedWithPdf);
         } else if (saved?.ok && uploaded?.denied) {
           showToast("warning", STR.msgStorageDenied);
-        } else if (saved?.ok && !uploaded?.url) {
+        } else if (saved?.ok && !uploaded?.path) {
           showToast("warning", STR.msgSavedNoPdf);
         } else if (saved?.denied || !saved?.ok) {
           if (saved?.reason === "rls" || saved?.denied) {
