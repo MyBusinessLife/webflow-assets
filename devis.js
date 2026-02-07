@@ -36,6 +36,7 @@ window.Webflow.push(async function () {
     VALIDITY_DAYS: Number(root.dataset.validityDays || 30),
     CURRENCY: root.dataset.currency || "EUR",
     PDF_TTL: Number(root.dataset.pdfTtl || 3600),
+    DOC_ACCENT: String(root.dataset.docAccent || GLOBAL_CFG.DOC_ACCENT || "#306D89").trim() || "#306D89",
   };
 
   function resolveSupabaseClient() {
@@ -76,6 +77,8 @@ window.Webflow.push(async function () {
     rcs_number: root.dataset.companyRcsNumber || GLOBAL_CFG.COMPANY_RCS_NUMBER || "",
     naf_code: root.dataset.companyNafCode || GLOBAL_CFG.COMPANY_NAF_CODE || "",
     share_capital_cents: Number(root.dataset.companyShareCapitalCents || GLOBAL_CFG.COMPANY_SHARE_CAPITAL_CENTS || 0),
+    iban: root.dataset.companyIban || root.dataset.iban || GLOBAL_CFG.COMPANY_IBAN || "",
+    bic: root.dataset.companyBic || root.dataset.bic || GLOBAL_CFG.COMPANY_BIC || "",
   };
 
   const STR = {
@@ -423,6 +426,7 @@ window.Webflow.push(async function () {
       row.innerHTML = `
         <input class="dv-input" list="dv-products" data-field="name" placeholder="Produit / Service" value="${escapeHTML(item.name)}" />
         <input class="dv-input dv-input--xs" data-field="qty" type="number" min="1" step="1" inputmode="numeric" value="${item.qty}" />
+        <input class="dv-input dv-input--xs" data-field="unit" type="text" placeholder="Unite" value="${escapeHTML(item.unit || "")}" />
         <input class="dv-input dv-input--xs" data-field="price" type="number" min="0" step="0.01" inputmode="decimal" value="${centsToInput(item.unit_cents)}" />
         <select class="dv-input dv-input--xs" data-field="vat">${renderVatOptions(item.vat_rate)}</select>
         <div class="dv-line-total">${formatMoney(calcLineTotal(item), CONFIG.CURRENCY)}</div>
@@ -454,6 +458,8 @@ window.Webflow.push(async function () {
       }
     } else if (field === "qty") {
       item.qty = Math.max(1, Number(e.target.value || 1));
+    } else if (field === "unit") {
+      item.unit = String(e.target.value || "").trim();
     } else if (field === "price") {
       item.unit_cents = eurosToCents(Number(e.target.value || 0));
     } else if (field === "vat") {
@@ -496,20 +502,26 @@ window.Webflow.push(async function () {
   function updatePreview() {
     const itemsHtml = (state.draft.items || [])
       .map((item) => {
+        const rate = sanitizeVatRate(item.vat_rate ?? state.draft.vat_rate);
+        const qty = Math.max(1, Number(item.qty || 1));
+        const qtyTxt = Number.isFinite(qty)
+          ? qty.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+          : "1,00";
         const lineTotal = calcLineTotal(item);
         return `
           <tr>
             <td class="dv-col-label">${escapeHTML(item.name || "—")}</td>
-            <td class="dv-col-num">${item.qty}</td>
+            <td class="dv-col-num">${escapeHTML(qtyTxt)}</td>
+            <td class="dv-col-unit">${escapeHTML(String(item.unit || ""))}</td>
             <td class="dv-col-num">${formatMoney(item.unit_cents, CONFIG.CURRENCY)}</td>
-            <td class="dv-col-num">${item.vat_rate}%</td>
+            <td class="dv-col-num">${escapeHTML(String(rate).replace(".", ","))}%</td>
             <td class="dv-col-num">${formatMoney(lineTotal, CONFIG.CURRENCY)}</td>
           </tr>
         `;
       })
       .join("");
 
-    const safeItemsHtml = itemsHtml || `<tr><td colspan="5" class="dv-preview-empty">Aucune ligne.</td></tr>`;
+    const safeItemsHtml = itemsHtml || `<tr><td colspan="6" class="dv-preview-empty">Aucune ligne.</td></tr>`;
     const clientName = escapeHTML(state.draft.client_name || "Client");
     const contactName = escapeHTML(state.draft.contact_name || "");
     const clientAddress = escapeHTML(state.draft.client_address || "");
@@ -560,136 +572,149 @@ window.Webflow.push(async function () {
       `
       : "";
 
-    els.preview.innerHTML = `
-      <article class="dv-paper">
-        <div class="dv-edoc-banner">
-          <span>Format electronique</span>
-          <strong>Document numerique clair et moderne (preparation: septembre 2026)</strong>
-        </div>
+    const accent = String(CONFIG.DOC_ACCENT || "#306D89").trim() || "#306D89";
 
-        <header class="dv-paper-top">
-          <div class="dv-company">
-            <div class="dv-preview-title">${escapeHTML(COMPANY.name)}</div>
-            <div class="dv-preview-sub">${escapeHTML(COMPANY.address)}</div>
-            <div class="dv-preview-sub">${escapeHTML(COMPANY.email)} ${COMPANY.phone ? `• ${escapeHTML(COMPANY.phone)}` : ""}</div>
-            ${COMPANY.siret ? `<div class="dv-preview-sub">SIRET: ${escapeHTML(COMPANY.siret)}</div>` : ""}
-            ${COMPANY.tva ? `<div class="dv-preview-sub">TVA: ${escapeHTML(COMPANY.tva)}</div>` : ""}
-            ${COMPANY.legal_form ? `<div class="dv-preview-sub">${escapeHTML(COMPANY.legal_form)}</div>` : ""}
-            ${
-              COMPANY.rcs_city || COMPANY.rcs_number
-                ? `<div class="dv-preview-sub">RCS ${escapeHTML(COMPANY.rcs_city || "")} ${escapeHTML(COMPANY.rcs_number || "")}</div>`
-                : ""
-            }
-            ${COMPANY.naf_code ? `<div class="dv-preview-sub">NAF: ${escapeHTML(COMPANY.naf_code)}</div>` : ""}
-            ${
-              Number(COMPANY.share_capital_cents || 0) > 0
-                ? `<div class="dv-preview-sub">Capital: ${formatMoney(Number(COMPANY.share_capital_cents || 0), CONFIG.CURRENCY)}</div>`
-                : ""
-            }
+    const sellerName = escapeHTML(
+      [String(COMPANY.legal_form || "").trim(), String(COMPANY.name || "").trim()].filter(Boolean).join(" ") ||
+        String(COMPANY.name || "").trim()
+    );
+    const sellerAddress = escapeHTML(String(COMPANY.address || "")).replace(/\n/g, "<br>");
+
+    const clientAddressHtml = clientAddress.replace(/\n/g, "<br>");
+    const docDate = escapeHTML(todayFR());
+
+    const subtotalCents = Number(state.draft.subtotal_cents || 0);
+    const discountCents = Number(state.draft.discount_cents || 0);
+    const totalHtCents = Math.max(0, subtotalCents - Math.max(0, discountCents));
+
+    const vatLinesHtml = vatBreakdown.length
+      ? vatBreakdown
+          .map((row) => {
+            const rate = escapeHTML(String(row.rate).replace(".", ","));
+            return `<div class="dv-total-line"><span>TVA ${rate} %</span><strong>${formatMoney(row.vat_cents, CONFIG.CURRENCY)}</strong></div>`;
+          })
+          .join("")
+      : `<div class="dv-total-line"><span>TVA</span><strong>${formatMoney(state.draft.vat_cents, CONFIG.CURRENCY)}</strong></div>`;
+
+    const discountLineHtml =
+      discountCents > 0
+        ? `<div class="dv-total-line dv-total-line--muted"><span>Remise</span><strong>-${escapeHTML(
+            formatMoney(discountCents, CONFIG.CURRENCY)
+          )}</strong></div>`
+        : "";
+
+    const iban = String(COMPANY.iban || "").trim();
+    const bic = String(COMPANY.bic || "").trim();
+    const bankHtml =
+      iban || bic
+        ? `
+          <div class="dv-bank-lines">
+            ${iban ? `<div><strong>IBAN :</strong> ${escapeHTML(iban)}</div>` : ""}
+            ${bic ? `<div><strong>BIC :</strong> ${escapeHTML(bic)}</div>` : ""}
           </div>
-          <div class="dv-doc">
-            <div class="dv-doc-pill">DEVIS</div>
-            <div class="dv-doc-row"><span>Reference</span><strong>${ref}</strong></div>
-            <div class="dv-doc-row"><span>Date</span><strong>${escapeHTML(todayFR())}</strong></div>
-            <div class="dv-doc-row"><span>Validite</span><strong>${validity}</strong></div>
+        `
+        : "";
+
+    const notesTxt = String(state.draft.notes || "").trim();
+    const termsTxt = String(state.draft.terms || "").trim();
+    const extraHtml = [
+      notesTxt ? `<div class="dv-extra"><strong>Notes :</strong> ${escapeHTML(notesTxt)}</div>` : "",
+      termsTxt ? `<div class="dv-extra"><strong>Conditions :</strong> ${escapeHTML(termsTxt)}</div>` : "",
+    ]
+      .filter(Boolean)
+      .join("");
+
+    const siren = String(COMPANY.siret || "").replace(/\D/g, "").slice(0, 9);
+    const footerParts = [];
+    const capitalEuros =
+      Number(COMPANY.share_capital_cents || 0) > 0 ? Math.round(Number(COMPANY.share_capital_cents || 0) / 100) : 0;
+    if (sellerName && capitalEuros > 0) footerParts.push(`${sellerName} au capital de ${capitalEuros.toLocaleString("fr-FR")} euros`);
+    else if (sellerName) footerParts.push(sellerName);
+    const regParts = [];
+    if (siren) regParts.push(`SIREN ${siren}`);
+    if (COMPANY.rcs_city || COMPANY.rcs_number)
+      regParts.push(`RCS ${String(COMPANY.rcs_city || "").trim()} ${String(COMPANY.rcs_number || "").trim()}`.trim());
+    if (COMPANY.naf_code) regParts.push(`NAF ${String(COMPANY.naf_code).trim()}`);
+    if (regParts.length) footerParts.push(regParts.join(" - "));
+    const vatNumber = String(COMPANY.vat_number || COMPANY.tva || "").trim();
+    if (vatNumber) footerParts.push(`TVA intracommunautaire : ${vatNumber}`);
+
+    const interventionRef = (() => {
+      const id = String(state.selectedInterventionId || "").trim();
+      if (!id) return "";
+      const itv = state.interventions.find((i) => String(i.id) === id);
+      if (!itv) return "";
+      const ref = String(itv.internal_ref || itv.client_ref || "").trim();
+      return ref ? ref : String(itv.title || "").trim();
+    })();
+
+    els.preview.innerHTML = `
+      <article class="dv-paper" style="--doc-accent:${escapeHTML(accent)}">
+        <header class="dv-paper-top dv-paper-top--plain">
+          <div class="dv-seller">
+            <div class="dv-seller-name">${sellerName}</div>
+            ${sellerAddress ? `<div class="dv-seller-line">${sellerAddress}</div>` : ""}
+          </div>
+          <div class="dv-buyer">
+            <div class="dv-buyer-name">${clientName}</div>
+            ${contactName ? `<div class="dv-buyer-line">${contactName}</div>` : ""}
+            ${clientAddressHtml ? `<div class="dv-buyer-line">${clientAddressHtml}</div>` : ""}
           </div>
         </header>
 
-        <section class="dv-edoc-meta">
-          <div class="dv-edoc-item"><span>ID document</span><strong>${electronicId}</strong></div>
-          <div class="dv-edoc-item"><span>Emission</span><strong>Electronique</strong></div>
-          <div class="dv-edoc-item"><span>Horodatage</span><strong>${generatedAtFR}</strong></div>
-          <div class="dv-edoc-item"><span>Timestamp ISO</span><strong>${generatedIso}</strong></div>
-        </section>
-
-        <section class="dv-paper-meta">
-          <div class="dv-meta-card">
-            <div class="dv-meta-title">Client</div>
-            <div class="dv-meta-line"><strong>${clientName}</strong></div>
-            ${contactName ? `<div class="dv-meta-line">${contactName}</div>` : ""}
-            ${clientAddress ? `<div class="dv-meta-line">${clientAddress}</div>` : ""}
-            ${clientEmail ? `<div class="dv-meta-line">${clientEmail}</div>` : ""}
-            ${clientPhone ? `<div class="dv-meta-line">${clientPhone}</div>` : ""}
+        <section class="dv-doc-meta">
+          <div class="dv-doc-meta-left">
+            <div class="dv-doc-number">Devis N° ${ref}</div>
+            ${interventionRef ? `<div class="dv-doc-line">${escapeHTML(interventionRef)}</div>` : ""}
+            <div class="dv-doc-line">Date : ${docDate}</div>
           </div>
-          <div class="dv-meta-card">
-            <div class="dv-meta-title">Recapitulatif</div>
-            <div class="dv-doc-row"><span>Sous-total</span><strong>${formatMoney(state.draft.subtotal_cents, CONFIG.CURRENCY)}</strong></div>
-            <div class="dv-doc-row"><span>Remise</span><strong>${formatMoney(state.draft.discount_cents, CONFIG.CURRENCY)}</strong></div>
-            <div class="dv-doc-row"><span>TVA</span><strong>${formatMoney(state.draft.vat_cents, CONFIG.CURRENCY)}</strong></div>
-            <div class="dv-doc-row dv-doc-row--total"><span>Total TTC</span><strong>${formatMoney(state.draft.total_cents, CONFIG.CURRENCY)}</strong></div>
-            ${vatBreakdownHtml}
+          <div class="dv-doc-meta-right">
+            <div class="dv-doc-line">Validite : ${validity}</div>
           </div>
         </section>
 
-        <section class="dv-paper-lines">
-          <table class="dv-preview-table">
+        <section class="dv-paper-lines dv-paper-lines--plain">
+          <table class="dv-preview-table dv-preview-table--legal">
             <thead>
               <tr>
-                <th>Libelle</th>
-                <th class="dv-col-num">Qt</th>
-                <th class="dv-col-num">PU</th>
+                <th>Designation</th>
+                <th class="dv-col-num">Quantite</th>
+                <th>Unite</th>
+                <th class="dv-col-num">Prix unitaire</th>
                 <th class="dv-col-num">TVA</th>
-                <th class="dv-col-num">Total</th>
+                <th class="dv-col-num">Montant HT</th>
               </tr>
             </thead>
             <tbody>${safeItemsHtml}</tbody>
           </table>
         </section>
 
-        <section class="dv-paper-notes">
-          ${notes ? `
-            <div class="dv-note-block">
-              <div class="dv-note-title">Notes</div>
-              <div class="dv-note-text">${notes}</div>
-            </div>
-          ` : ""}
-          ${terms ? `
-            <div class="dv-note-block">
-              <div class="dv-note-title">Conditions</div>
-              <div class="dv-note-text">${terms}</div>
-            </div>
-          ` : ""}
-        </section>
-
-        <section class="dv-paper-accept">
-          <div class="dv-accept-card">
-            <div class="dv-accept-title">Bon pour accord</div>
-            <div class="dv-accept-grid">
-              <div class="dv-accept-field">
-                <span>Nom</span>
-                <div class="dv-accept-blank"></div>
-              </div>
-              <div class="dv-accept-field">
-                <span>Date</span>
-                <div class="dv-accept-blank"></div>
-              </div>
-              <div class="dv-accept-field dv-accept-field--wide">
-                <span>Signature</span>
-                <div class="dv-accept-blank dv-accept-blank--tall"></div>
-              </div>
-            </div>
-          </div>
-          <div class="dv-legal-card">
-            <div class="dv-legal-title">Mentions</div>
-            <div class="dv-legal-text">
-              <div>Devis valable jusqu'au ${validity}.</div>
-              <div>Prix en ${escapeHTML(CONFIG.CURRENCY)}. TVA detaillee par taux.</div>
-              <div>Document emis au format electronique (preparation: septembre 2026).</div>
-            </div>
+        <section class="dv-totals">
+          <div class="dv-totals-box">
+            ${discountLineHtml}
+            <div class="dv-total-line"><span>Total HT</span><strong>${formatMoney(totalHtCents, CONFIG.CURRENCY)}</strong></div>
+            ${vatLinesHtml}
+            <div class="dv-total-line dv-total-line--grand"><span>Total TTC</span><strong>${formatMoney(state.draft.total_cents, CONFIG.CURRENCY)}</strong></div>
           </div>
         </section>
 
-        <footer class="dv-paper-footer">
-          <div class="dv-paper-footer-left">
-            <div><strong>ID:</strong> ${electronicId}</div>
-            <div><strong>Horodatage:</strong> ${generatedAtFR}</div>
-            <div class="dv-paper-footer-sub">ISO: ${generatedIso}</div>
+        <section class="dv-bank">
+          ${bankHtml}
+          <div class="dv-legal-note">Devis valable jusqu'au ${validity}.</div>
+          ${extraHtml}
+        </section>
+
+        <section class="dv-signature">
+          <div class="dv-signature-title">Bon pour accord</div>
+          <div class="dv-signature-grid">
+            <div class="dv-signature-field"><span>Nom</span><div class="dv-signature-line"></div></div>
+            <div class="dv-signature-field"><span>Date</span><div class="dv-signature-line"></div></div>
+            <div class="dv-signature-field dv-signature-field--wide"><span>Signature</span><div class="dv-signature-line dv-signature-line--tall"></div></div>
           </div>
-          <div class="dv-paper-footer-right">
-            <div class="dv-paper-footer-brand">${escapeHTML(COMPANY.name)}</div>
-            ${COMPANY.email ? `<div>${escapeHTML(COMPANY.email)}</div>` : ""}
-            ${COMPANY.phone ? `<div>${escapeHTML(COMPANY.phone)}</div>` : ""}
-          </div>
+        </section>
+
+        <footer class="dv-footer-legal">
+          ${footerParts.map((p) => `<div>${escapeHTML(p)}</div>`).join("")}
         </footer>
       </article>
     `;
@@ -718,39 +743,42 @@ window.Webflow.push(async function () {
   }
 
   function buildPdfDefinition(documentId) {
-    const now = new Date();
-    const primary = "#0ea5e9";
-    const ink = "#0f172a";
-    const soft = "#64748b";
-    const cardBg = "#f8fbff";
-    const border = "#dbe7ff";
-    const subtle = "#e2e8f0";
+    const accent = String(CONFIG.DOC_ACCENT || "#306D89").trim() || "#306D89";
+    const ink = "#111827";
+    const muted = "#6b7280";
+    const line = "#e5e7eb";
 
     const reference = String(state.draft.reference || "").trim() || "Sans reference";
+    const docDate = todayFR();
     const validUntil = formatDateFR(state.draft.valid_until) || "—";
-    const issuedAtFR = formatDateTimeFR(now) || todayFR();
-    const issuedIso = now.toISOString();
 
-    const companyLines = [
-      COMPANY.address,
-      [COMPANY.email, COMPANY.phone].filter(Boolean).join(" • "),
-      COMPANY.siret ? `SIRET: ${COMPANY.siret}` : "",
-      COMPANY.tva ? `TVA: ${COMPANY.tva}` : "",
-      COMPANY.legal_form ? String(COMPANY.legal_form) : "",
-      COMPANY.rcs_city || COMPANY.rcs_number ? `RCS ${COMPANY.rcs_city || ""} ${COMPANY.rcs_number || ""}`.trim() : "",
-      COMPANY.naf_code ? `NAF: ${COMPANY.naf_code}` : "",
-      Number(COMPANY.share_capital_cents || 0) > 0
-        ? `Capital: ${formatMoney(Number(COMPANY.share_capital_cents || 0), CONFIG.CURRENCY)}`
-        : "",
-    ].filter((s) => String(s || "").trim());
+    const splitLines = (value) =>
+      String(value || "")
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean);
 
-    const clientLines = [
-      state.draft.client_name,
-      state.draft.contact_name,
-      state.draft.client_address,
-      state.draft.client_email,
-      state.draft.client_phone,
-    ].filter((s) => String(s || "").trim());
+    const sellerName =
+      [String(COMPANY.legal_form || "").trim(), String(COMPANY.name || "").trim()].filter(Boolean).join(" ") ||
+      String(COMPANY.name || "").trim();
+    const sellerLines = [];
+    if (String(COMPANY.address || "").trim()) sellerLines.push(...splitLines(COMPANY.address));
+    const sellerContact = [String(COMPANY.email || "").trim(), String(COMPANY.phone || "").trim()].filter(Boolean).join(" • ");
+    if (sellerContact) sellerLines.push(sellerContact);
+
+    const buyerName = String(state.draft.client_name || "").trim() || "Client";
+    const buyerLines = [];
+    if (String(state.draft.contact_name || "").trim()) buyerLines.push(String(state.draft.contact_name || "").trim());
+    if (String(state.draft.client_address || "").trim()) buyerLines.push(...splitLines(state.draft.client_address));
+
+    const interventionRef = (() => {
+      const id = String(state.selectedInterventionId || "").trim();
+      if (!id) return "";
+      const itv = state.interventions.find((i) => String(i.id) === id);
+      if (!itv) return "";
+      const ref = String(itv.internal_ref || itv.client_ref || "").trim();
+      return ref ? ref : String(itv.title || "").trim();
+    })();
 
     const items = (state.draft.items || []).filter((it) => {
       if (!it) return false;
@@ -761,313 +789,219 @@ window.Webflow.push(async function () {
     });
     if (!items.length) items.push(createItem());
 
-    const tableRows = items.map((item) => {
-      const rate = sanitizeVatRate(item.vat_rate ?? state.draft.vat_rate);
-      return [
-        { text: String(item.name || "—"), style: "td" },
-        { text: String(Math.max(1, Number(item.qty || 1))), style: "td", alignment: "right" },
-        { text: formatMoney(Number(item.unit_cents || 0), CONFIG.CURRENCY), style: "td", alignment: "right" },
-        { text: `${String(rate).replace(".", ",")}%`, style: "td", alignment: "right" },
-        { text: formatMoney(calcLineTotal(item), CONFIG.CURRENCY), style: "td", alignment: "right" },
-      ];
-    });
-
-    const vatBreakdown = computeVatBreakdown(
-      state.draft.items,
-      state.draft.subtotal_cents,
-      state.draft.discount_cents,
-      state.draft.vat_rate
-    );
-    const vatBreakdownBody = [
+    const tableBody = [
       [
-        { text: "Taux", style: "th" },
-        { text: "Base HT", style: "th", alignment: "right" },
+        { text: "Designation", style: "th" },
+        { text: "Quantite", style: "th", alignment: "right" },
+        { text: "Unite", style: "th" },
+        { text: "Prix unitaire", style: "th", alignment: "right" },
         { text: "TVA", style: "th", alignment: "right" },
+        { text: "Montant HT", style: "th", alignment: "right" },
       ],
-      ...vatBreakdown.map((row) => [
-        { text: `${String(row.rate).replace(".", ",")}%`, style: "tdSmall" },
-        { text: formatMoney(row.base_cents, CONFIG.CURRENCY), style: "tdSmall", alignment: "right" },
-        { text: formatMoney(row.vat_cents, CONFIG.CURRENCY), style: "tdSmall", alignment: "right" },
-      ]),
+      ...items.map((item) => {
+        const rate = sanitizeVatRate(item.vat_rate ?? state.draft.vat_rate);
+        const qty = Math.max(1, Number(item.qty || 1));
+        const qtyTxt = Number.isFinite(qty)
+          ? qty.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+          : "1,00";
+        return [
+          { text: String(item.name || "—"), style: "td" },
+          { text: qtyTxt, style: "td", alignment: "right" },
+          { text: String(item.unit || ""), style: "td" },
+          { text: formatMoney(Number(item.unit_cents || 0), CONFIG.CURRENCY), style: "td", alignment: "right" },
+          { text: `${String(rate).replace(".", ",")}%`, style: "td", alignment: "right" },
+          { text: formatMoney(calcLineTotal(item), CONFIG.CURRENCY), style: "td", alignment: "right" },
+        ];
+      }),
     ];
 
-    const totalsBody = [
-      ["Sous-total", formatMoney(state.draft.subtotal_cents, CONFIG.CURRENCY)],
-      ["Remise", formatMoney(state.draft.discount_cents, CONFIG.CURRENCY)],
-      ["TVA", formatMoney(state.draft.vat_cents, CONFIG.CURRENCY)],
-      ["Total TTC", formatMoney(state.draft.total_cents, CONFIG.CURRENCY)],
-    ].map(([k, v], idx, arr) => [
-      { text: k, style: idx === arr.length - 1 ? "totalKey" : "totalKey" },
-      { text: v, style: idx === arr.length - 1 ? "totalVal" : "totalVal", alignment: "right" },
+    const subtotalCents = Number(state.draft.subtotal_cents || 0);
+    const discountCents = Math.max(0, Number(state.draft.discount_cents || 0));
+    const totalHtCents = Math.max(0, subtotalCents - discountCents);
+
+    const vatBreakdown = computeVatBreakdown(state.draft.items, subtotalCents, discountCents, state.draft.vat_rate);
+    const vatLines = vatBreakdown.length
+      ? vatBreakdown.map((row) => ({
+          label: `TVA ${String(row.rate).replace(".", ",")} %`,
+          value: formatMoney(row.vat_cents, CONFIG.CURRENCY),
+        }))
+      : [{ label: "TVA", value: formatMoney(state.draft.vat_cents, CONFIG.CURRENCY) }];
+
+    const totalsBody = [];
+    if (discountCents > 0) {
+      totalsBody.push([
+        { text: "Remise", style: "totalKeyMuted" },
+        { text: `-${formatMoney(discountCents, CONFIG.CURRENCY)}`, style: "totalValMuted", alignment: "right" },
+      ]);
+    }
+    totalsBody.push([
+      { text: "Total HT", style: "totalKey" },
+      { text: formatMoney(totalHtCents, CONFIG.CURRENCY), style: "totalVal", alignment: "right" },
+    ]);
+    vatLines.forEach((l) => {
+      totalsBody.push([
+        { text: l.label, style: "totalKey" },
+        { text: l.value, style: "totalVal", alignment: "right" },
+      ]);
+    });
+    totalsBody.push([
+      { text: "Total TTC", style: "totalKeyStrong" },
+      { text: formatMoney(state.draft.total_cents, CONFIG.CURRENCY), style: "totalValStrong", alignment: "right" },
     ]);
 
-    const bannerTable = {
-      table: {
-        widths: ["*"],
-        body: [
-          [
-            {
-              stack: [
-                { text: "FORMAT ELECTRONIQUE", style: "bannerLabel" },
-                { text: "Document numerique clair et moderne (preparation: septembre 2026).", style: "bannerText" },
-              ],
-              fillColor: "#eef2ff",
-            },
-          ],
-        ],
-      },
-      layout: {
-        hLineWidth: () => 0,
-        vLineWidth: () => 0,
-        paddingLeft: () => 12,
-        paddingRight: () => 12,
-        paddingTop: () => 10,
-        paddingBottom: () => 10,
-      },
-      margin: [0, 0, 0, 14],
-    };
+    const bankStack = [];
+    const iban = String(COMPANY.iban || "").trim();
+    const bic = String(COMPANY.bic || "").trim();
+    if (iban) bankStack.push({ text: `IBAN : ${iban}`, style: "note" });
+    if (bic) bankStack.push({ text: `BIC : ${bic}`, style: "note" });
 
-    const cardLayout = {
-      hLineWidth: () => 1,
-      vLineWidth: () => 1,
-      hLineColor: () => border,
-      vLineColor: () => border,
-      paddingLeft: () => 12,
-      paddingRight: () => 12,
-      paddingTop: () => 10,
-      paddingBottom: () => 10,
-    };
+    bankStack.push({ text: `Devis valable jusqu'au ${validUntil}.`, style: "note", margin: [0, 6, 0, 0] });
 
-    const tableLayout = {
-      hLineWidth: (i) => (i === 0 ? 1 : 0.75),
-      vLineWidth: () => 0,
-      hLineColor: () => subtle,
-      paddingLeft: () => 8,
-      paddingRight: () => 8,
-      paddingTop: () => 7,
-      paddingBottom: () => 7,
-      fillColor: (rowIndex) => {
-        if (rowIndex === 0) return "#f8fbff";
-        return rowIndex % 2 === 0 ? "#fbfdff" : null;
-      },
-    };
+    const notes = String(state.draft.notes || "").trim();
+    if (notes) bankStack.push({ text: `Notes : ${notes}`, style: "note", margin: [0, 6, 0, 0] });
+    const terms = String(state.draft.terms || "").trim();
+    if (terms) bankStack.push({ text: `Conditions : ${terms}`, style: "note", margin: [0, 6, 0, 0] });
 
-    const dd = {
-      pageSize: "A4",
-      pageMargins: [42, 42, 42, 42],
-      info: {
-        title: `Devis ${reference}`,
-        author: COMPANY.name,
-        subject: "Devis",
-      },
-      defaultStyle: { fontSize: 10, color: ink },
-      styles: {
-        bannerLabel: { fontSize: 9, bold: true, color: "#075985", characterSpacing: 0.8 },
-        bannerText: { fontSize: 11, bold: true, color: ink, margin: [0, 2, 0, 0] },
-        companyName: { fontSize: 18, bold: true, color: ink },
-        companyLine: { fontSize: 10, color: soft },
-        docPill: { fontSize: 10, bold: true, color: "#075985", margin: [0, 0, 0, 6] },
-        docKey: { fontSize: 10, color: soft },
-        docVal: { fontSize: 10, bold: true, color: ink },
-        sectionTitle: { fontSize: 11, bold: true, color: ink, margin: [0, 0, 0, 6] },
-        metaKey: { fontSize: 9, bold: true, color: soft, characterSpacing: 0.5 },
-        metaVal: { fontSize: 10, color: ink },
-        th: { fontSize: 9, bold: true, color: ink, characterSpacing: 0.5 },
-        td: { fontSize: 10, color: ink },
-        tdSmall: { fontSize: 9, color: ink },
-        totalKey: { fontSize: 10, color: soft },
-        totalVal: { fontSize: 10, color: ink, bold: true },
-      },
-      content: [
-        bannerTable,
+    const signatureSection = {
+      margin: [0, 12, 0, 0],
+      stack: [
+        { text: "Bon pour accord", style: "signatureTitle" },
         {
           columns: [
             {
               width: "*",
-              stack: [{ text: COMPANY.name, style: "companyName" }, ...companyLines.map((l) => ({ text: l, style: "companyLine" }))],
+              stack: [
+                { text: "Nom", style: "sigLabel" },
+                { canvas: [{ type: "line", x1: 0, y1: 0, x2: 240, y2: 0, lineWidth: 1, lineColor: "#9ca3af" }], margin: [0, 12, 0, 0] },
+              ],
             },
             {
-              width: 220,
+              width: "*",
               stack: [
-                {
-                  table: {
-                    widths: ["*"],
-                    body: [
-                      [
-                        {
-                          text: "DEVIS",
-                          style: "docPill",
-                          fillColor: "#e0f2fe",
-                          alignment: "center",
-                          margin: [0, 4, 0, 4],
-                        },
-                      ],
-                    ],
-                  },
-                  layout: {
-                    hLineWidth: () => 0,
-                    vLineWidth: () => 0,
-                    paddingLeft: () => 0,
-                    paddingRight: () => 0,
-                    paddingTop: () => 0,
-                    paddingBottom: () => 0,
-                  },
-                },
-                {
-                  table: {
-                    widths: ["*", "auto"],
-                    body: [
-                      [{ text: "Reference", style: "docKey" }, { text: reference, style: "docVal", alignment: "right" }],
-                      [{ text: "Date", style: "docKey" }, { text: todayFR(), style: "docVal", alignment: "right" }],
-                      [{ text: "Validite", style: "docKey" }, { text: validUntil, style: "docVal", alignment: "right" }],
-                    ],
-                  },
-                  layout: "noBorders",
-                  margin: [0, 8, 0, 0],
-                },
+                { text: "Date", style: "sigLabel" },
+                { canvas: [{ type: "line", x1: 0, y1: 0, x2: 240, y2: 0, lineWidth: 1, lineColor: "#9ca3af" }], margin: [0, 12, 0, 0] },
               ],
-              alignment: "right",
             },
           ],
-          columnGap: 16,
-          margin: [0, 0, 0, 12],
+          columnGap: 18,
+          margin: [0, 6, 0, 0],
+        },
+        { text: "Signature", style: "sigLabel", margin: [0, 10, 0, 0] },
+        { canvas: [{ type: "rect", x: 0, y: 0, w: 511, h: 54, lineWidth: 1, lineColor: "#9ca3af" }], margin: [0, 4, 0, 0] },
+      ],
+    };
+
+    const siren = String(COMPANY.siret || "").replace(/\D/g, "").slice(0, 9);
+    const capitalEuros = Number(COMPANY.share_capital_cents || 0) > 0 ? Math.round(Number(COMPANY.share_capital_cents || 0) / 100) : 0;
+    const footerLines = [];
+    if (sellerName && capitalEuros > 0) footerLines.push(`${sellerName} au capital de ${capitalEuros.toLocaleString("fr-FR")} euros`);
+    else if (sellerName) footerLines.push(sellerName);
+    const regParts = [];
+    if (siren) regParts.push(`SIREN ${siren}`);
+    if (COMPANY.rcs_city || COMPANY.rcs_number) regParts.push(`RCS ${String(COMPANY.rcs_city || "").trim()} ${String(COMPANY.rcs_number || "").trim()}`.trim());
+    if (COMPANY.naf_code) regParts.push(`NAF ${String(COMPANY.naf_code || "").trim()}`);
+    if (regParts.length) footerLines.push(regParts.join(" - "));
+    const vatNumber = String(COMPANY.vat_number || COMPANY.tva || "").trim();
+    if (vatNumber) footerLines.push(`TVA intracommunautaire : ${vatNumber}`);
+
+    const metaLeft = [
+      { text: `Devis N° ${reference}`, style: "docNumber" },
+      ...(interventionRef ? [{ text: interventionRef, style: "meta" }] : []),
+      { text: `Date : ${docDate}`, style: "meta" },
+    ];
+    const metaRight = [{ text: `Validite : ${validUntil}`, style: "meta", alignment: "right" }];
+
+    const tableLayout = {
+      hLineWidth: (i) => (i === 0 ? 0 : 0.6),
+      vLineWidth: () => 0,
+      hLineColor: () => line,
+      paddingLeft: () => 6,
+      paddingRight: () => 6,
+      paddingTop: (i) => (i === 0 ? 6 : 5),
+      paddingBottom: (i) => (i === 0 ? 6 : 5),
+      fillColor: (rowIndex) => (rowIndex === 0 ? accent : null),
+    };
+
+    const dd = {
+      pageSize: "A4",
+      pageMargins: [42, 42, 42, 86],
+      info: {
+        title: `Devis ${reference}`,
+        author: COMPANY.name,
+        subject: "Devis",
+        keywords: `mbl,quote,${documentId}`,
+      },
+      defaultStyle: { fontSize: 9, color: ink },
+      styles: {
+        sellerName: { fontSize: 9, bold: true, color: accent },
+        partyLine: { fontSize: 9, color: muted },
+        docNumber: { fontSize: 10, bold: true, color: accent, margin: [0, 0, 0, 2] },
+        meta: { fontSize: 9, color: accent },
+        th: { fontSize: 9, bold: true, color: "#ffffff" },
+        td: { fontSize: 9, color: ink },
+        note: { fontSize: 8, color: muted, lineHeight: 1.25 },
+        totalKey: { fontSize: 9, bold: true, color: accent },
+        totalVal: { fontSize: 9, bold: true, color: accent },
+        totalKeyStrong: { fontSize: 10, bold: true, color: accent },
+        totalValStrong: { fontSize: 10, bold: true, color: accent },
+        totalKeyMuted: { fontSize: 9, color: muted, bold: true },
+        totalValMuted: { fontSize: 9, color: muted, bold: true },
+        signatureTitle: { fontSize: 9, bold: true, color: accent, textTransform: "uppercase", characterSpacing: 0.5 },
+        sigLabel: { fontSize: 8, color: muted },
+        footer: { fontSize: 8, color: accent },
+      },
+      content: [
+        {
+          columns: [
+            {
+              width: "*",
+              stack: [{ text: sellerName, style: "sellerName" }, ...sellerLines.map((l) => ({ text: l, style: "partyLine" }))],
+            },
+            {
+              width: 240,
+              stack: [{ text: buyerName, style: "sellerName", alignment: "right" }, ...buyerLines.map((l) => ({ text: l, style: "partyLine", alignment: "right" }))],
+            },
+          ],
+          columnGap: 18,
+          margin: [0, 0, 0, 16],
         },
         {
-          table: {
-            widths: ["*", "*"],
-            body: [
-              [
-                {
-                  stack: [
-                    { text: "Informations document", style: "sectionTitle" },
-                    { text: "ID document", style: "metaKey" },
-                    { text: documentId, style: "metaVal", margin: [0, 0, 0, 6] },
-                    { text: "Horodatage", style: "metaKey" },
-                    { text: issuedAtFR, style: "metaVal", margin: [0, 0, 0, 6] },
-                    { text: "Timestamp ISO", style: "metaKey" },
-                    { text: issuedIso, style: "metaVal" },
-                  ],
-                  fillColor: cardBg,
-                },
-                {
-                  stack: [
-                    { text: "Client", style: "sectionTitle" },
-                    ...(clientLines.length
-                      ? clientLines.map((l, idx) => ({ text: l, style: idx === 0 ? "metaVal" : "companyLine" }))
-                      : [{ text: "—", style: "companyLine" }]),
-                  ],
-                  fillColor: cardBg,
-                },
-              ],
-            ],
-          },
-          layout: cardLayout,
+          columns: [
+            { width: "*", stack: metaLeft },
+            { width: 240, stack: metaRight },
+          ],
+          columnGap: 18,
           margin: [0, 0, 0, 12],
         },
         {
           table: {
             headerRows: 1,
-            widths: ["*", 42, 72, 44, 82],
-            body: [
-              [
-                { text: "Libelle", style: "th" },
-                { text: "Qte", style: "th", alignment: "right" },
-                { text: "PU HT", style: "th", alignment: "right" },
-                { text: "TVA", style: "th", alignment: "right" },
-                { text: "Total HT", style: "th", alignment: "right" },
-              ],
-              ...tableRows,
-            ],
+            widths: ["*", 48, 54, 76, 42, 86],
+            body: tableBody,
           },
           layout: tableLayout,
-          margin: [0, 0, 0, 12],
-        },
-        {
-          columns: [
-            vatBreakdown.length
-              ? {
-                  width: "*",
-                  stack: [
-                    { text: "Detail TVA", style: "sectionTitle" },
-                    {
-                      table: { headerRows: 1, widths: [48, "*", "*"], body: vatBreakdownBody },
-                      layout: tableLayout,
-                    },
-                  ],
-                }
-              : { width: "*", text: "" },
-            {
-              width: 220,
-              stack: [
-                { text: "Recapitulatif", style: "sectionTitle" },
-                {
-                  table: { widths: ["*", "auto"], body: totalsBody },
-                  layout: "noBorders",
-                },
-              ],
-            },
-          ],
-          columnGap: 16,
-          margin: [0, 0, 0, 12],
-        },
-        ...(String(state.draft.notes || "").trim()
-          ? [{ text: "Notes", style: "sectionTitle" }, { text: String(state.draft.notes || ""), color: "#334155", margin: [0, 0, 0, 12] }]
-          : []),
-        ...(String(state.draft.terms || "").trim()
-          ? [
-              { text: "Conditions", style: "sectionTitle" },
-              { text: String(state.draft.terms || ""), color: "#334155", margin: [0, 0, 0, 12] },
-            ]
-          : []),
-        {
-          table: {
-            widths: ["*", "*"],
-            body: [
-              [
-                {
-                  stack: [
-                    { text: "Bon pour accord", style: "sectionTitle" },
-                    { text: "Nom:", style: "metaKey" },
-                    { text: " ", margin: [0, 2, 0, 10] },
-                    { canvas: [{ type: "line", x1: 0, y1: 0, x2: 220, y2: 0, lineWidth: 1, lineColor: border }] },
-                    { text: "Date:", style: "metaKey", margin: [0, 10, 0, 0] },
-                    { text: " ", margin: [0, 2, 0, 10] },
-                    { canvas: [{ type: "line", x1: 0, y1: 0, x2: 220, y2: 0, lineWidth: 1, lineColor: border }] },
-                    { text: "Signature:", style: "metaKey", margin: [0, 10, 0, 0] },
-                    { text: " ", margin: [0, 2, 0, 26] },
-                    { canvas: [{ type: "rect", x: 0, y: 0, w: 220, h: 46, lineWidth: 1, lineColor: border }] },
-                  ],
-                  fillColor: "#fbfdff",
-                },
-                {
-                  stack: [
-                    { text: "Mentions", style: "sectionTitle" },
-                    { text: `Devis valable jusqu'au ${validUntil}.`, color: "#334155", margin: [0, 0, 0, 6] },
-                    { text: `Prix en ${CONFIG.CURRENCY}. TVA detaillee par taux.`, color: "#334155", margin: [0, 0, 0, 6] },
-                    { text: "Document emis au format electronique (preparation: septembre 2026).", color: "#334155" },
-                  ],
-                  fillColor: "#fbfdff",
-                },
-              ],
-            ],
-          },
-          layout: cardLayout,
           margin: [0, 0, 0, 10],
         },
         {
           columns: [
-            { width: "*", text: `ID: ${documentId} • Horodatage: ${issuedAtFR}`, fontSize: 9, color: soft },
-            { width: "auto", text: COMPANY.name, fontSize: 9, color: soft, alignment: "right" },
+            { width: "*", stack: bankStack.length ? bankStack : [] },
+            {
+              width: 220,
+              table: { widths: ["*", "auto"], body: totalsBody },
+              layout: "noBorders",
+            },
           ],
+          columnGap: 18,
+          margin: [0, 8, 0, 0],
         },
+        signatureSection,
       ],
+      footer: (currentPage, pageCount) => {
+        const stack = footerLines.map((t) => ({ text: t, style: "footer", alignment: "center" }));
+        stack.push({ text: `Page ${currentPage}/${pageCount}`, style: "footer", alignment: "center", margin: [0, 4, 0, 0] });
+        return { margin: [42, 0, 42, 20], stack };
+      },
     };
-
-    // Small visual accent line under banner using a canvas stroke.
-    dd.content.splice(1, 0, {
-      canvas: [{ type: "line", x1: 0, y1: 0, x2: 510, y2: 0, lineWidth: 2, lineColor: primary }],
-      margin: [0, -6, 0, 10],
-    });
 
     return dd;
   }
@@ -1555,6 +1489,7 @@ window.Webflow.push(async function () {
     return {
       name: "",
       qty: 1,
+      unit: "",
       unit_cents: 0,
       vat_rate: sanitizeVatRate(CONFIG.VAT_RATE),
     };
@@ -2088,7 +2023,7 @@ window.Webflow.push(async function () {
       }
       .dv-row {
         display: grid;
-        grid-template-columns: 1.5fr 0.5fr 0.6fr 0.6fr 0.7fr auto;
+        grid-template-columns: 1.5fr 0.45fr 0.6fr 0.6fr 0.55fr 0.7fr auto;
         gap: 8px;
         align-items: center;
         padding: 8px;
@@ -2153,12 +2088,12 @@ window.Webflow.push(async function () {
         max-width: 820px;
         margin: 0 auto;
         background: #fff;
-        border: 1px solid #dce7ff;
-        border-radius: 14px;
-        box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
-        padding: 18px;
+        border: 1px solid #e5e7eb;
+        border-radius: 0;
+        box-shadow: none;
+        padding: 28px;
         display: grid;
-        gap: 14px;
+        gap: 12px;
       }
       .dv-edoc-banner {
         display: grid;
@@ -2187,6 +2122,151 @@ window.Webflow.push(async function () {
         align-items: flex-start;
         padding-bottom: 12px;
         border-bottom: 1px solid #e6eefc;
+      }
+      .dv-paper-top--plain {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        border-bottom: 0;
+        padding-bottom: 0;
+        gap: 18px;
+      }
+      .dv-seller,
+      .dv-buyer {
+        display: grid;
+        gap: 4px;
+      }
+      .dv-buyer {
+        text-align: right;
+      }
+      .dv-seller-name,
+      .dv-buyer-name {
+        font-size: 12px;
+        font-weight: 800;
+        color: var(--doc-accent, #306D89);
+      }
+      .dv-seller-line,
+      .dv-buyer-line {
+        font-size: 11px;
+        color: #6b7280;
+        line-height: 1.35;
+        word-break: break-word;
+      }
+      .dv-doc-meta {
+        display: flex;
+        justify-content: space-between;
+        gap: 18px;
+        color: var(--doc-accent, #306D89);
+        font-size: 11px;
+        line-height: 1.35;
+      }
+      .dv-doc-number {
+        font-weight: 900;
+        font-size: 12px;
+        margin-bottom: 3px;
+      }
+      .dv-doc-meta-right {
+        text-align: right;
+      }
+      .dv-doc-line {
+        word-break: break-word;
+      }
+      .dv-paper-lines--plain {
+        border-top: 0;
+        padding-top: 0;
+      }
+      .dv-preview-table--legal th,
+      .dv-preview-table--legal td {
+        border-bottom-color: #e5e7eb;
+      }
+      .dv-totals {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 4px;
+      }
+      .dv-totals-box {
+        width: min(320px, 100%);
+        display: grid;
+        gap: 4px;
+      }
+      .dv-total-line {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        color: var(--doc-accent, #306D89);
+        font-size: 11px;
+        line-height: 1.35;
+      }
+      .dv-total-line strong {
+        font-weight: 900;
+      }
+      .dv-total-line--grand {
+        font-size: 12px;
+      }
+      .dv-total-line--muted {
+        color: #6b7280;
+      }
+      .dv-bank {
+        display: grid;
+        gap: 8px;
+        font-size: 10px;
+        color: #6b7280;
+        line-height: 1.4;
+      }
+      .dv-bank-lines {
+        display: grid;
+        gap: 4px;
+      }
+      .dv-bank strong,
+      .dv-extra strong {
+        color: #111827;
+      }
+      .dv-legal-note {
+        font-size: 9px;
+      }
+      .dv-extra {
+        font-size: 9px;
+        color: #6b7280;
+      }
+      .dv-signature {
+        border: 1px solid #e5e7eb;
+        padding: 10px 12px;
+        display: grid;
+        gap: 10px;
+      }
+      .dv-signature-title {
+        font-size: 11px;
+        font-weight: 900;
+        color: var(--doc-accent, #306D89);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .dv-signature-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+      .dv-signature-field {
+        display: grid;
+        gap: 4px;
+        font-size: 10px;
+        color: #6b7280;
+      }
+      .dv-signature-field--wide {
+        grid-column: 1 / -1;
+      }
+      .dv-signature-line {
+        border-bottom: 1px solid #9ca3af;
+        height: 18px;
+      }
+      .dv-signature-line--tall {
+        height: 42px;
+      }
+      .dv-footer-legal {
+        margin-top: 6px;
+        text-align: center;
+        font-size: 9px;
+        color: var(--doc-accent, #306D89);
+        line-height: 1.35;
       }
       .dv-company {
         display: grid;
@@ -2337,14 +2417,18 @@ window.Webflow.push(async function () {
       }
       .dv-preview-table th {
         font-weight: 700;
-        color: #0f172a;
+        color: #ffffff;
         font-size: 11px;
         text-transform: uppercase;
         letter-spacing: 0.06em;
-        background: #f8fbff;
+        background: var(--doc-accent, #306D89);
       }
       .dv-col-label {
-        width: 44%;
+        width: 40%;
+        word-break: break-word;
+      }
+      .dv-col-unit {
+        width: 12%;
         word-break: break-word;
       }
       .dv-col-num {
@@ -2499,6 +2583,11 @@ window.Webflow.push(async function () {
         .dv-line-total { grid-column: span 2; }
         .dv-paper { padding: 14px; }
         .dv-paper-top { flex-direction: column; }
+        .dv-paper-top--plain { grid-template-columns: 1fr; }
+        .dv-buyer { text-align: left; }
+        .dv-doc-meta { flex-direction: column; }
+        .dv-doc-meta-right { text-align: left; }
+        .dv-signature-grid { grid-template-columns: 1fr; }
         .dv-doc { min-width: 0; width: 100%; }
         .dv-doc-pill { justify-self: start; }
       }
