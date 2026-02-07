@@ -12,6 +12,15 @@ window.Webflow.push(async function () {
   }
 
   const GLOBAL_CFG = window.__MBL_CFG__ || {};
+  const normalizeInvoiceUrl = (value) => {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    // Webflow page slug used to be "/facture". Keep backward compatibility but prefer "/invoice".
+    return raw.replace(/\/facture(?=([/?#]|$))/i, "/invoice");
+  };
+  const RAW_ADD_URL = root.dataset.addUrl || root.dataset.editUrl || "/extranet/facturation/invoice";
+  const RAW_EDIT_URL =
+    root.dataset.editUrl || root.dataset.invoiceUrl || root.dataset.factureUrl || "/extranet/facturation/invoice";
   const CONFIG = {
     SUPABASE_URL: GLOBAL_CFG.SUPABASE_URL || "https://jrjdhdechcdlygpgaoes.supabase.co",
     SUPABASE_ANON_KEY:
@@ -25,8 +34,8 @@ window.Webflow.push(async function () {
       window.__MBL_ORG_ID__ ||
       "",
     CURRENCY: root.dataset.currency || "EUR",
-    ADD_URL: root.dataset.addUrl || root.dataset.editUrl || "/extranet/facturation/invoice",
-    EDIT_URL: root.dataset.editUrl || root.dataset.invoiceUrl || root.dataset.factureUrl || "/extranet/facturation/invoice",
+    ADD_URL: normalizeInvoiceUrl(RAW_ADD_URL),
+    EDIT_URL: normalizeInvoiceUrl(RAW_EDIT_URL),
     PDF_SIGNED_URL_TTL: Number(root.dataset.pdfSignedUrlTtl || 300),
     MAX_ROWS: Number(root.dataset.maxRows || 300),
   };

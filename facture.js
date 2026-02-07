@@ -123,6 +123,23 @@ window.Webflow.push(async function () {
     msgPdfFail: "Impossible de generer le PDF.",
   };
   const VAT_OPTIONS = [0, 5.5, 10, 20];
+  const VAT_EXEMPTION_PRESETS = [
+    {
+      id: "293b",
+      label: "TVA non applicable (art. 293 B CGI)",
+      text: "TVA non applicable, art. 293 B du code general des impots.",
+    },
+    {
+      id: "262ter",
+      label: "Exoneration TVA (art. 262 ter I CGI)",
+      text: "Exoneration de la TVA : Article 262 ter I du CGI.",
+    },
+    {
+      id: "autoliquidation",
+      label: "Autoliquidation TVA (art. 283-2 CGI)",
+      text: "Autoliquidation de la TVA : Article 283-2 du CGI.",
+    },
+  ];
   const STATUS_DRAFT = "draft";
   const STATUS_VALIDATED = "issued";
 
@@ -285,6 +302,7 @@ window.Webflow.push(async function () {
       due_date: String(row.due_date || addDaysISO(issueDate, resolvePaymentTermsDays())),
       notes: row.notes || "",
       terms: row.terms || "",
+      vat_exemption_text: String(row.vat_exemption_text || "").trim(),
       items: parseJsonArray(row.items) || draft.items,
       discount_type: Number(row.discount_cents || 0) > 0 ? "amount" : "none",
       discount_value: Number(row.discount_cents || 0) / 100,
@@ -359,12 +377,15 @@ window.Webflow.push(async function () {
   async function loadInterventions() {
     const selects = [
       // Try best-effort (may fail if legacy columns missing).
-      "id,title,client_name,client_ref,client_email,client_phone,support_phone,address,start_at,organization_id",
+      "id,title,internal_ref,client_ref,client_name,client_email,client_phone,support_phone,address,start_at,tarif,organization_id",
       // Common minimal set in your interventions table.
-      "id,title,client_name,support_phone,address,start_at,organization_id",
+      "id,title,client_ref,client_name,support_phone,address,start_at,tarif,organization_id",
+      "id,title,client_name,support_phone,address,start_at,tarif,organization_id",
+      "id,title,client_name,address,start_at,tarif,organization_id",
       "id,title,client_name,address,start_at,organization_id",
-      "id,title,client_name,address,start_at",
+      "id,title,start_at,organization_id",
       "id,title,start_at",
+      "id,title",
     ];
 
     let lastErr = null;
@@ -401,15 +422,42 @@ window.Webflow.push(async function () {
     const res = await readTable(CONFIG.PRODUCTS_TABLE, "*", { limit: 500 });
     if (res.error) return;
     state.products = (res.data || [])
-      .map((p) => ({
-        id: p.id,
-        name: p.name || p.title || p.label,
-        price: Number(p.price ?? p.unit_price ?? p.cost ?? 0),
-        vat: Number(p.vat_rate ?? CONFIG.VAT_RATE),
-      }))
-      .filter((p) => p.name);
+      .map((p) => {
+        const name = p.name || p.title || p.label;
+        if (!name) return null;
+        return {
+          id: p.id,
+          name,
+          unit_cents: resolveProductUnitCents(p),
+          vat_rate: sanitizeVatRate(p.vat_rate ?? p.vat ?? CONFIG.VAT_RATE),
+        };
+      })
+      .filter(Boolean);
     state.productByName = new Map(state.products.map((p) => [normalize(p.name), p]));
     renderProductDatalist();
+  }
+
+  function resolveProductUnitCents(row) {
+    const candidates = [
+      row?.price_cents,
+      row?.priceCents,
+      row?.unit_cents,
+      row?.unitCents,
+      row?.unit_price_cents,
+      row?.unitPriceCents,
+    ];
+    for (const v of candidates) {
+      const n = Number(v);
+      if (Number.isFinite(n) && n >= 0) return Math.round(n);
+    }
+
+    const eurosCandidates = [row?.price, row?.unit_price, row?.unitPrice];
+    for (const v of eurosCandidates) {
+      const n = Number(v);
+      if (Number.isFinite(n) && n >= 0) return eurosToCents(n);
+    }
+
+    return 0;
   }
 
   function hydrateDraft() {
@@ -434,6 +482,8 @@ window.Webflow.push(async function () {
     els.dueDate.value = d.due_date || addDaysISO(els.issueDate.value, resolvePaymentTermsDays());
     els.notes.value = d.notes || "";
     els.terms.value = d.terms || "";
+    if (els.vatExemptionText) els.vatExemptionText.value = String(d.vat_exemption_text || "");
+    if (els.vatExemptionPreset) els.vatExemptionPreset.value = vatExemptionPresetIdFromText(d.vat_exemption_text);
     els.discountType.value = d.discount_type || "none";
     els.discountValue.value = d.discount_value || "";
     d.vat_rate = sanitizeVatRate(d.vat_rate ?? CONFIG.VAT_RATE);
@@ -474,8 +524,8 @@ window.Webflow.push(async function () {
       item.name = e.target.value;
       const hit = state.productByName.get(normalize(item.name));
       if (hit) {
-        item.unit_cents = eurosToCents(hit.price);
-        item.vat_rate = sanitizeVatRate(Number.isFinite(hit.vat) ? hit.vat : CONFIG.VAT_RATE);
+        item.unit_cents = Math.max(0, Number(hit.unit_cents || 0));
+        item.vat_rate = sanitizeVatRate(hit.vat_rate ?? CONFIG.VAT_RATE);
         row.querySelector('[data-field="price"]').value = centsToInput(item.unit_cents);
         row.querySelector('[data-field="vat"]').value = item.vat_rate;
       }
@@ -1064,6 +1114,7 @@ window.Webflow.push(async function () {
 
       notes: state.draft.notes || null,
       terms: state.draft.terms || null,
+      vat_exemption_text: String(state.draft.vat_exemption_text || "").trim() || null,
       items: state.draft.items,
       subtotal_cents: state.draft.subtotal_cents || 0,
       discount_cents: state.draft.discount_cents || 0,
@@ -1295,6 +1346,8 @@ window.Webflow.push(async function () {
       renderItems();
       onHeaderInput();
     });
+    if (els.vatExemptionPreset) els.vatExemptionPreset.addEventListener("change", onVatExemptionPresetChange);
+    if (els.vatExemptionText) els.vatExemptionText.addEventListener("input", onVatExemptionTextInput);
 
     els.intervention.addEventListener("change", onInterventionSelect);
     els.clientSelect.addEventListener("change", onClientSelect);
@@ -1320,9 +1373,52 @@ window.Webflow.push(async function () {
     persistDraft();
   }
 
+  function onVatExemptionPresetChange() {
+    const id = String(els.vatExemptionPreset?.value || "").trim();
+    if (!id) {
+      state.draft.vat_exemption_text = "";
+      if (els.vatExemptionText) els.vatExemptionText.value = "";
+    } else if (id !== "__custom__") {
+      const hit = VAT_EXEMPTION_PRESETS.find((p) => p.id === id);
+      if (hit) {
+        state.draft.vat_exemption_text = hit.text;
+        if (els.vatExemptionText) els.vatExemptionText.value = hit.text;
+        // Exemptions usually imply 0% VAT.
+        if (sanitizeVatRate(state.draft.vat_rate) !== 0) {
+          state.draft.vat_rate = 0;
+          els.vatRate.value = "0";
+          applyVatToAllItems(0);
+          renderItems();
+        }
+      }
+    }
+
+    updateTotals();
+    updatePreview();
+    persistDraft();
+  }
+
+  function onVatExemptionTextInput() {
+    state.draft.vat_exemption_text = String(els.vatExemptionText?.value || "").trim();
+    if (els.vatExemptionPreset) {
+      els.vatExemptionPreset.value = vatExemptionPresetIdFromText(state.draft.vat_exemption_text);
+    }
+    updateTotals();
+    updatePreview();
+    persistDraft();
+  }
+
   function onInterventionSelect() {
-    const id = els.intervention.value;
-    if (!id) return;
+    const id = String(els.intervention.value || "").trim();
+    if (!id) {
+      state.selectedInterventionId = "";
+      removeInterventionLineItem();
+      renderItems();
+      updateTotals();
+      updatePreview();
+      persistDraft();
+      return;
+    }
     const found = state.interventions.find((it) => String(it.id) === String(id));
     if (!found) return;
     state.selectedInterventionId = String(found.id || "");
@@ -1330,7 +1426,67 @@ window.Webflow.push(async function () {
     els.address.value = found.address || "";
     els.email.value = found.client_email || "";
     els.phone.value = found.client_phone || found.support_phone || "";
+    upsertInterventionLineItem(found);
+    renderItems();
     onHeaderInput();
+  }
+
+  function isBlankItem(item) {
+    if (!item) return true;
+    const name = String(item.name || "").trim();
+    const cents = Number(item.unit_cents || 0);
+    return !name && (!Number.isFinite(cents) || cents <= 0);
+  }
+
+  function interventionTarifToCents(raw) {
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    const v = Math.round(n);
+    // Heuristic: money fields are usually stored in cents in this project.
+    // interventions.tarif has legacy naming, so accept both EUR and cents.
+    if (v < 1000) return v * 100;
+    return v;
+  }
+
+  function buildInterventionLineItem(itv) {
+    const internal = String(itv.internal_ref || "").trim();
+    const clientRef = String(itv.client_ref || "").trim();
+    const title = String(itv.title || "Intervention").trim();
+    const prefix = internal || clientRef;
+    const name = prefix ? `${prefix} - ${title}` : title;
+    const unitCents = interventionTarifToCents(itv.tarif);
+    return {
+      kind: "intervention",
+      intervention_id: String(itv.id || ""),
+      name,
+      qty: 1,
+      unit: "forfait",
+      unit_cents: unitCents,
+      vat_rate: sanitizeVatRate(state.draft.vat_rate ?? CONFIG.VAT_RATE),
+    };
+  }
+
+  function upsertInterventionLineItem(itv) {
+    const next = buildInterventionLineItem(itv);
+    const items = Array.isArray(state.draft.items) ? state.draft.items : [];
+    const existingIdx = items.findIndex((x) => String(x?.kind || "") === "intervention");
+    if (existingIdx >= 0) {
+      items[existingIdx] = { ...items[existingIdx], ...next };
+      state.draft.items = items;
+      return;
+    }
+    if (items.length === 1 && isBlankItem(items[0])) {
+      items[0] = next;
+      state.draft.items = items;
+      return;
+    }
+    items.unshift(next);
+    state.draft.items = items;
+  }
+
+  function removeInterventionLineItem() {
+    const items = (state.draft.items || []).filter((x) => String(x?.kind || "") !== "intervention");
+    state.draft.items = items.length ? items : [createItem()];
   }
 
   function onClientSelect() {
@@ -1466,6 +1622,7 @@ window.Webflow.push(async function () {
       due_date: due,
       notes: "",
       terms: "",
+      vat_exemption_text: "",
       items: [createItem()],
       discount_type: "none",
       discount_value: 0,
@@ -1535,8 +1692,23 @@ window.Webflow.push(async function () {
   }
 
   function resolveVatExemptionText() {
+    const draft = String(state.draft?.vat_exemption_text || "").trim();
+    if (draft) return draft;
     const txt = String(state.orgProfile?.vat_exemption_text || "").trim();
     return txt;
+  }
+
+  function normalizeSpaces(value) {
+    return String(value || "")
+      .trim()
+      .replace(/\s+/g, " ");
+  }
+
+  function vatExemptionPresetIdFromText(text) {
+    const safe = normalizeSpaces(text);
+    if (!safe) return "";
+    const hit = VAT_EXEMPTION_PRESETS.find((p) => normalizeSpaces(p.text) === safe);
+    return hit ? hit.id : "__custom__";
   }
 
   function formatPercentFR(value) {
@@ -1905,15 +2077,25 @@ window.Webflow.push(async function () {
                   <input class="dv-input" data-discount-value />
                 </div>
               </div>
-              <div class="dv-field">
-                <label>TVA (%)</label>
-                <select class="dv-input" data-vat-rate>${renderVatOptions(CONFIG.VAT_RATE)}</select>
-              </div>
-              <div class="dv-total-row"><span>${copy.labelSubtotal}</span><strong data-subtotal>—</strong></div>
-              <div class="dv-total-row"><span>${copy.labelDiscount}</span><strong data-discount>—</strong></div>
-              <div class="dv-total-row"><span>${copy.labelVat}</span><strong data-vat>—</strong></div>
-              <div class="dv-total-row dv-total"><span>${copy.labelTotal}</span><strong data-total>—</strong></div>
-            </div>
+	              <div class="dv-field">
+	                <label>TVA (%)</label>
+	                <select class="dv-input" data-vat-rate>${renderVatOptions(CONFIG.VAT_RATE)}</select>
+	              </div>
+	              <div class="dv-field">
+	                <label>Mention TVA (si exonération)</label>
+	                <select class="dv-input" data-vat-exemption-preset>
+	                  <option value="">Aucune</option>
+	                  ${VAT_EXEMPTION_PRESETS.map((p) => `<option value="${escapeHTML(p.id)}">${escapeHTML(p.label)}</option>`).join("")}
+	                  <option value="__custom__">Autre (personnalisee)</option>
+	                </select>
+	                <textarea class="dv-textarea" data-vat-exemption-text rows="2" placeholder="Ex: TVA non applicable, art. 293 B du CGI."></textarea>
+	                <div class="dv-help">Affiche en bas de facture uniquement si TVA = 0.</div>
+	              </div>
+	              <div class="dv-total-row"><span>${copy.labelSubtotal}</span><strong data-subtotal>—</strong></div>
+	              <div class="dv-total-row"><span>${copy.labelDiscount}</span><strong data-discount>—</strong></div>
+	              <div class="dv-total-row"><span>${copy.labelVat}</span><strong data-vat>—</strong></div>
+	              <div class="dv-total-row dv-total"><span>${copy.labelTotal}</span><strong data-total>—</strong></div>
+	            </div>
           </div>
         </div>
 
@@ -1940,6 +2122,8 @@ window.Webflow.push(async function () {
       discountType: rootEl.querySelector("[data-discount-type]"),
       discountValue: rootEl.querySelector("[data-discount-value]"),
       vatRate: rootEl.querySelector("[data-vat-rate]"),
+      vatExemptionPreset: rootEl.querySelector("[data-vat-exemption-preset]"),
+      vatExemptionText: rootEl.querySelector("[data-vat-exemption-text]"),
       subtotal: rootEl.querySelector("[data-subtotal]"),
       discount: rootEl.querySelector("[data-discount]"),
       vat: rootEl.querySelector("[data-vat]"),
@@ -2089,6 +2273,12 @@ window.Webflow.push(async function () {
       .dv-textarea {
         resize: vertical;
       }
+      .dv-help {
+        margin-top: 6px;
+        font-size: 11px;
+        color: var(--dv-ink-soft);
+        line-height: 1.35;
+      }
       .dv-items {
         display: grid;
         gap: 10px;
@@ -2164,7 +2354,10 @@ window.Webflow.push(async function () {
         border-radius: 0;
         box-shadow: none;
         padding: 28px;
-        display: grid;
+        box-sizing: border-box;
+        min-height: 1123px; /* A4-ish at 96dpi for on-screen preview */
+        display: flex;
+        flex-direction: column;
         gap: 12px;
       }
       .dv-edoc-banner {
@@ -2300,7 +2493,8 @@ window.Webflow.push(async function () {
         color: #6b7280;
       }
       .dv-footer-legal {
-        margin-top: 6px;
+        margin-top: auto;
+        padding-top: 12px;
         text-align: center;
         font-size: 9px;
         color: var(--doc-accent, #306D89);
@@ -2613,18 +2807,18 @@ window.Webflow.push(async function () {
         .dv-paper-meta { grid-template-columns: 1fr; }
         .dv-paper-accept { grid-template-columns: 1fr; }
       }
-      @media (max-width: 720px) {
-        .dv-shell { padding: 16px; }
-        .dv-title { font-size: 26px; }
-        .dv-header { align-items: flex-start; }
-        .dv-row { grid-template-columns: 1fr 1fr; }
-        .dv-line-total { grid-column: span 2; }
-        .dv-paper { padding: 14px; }
-        .dv-paper-top { flex-direction: column; }
-        .dv-paper-top--plain { grid-template-columns: 1fr; }
-        .dv-buyer { text-align: left; }
-        .dv-doc-meta { flex-direction: column; }
-        .dv-doc-meta-right { text-align: left; }
+	      @media (max-width: 720px) {
+	        .dv-shell { padding: 16px; }
+	        .dv-title { font-size: 26px; }
+	        .dv-header { align-items: flex-start; }
+	        .dv-row { grid-template-columns: 1fr 1fr; }
+	        .dv-line-total { grid-column: span 2; }
+	        .dv-paper { padding: 14px; min-height: 0; }
+	        .dv-paper-top { flex-direction: column; }
+	        .dv-paper-top--plain { grid-template-columns: 1fr; }
+	        .dv-buyer { text-align: left; }
+	        .dv-doc-meta { flex-direction: column; }
+	        .dv-doc-meta-right { text-align: left; }
         .dv-doc { min-width: 0; width: 100%; }
         .dv-doc-pill { justify-self: start; }
       }

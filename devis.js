@@ -380,15 +380,42 @@ window.Webflow.push(async function () {
     const res = await readTable(CONFIG.PRODUCTS_TABLE, "*", { limit: 500 });
     if (res.error) return;
     state.products = (res.data || [])
-      .map((p) => ({
-        id: p.id,
-        name: p.name || p.title || p.label,
-        price: Number(p.price ?? p.unit_price ?? p.cost ?? 0),
-        vat: Number(p.vat_rate ?? CONFIG.VAT_RATE),
-      }))
-      .filter((p) => p.name);
+      .map((p) => {
+        const name = p.name || p.title || p.label;
+        if (!name) return null;
+        return {
+          id: p.id,
+          name,
+          unit_cents: resolveProductUnitCents(p),
+          vat_rate: sanitizeVatRate(p.vat_rate ?? p.vat ?? CONFIG.VAT_RATE),
+        };
+      })
+      .filter(Boolean);
     state.productByName = new Map(state.products.map((p) => [normalize(p.name), p]));
     renderProductDatalist();
+  }
+
+  function resolveProductUnitCents(row) {
+    const candidates = [
+      row?.price_cents,
+      row?.priceCents,
+      row?.unit_cents,
+      row?.unitCents,
+      row?.unit_price_cents,
+      row?.unitPriceCents,
+    ];
+    for (const v of candidates) {
+      const n = Number(v);
+      if (Number.isFinite(n) && n >= 0) return Math.round(n);
+    }
+
+    const eurosCandidates = [row?.price, row?.unit_price, row?.unitPrice];
+    for (const v of eurosCandidates) {
+      const n = Number(v);
+      if (Number.isFinite(n) && n >= 0) return eurosToCents(n);
+    }
+
+    return 0;
   }
 
   function hydrateDraft() {
@@ -451,8 +478,8 @@ window.Webflow.push(async function () {
       item.name = e.target.value;
       const hit = state.productByName.get(normalize(item.name));
       if (hit) {
-        item.unit_cents = eurosToCents(hit.price);
-        item.vat_rate = sanitizeVatRate(Number.isFinite(hit.vat) ? hit.vat : CONFIG.VAT_RATE);
+        item.unit_cents = Math.max(0, Number(hit.unit_cents || 0));
+        item.vat_rate = sanitizeVatRate(hit.vat_rate ?? CONFIG.VAT_RATE);
         row.querySelector('[data-field="price"]').value = centsToInput(item.unit_cents);
         row.querySelector('[data-field="vat"]').value = item.vat_rate;
       }
