@@ -91,6 +91,12 @@ window.Webflow.push(async function () {
     msgLoading: "Chargement...",
     msgSaved: "Devis enregistre.",
     msgSavedPartial: "Devis genere mais non enregistre (table manquante).",
+    msgSavedDenied: "Droits insuffisants pour enregistrer ce devis (RLS).",
+    msgOrgMissing: "Organisation introuvable pour ton compte. Ajoute data-organization-id ou verifie organization_members.",
+    msgSavedWithPdf: "Devis enregistre et PDF disponible.",
+    msgSavedNoPdf: "Devis enregistre, mais impossible de publier le PDF.",
+    msgPdfOnly: "PDF genere localement (devis non enregistre en base).",
+    msgStorageDenied: "PDF genere, mais upload bloque par les droits du bucket.",
     msgPdfReady: "PDF genere.",
     msgPdfFail: "Impossible de generer le PDF.",
   };
@@ -100,6 +106,8 @@ window.Webflow.push(async function () {
   const els = renderShell(root, STR);
   wireActions();
   const state = {
+    currentUserId: "",
+    organizationId: String(CONFIG.ORGANIZATION_ID || "").trim(),
     items: [],
     clients: [],
     interventions: [],
@@ -114,12 +122,56 @@ window.Webflow.push(async function () {
 
   async function boot() {
     setStatus(STR.msgLoading);
+    await resolveAuthContext();
     await Promise.all([loadClients(), loadInterventions(), loadProducts()]);
     hydrateDraft();
     renderItems();
     updateTotals();
     updatePreview();
-    setStatus("");
+    setStatus(state.organizationId ? "" : STR.msgOrgMissing);
+  }
+
+  async function resolveAuthContext() {
+    state.organizationId = asUuid(state.organizationId);
+    const auth = await supabase.auth.getUser();
+    const uid = auth?.data?.user?.id || "";
+    state.currentUserId = uid;
+
+    if (state.organizationId) return;
+    if (!uid) return;
+
+    // First try membership table, then profile fallback.
+    let membership = await supabase
+      .from("organization_members")
+      .select("organization_id")
+      .eq("user_id", uid)
+      .eq("is_active", true)
+      .limit(1)
+      .maybeSingle();
+
+    if (membership.error && isMissingColumnError(membership.error)) {
+      membership = await supabase
+        .from("organization_members")
+        .select("organization_id")
+        .eq("user_id", uid)
+        .limit(1)
+        .maybeSingle();
+    }
+
+    if (!membership.error && membership.data?.organization_id) {
+      state.organizationId = asUuid(membership.data.organization_id);
+      return;
+    }
+
+    const profile = await supabase
+      .from("profiles")
+      .select("organization_id")
+      .eq("id", uid)
+      .maybeSingle();
+
+    if (!profile.error && profile.data?.organization_id) {
+      state.organizationId = asUuid(profile.data.organization_id);
+    }
   }
 
   async function loadClients() {
@@ -347,12 +399,7 @@ window.Webflow.push(async function () {
   async function downloadPdf() {
     try {
       const blob = await generatePdfBlob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${(state.draft.reference || "devis")}.pdf`;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      await triggerDownloadFromBlob(blob);
       showToast("success", STR.msgPdfReady);
     } catch (e) {
       console.error(e);
@@ -360,9 +407,22 @@ window.Webflow.push(async function () {
     }
   }
 
+  async function triggerDownloadFromBlob(blob) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${(state.draft.reference || "devis")}.pdf`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+
   async function saveQuote() {
+    if (!state.organizationId) {
+      return { ok: false, denied: true, reason: "org_missing" };
+    }
+
     const payload = {
-      organization_id: CONFIG.ORGANIZATION_ID || null,
+      organization_id: state.organizationId,
       reference: state.draft.reference || null,
       client_name: state.draft.client_name || null,
       client_email: state.draft.client_email || null,
@@ -377,24 +437,26 @@ window.Webflow.push(async function () {
       vat_cents: state.draft.vat_cents || 0,
       total_cents: state.draft.total_cents || 0,
       currency: CONFIG.CURRENCY,
+      created_by: state.currentUserId || null,
       created_at: new Date().toISOString(),
     };
 
     if (!CONFIG.QUOTES_TABLE) {
-      showToast("warning", STR.msgSavedPartial);
-      return;
+      return { ok: false, reason: "missing_table_name" };
     }
 
     const res = await supabase.from(CONFIG.QUOTES_TABLE).insert(payload).select("id").maybeSingle();
     if (res.error) {
+      if (isPermissionDenied(res.error)) {
+        return { ok: false, denied: true, reason: "rls" };
+      }
       if (isTableMissing(res.error) || isMissingColumnError(res.error)) {
-        showToast("warning", STR.msgSavedPartial);
-        return;
+        return { ok: false, reason: "missing_table" };
       }
       throw res.error;
     }
     state.quoteId = res.data?.id || null;
-    showToast("success", STR.msgSaved);
+    return { ok: true };
   }
 
   async function uploadPdfToStorage(blob) {
@@ -404,7 +466,10 @@ window.Webflow.push(async function () {
       upsert: true,
       contentType: "application/pdf",
     });
-    if (up.error) return null;
+    if (up.error) {
+      if (isPermissionDenied(up.error)) return { denied: true };
+      return null;
+    }
     const { data } = supabase.storage.from(CONFIG.BUCKET).getPublicUrl(path);
     return { path, url: data?.publicUrl || "" };
   }
@@ -430,18 +495,53 @@ window.Webflow.push(async function () {
     els.btnDownload.addEventListener("click", downloadPdf);
 
     els.btnSave.addEventListener("click", async () => {
+      const oldLabel = els.btnSave.textContent;
+      els.btnSave.disabled = true;
+      els.btnSave.textContent = "Enregistrement...";
       try {
-        await saveQuote();
+        const saved = await saveQuote();
         const blob = await generatePdfBlob();
         const uploaded = await uploadPdfToStorage(blob);
+
         if (uploaded?.url) {
           state.pdf = uploaded;
           els.previewLink.href = uploaded.url;
           els.previewLink.hidden = false;
+          if (saved?.ok && state.quoteId) {
+            await supabase
+              .from(CONFIG.QUOTES_TABLE)
+              .update({ pdf_path: uploaded.path, pdf_url: uploaded.url, updated_at: new Date().toISOString() })
+              .eq("id", state.quoteId);
+          }
+        }
+
+        if (saved?.ok && uploaded?.url) {
+          showToast("success", STR.msgSavedWithPdf);
+        } else if (saved?.ok && uploaded?.denied) {
+          showToast("warning", STR.msgStorageDenied);
+        } else if (saved?.ok && !uploaded?.url) {
+          showToast("warning", STR.msgSavedNoPdf);
+        } else if (saved?.denied || !saved?.ok) {
+          if (saved?.reason === "rls" || saved?.denied) {
+            showToast("warning", STR.msgSavedDenied);
+          } else if (saved?.reason === "missing_table" || saved?.reason === "missing_table_name") {
+            showToast("warning", STR.msgSavedPartial);
+          } else {
+            showToast("warning", STR.msgOrgMissing);
+          }
+          await triggerDownloadFromBlob(blob);
+          showToast("success", STR.msgPdfOnly);
         }
       } catch (e) {
         console.error(e);
+        if (isPermissionDenied(e)) {
+          showToast("warning", STR.msgStorageDenied);
+          return;
+        }
         showToast("error", STR.msgPdfFail);
+      } finally {
+        els.btnSave.disabled = false;
+        els.btnSave.textContent = oldLabel;
       }
     });
 
@@ -604,7 +704,7 @@ window.Webflow.push(async function () {
 
   async function readTable(table, select, opts = {}) {
     let query = supabase.from(table).select(select);
-    if (CONFIG.ORGANIZATION_ID) query = query.eq("organization_id", CONFIG.ORGANIZATION_ID);
+    if (state.organizationId) query = query.eq("organization_id", state.organizationId);
     if (opts.order) query = query.order(opts.order, { ascending: !opts.desc });
     if (opts.limit) query = query.limit(opts.limit);
     let res = await query;
@@ -618,6 +718,7 @@ window.Webflow.push(async function () {
   }
 
   function setStatus(text) {
+    if (!els.status) return;
     els.status.textContent = text || "";
   }
 
@@ -651,6 +752,13 @@ window.Webflow.push(async function () {
       .trim();
   }
 
+  function asUuid(value) {
+    const v = String(value || "").trim();
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v)
+      ? v
+      : "";
+  }
+
   function formatDateFR(value) {
     if (!value) return "";
     const d = new Date(value);
@@ -662,6 +770,12 @@ window.Webflow.push(async function () {
     const code = String(error?.code || "");
     const msg = String(error?.message || "").toLowerCase();
     return code === "PGRST205" || msg.includes("could not find the table") || msg.includes("does not exist");
+  }
+
+  function isPermissionDenied(error) {
+    const code = String(error?.code || "");
+    const msg = String(error?.message || "").toLowerCase();
+    return code === "42501" || msg.includes("row-level security") || msg.includes("permission denied");
   }
 
   function isMissingColumnError(error) {
@@ -703,6 +817,14 @@ window.Webflow.push(async function () {
         <div class="dv-status" data-status></div>
 
         <div class="dv-grid">
+          <div class="dv-panel dv-preview-panel">
+            <div class="dv-preview-toolbar">
+              <div class="dv-preview-live">Apercu en direct</div>
+              <a class="dv-link" data-preview-link hidden target="_blank" rel="noopener">Voir le PDF</a>
+            </div>
+            <div class="dv-preview" data-preview></div>
+          </div>
+
           <div class="dv-panel">
             <div class="dv-card">
               <div class="dv-card-title">Client</div>
@@ -757,13 +879,6 @@ window.Webflow.push(async function () {
               <div class="dv-total-row dv-total"><span>${copy.labelTotal}</span><strong data-total>—</strong></div>
             </div>
           </div>
-
-          <div class="dv-panel dv-preview-panel">
-            <div class="dv-preview-toolbar">
-              <a class="dv-link" data-preview-link hidden target="_blank" rel="noopener">Voir le PDF</a>
-            </div>
-            <div class="dv-preview" data-preview></div>
-          </div>
         </div>
 
         <div class="dv-toasts" data-toasts></div>
@@ -814,90 +929,123 @@ window.Webflow.push(async function () {
       .dv-shell {
         font-family: "Manrope", sans-serif;
         color: #0f172a;
-        background: radial-gradient(1000px 500px at 10% -10%, #e0f2fe 0%, #f8fafc 60%, #f8fafc 100%);
-        padding: 20px;
-        border-radius: 18px;
+        --dv-bg-1: #f4f8ff;
+        --dv-bg-2: #ebf2ff;
+        --dv-ink-soft: #64748b;
+        --dv-primary: #0ea5e9;
+        --dv-primary-dark: #0284c7;
+        --dv-border: #d7e3ff;
+        background:
+          radial-gradient(1200px 520px at -10% -20%, #dff5ff 0%, transparent 55%),
+          radial-gradient(1000px 460px at 110% 0%, #e9f0ff 0%, transparent 56%),
+          linear-gradient(180deg, var(--dv-bg-1) 0%, var(--dv-bg-2) 100%);
+        padding: 24px;
+        border-radius: 20px;
+        border: 1px solid #d9e8ff;
       }
       .dv-header {
         display: flex;
         justify-content: space-between;
         align-items: flex-end;
-        gap: 16px;
-        margin-bottom: 16px;
+        gap: 18px;
+        margin-bottom: 14px;
       }
       .dv-eyebrow {
         font-size: 12px;
         letter-spacing: 0.08em;
         text-transform: uppercase;
-        color: #64748b;
+        color: var(--dv-ink-soft);
         margin-bottom: 6px;
       }
       .dv-title {
         font-family: "Space Grotesk", sans-serif;
-        font-size: 26px;
+        font-size: 30px;
         font-weight: 700;
+        line-height: 1.1;
       }
       .dv-actions {
         display: flex;
         flex-wrap: wrap;
-        gap: 8px;
+        gap: 10px;
       }
       .dv-btn {
         border: none;
-        padding: 8px 12px;
-        border-radius: 10px;
+        padding: 10px 14px;
+        border-radius: 12px;
         font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.01em;
         cursor: pointer;
-        background: #0ea5e9;
+        background: var(--dv-primary);
         color: #fff;
+        box-shadow: 0 8px 20px rgba(14, 165, 233, 0.25);
+        transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+      }
+      .dv-btn:hover {
+        transform: translateY(-1px);
       }
       .dv-btn--ghost {
-        background: #f1f5f9;
+        background: #e8effb;
         color: #0f172a;
+        box-shadow: none;
       }
       .dv-btn--xs {
-        padding: 6px 10px;
+        padding: 7px 10px;
         font-size: 12px;
       }
+      .dv-btn--primary {
+        background: linear-gradient(135deg, var(--dv-primary) 0%, var(--dv-primary-dark) 100%);
+      }
       .dv-status {
-        color: #64748b;
+        color: var(--dv-ink-soft);
         font-size: 13px;
-        margin-bottom: 12px;
+        min-height: 18px;
+        margin-bottom: 14px;
       }
       .dv-grid {
         display: grid;
-        grid-template-columns: 1.1fr 0.9fr;
-        gap: 16px;
+        grid-template-columns: minmax(360px, 0.95fr) minmax(520px, 1.05fr);
+        gap: 18px;
+        align-items: start;
       }
       .dv-panel {
         display: grid;
-        gap: 16px;
+        gap: 14px;
       }
       .dv-card {
         background: #fff;
-        border-radius: 14px;
-        padding: 14px;
-        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+        border-radius: 16px;
+        padding: 16px;
+        border: 1px solid #e2ebff;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
         display: grid;
-        gap: 10px;
+        gap: 11px;
       }
       .dv-card-title {
         font-weight: 700;
+        font-size: 15px;
       }
       .dv-field label {
         font-size: 11px;
         text-transform: uppercase;
-        color: #64748b;
+        color: var(--dv-ink-soft);
         letter-spacing: 0.06em;
         display: block;
         margin-bottom: 6px;
       }
       .dv-input, .dv-textarea, select.dv-input {
         width: 100%;
-        border: 1px solid #cbd5f5;
-        border-radius: 10px;
-        padding: 8px 10px;
+        border: 1px solid var(--dv-border);
+        border-radius: 12px;
+        padding: 9px 11px;
         font-size: 13px;
+        background: #fdfefe;
+        color: #0f172a;
+      }
+      .dv-input:focus, .dv-textarea:focus {
+        outline: none;
+        border-color: #8ccaf5;
+        box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.12);
       }
       .dv-textarea {
         resize: vertical;
@@ -911,6 +1059,10 @@ window.Webflow.push(async function () {
         grid-template-columns: 1.5fr 0.5fr 0.6fr 0.6fr 0.7fr auto;
         gap: 8px;
         align-items: center;
+        padding: 8px;
+        border: 1px solid #e7edfc;
+        border-radius: 12px;
+        background: #fdfefe;
       }
       .dv-line-total {
         font-weight: 600;
@@ -934,24 +1086,34 @@ window.Webflow.push(async function () {
       }
       .dv-preview-panel {
         position: sticky;
-        top: 12px;
+        top: 8px;
       }
       .dv-preview-toolbar {
         display: flex;
-        justify-content: flex-end;
+        justify-content: space-between;
+        align-items: center;
+        padding: 2px 4px 0;
+      }
+      .dv-preview-live {
+        font-size: 12px;
+        font-weight: 700;
+        color: #0369a1;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
       }
       .dv-link {
-        color: #0ea5e9;
+        color: #0284c7;
         text-decoration: none;
         font-weight: 600;
         font-size: 13px;
       }
       .dv-preview {
         background: #fff;
-        border-radius: 14px;
-        padding: 16px;
-        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
-        min-height: 480px;
+        border-radius: 16px;
+        padding: 18px;
+        border: 1px solid #e2ebff;
+        box-shadow: 0 12px 34px rgba(15, 23, 42, 0.08);
+        min-height: 460px;
       }
       .dv-preview-header {
         display: flex;
@@ -965,12 +1127,12 @@ window.Webflow.push(async function () {
       }
       .dv-preview-sub {
         font-size: 12px;
-        color: #64748b;
+        color: var(--dv-ink-soft);
       }
       .dv-preview-meta {
         text-align: right;
         font-size: 12px;
-        color: #64748b;
+        color: var(--dv-ink-soft);
       }
       .dv-preview-doc {
         font-size: 18px;
@@ -978,7 +1140,7 @@ window.Webflow.push(async function () {
         color: #0f172a;
       }
       .dv-preview-client {
-        background: #f8fafc;
+        background: #f5f9ff;
         padding: 10px 12px;
         border-radius: 10px;
         font-size: 12px;
@@ -995,6 +1157,10 @@ window.Webflow.push(async function () {
         padding: 6px 4px;
         text-align: left;
       }
+      .dv-preview-table th {
+        font-weight: 700;
+        color: #0f172a;
+      }
       .dv-preview-totals {
         margin-top: 12px;
         display: grid;
@@ -1007,7 +1173,7 @@ window.Webflow.push(async function () {
       .dv-preview-notes {
         margin-top: 12px;
         font-size: 12px;
-        color: #475569;
+        color: #334155;
       }
       .dv-toasts {
         display: grid;
@@ -1030,6 +1196,9 @@ window.Webflow.push(async function () {
         .dv-preview-panel { position: static; }
       }
       @media (max-width: 720px) {
+        .dv-shell { padding: 16px; }
+        .dv-title { font-size: 26px; }
+        .dv-header { align-items: flex-start; }
         .dv-row { grid-template-columns: 1fr 1fr; }
         .dv-line-total { grid-column: span 2; }
       }
