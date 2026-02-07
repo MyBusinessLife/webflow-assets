@@ -315,7 +315,7 @@
     const isCanceled = item._status === "canceled";
     const isInProgress = item._status === "in_progress";
     const isActiveCard = Boolean(activeInterventionId) && String(activeInterventionId) === String(item.id);
-    const isLockedByOther = hasGlobalActive && !isActiveCard;
+    const isLockedByOther = hasGlobalActive && !isActiveCard && !isDone && !isCanceled;
 
     const canStart = !isDone && !isCanceled && !isInProgress && !isLockedByOther;
     const canContinue = isInProgress;

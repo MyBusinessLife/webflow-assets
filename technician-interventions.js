@@ -234,7 +234,7 @@
     const isCanceled = status === "canceled";
     const isStarted = isStartedStatus(status) || !!row.started_at;
     const isActiveCard = Boolean(activeInterventionId) && String(activeInterventionId) === String(row.id);
-    const isLockedByOther = hasGlobalActive && !isActiveCard;
+    const isLockedByOther = hasGlobalActive && !isActiveCard && !isDone && !isCanceled;
 
     const statusLabel = getStatusLabel(row.status);
     const statusTone = getStatusTone(row.status);

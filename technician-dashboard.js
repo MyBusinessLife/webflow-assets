@@ -971,7 +971,7 @@
     const isCanceled = row._status === "canceled";
     const isInProgress = row._status === "in_progress";
     const isActiveCard = activeRow && String(activeRow.id) === String(row.id);
-    const isLockedByOther = hasGlobalActive && !isActiveCard;
+    const isLockedByOther = hasGlobalActive && !isActiveCard && !isDone && !isCanceled;
     const canStart = !isDone && !isCanceled && !isInProgress && !isLockedByOther;
     const canContinue = isInProgress;
 
