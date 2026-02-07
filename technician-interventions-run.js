@@ -94,6 +94,9 @@
     toastValidationOk: "Intervention validee avec succes.",
     toastValidationPartial: "Validation partielle: intervention enregistree mais statut non finalise.",
     toastValidationError: "Echec de validation. Verifie les messages d'erreur.",
+    toastFilesMissing: "Fichiers non enregistres (table manquante).",
+    toastPvMissing: "PV non enregistre (table manquante).",
+    toastExpensesMissing: "Produits non enregistres (table manquante).",
 
     mapChooseTitle: "Choisir une application de navigation",
     mapPlans: "Plans",
@@ -606,6 +609,7 @@
   }
 
   function renderStepper() {
+    if (!els.steps || !els.progressBar) return;
     const total = state.steps.length;
     const current = state.currentStepIndex;
 
@@ -1307,18 +1311,20 @@
     const isFirst = state.currentStepIndex === 0;
     const isLast = state.currentStepIndex === state.steps.length - 1;
 
-    els.prev.disabled = isFirst || state.saving;
-    els.next.hidden = isLast;
-    els.validate.hidden = !isLast;
+    if (els.prev) els.prev.disabled = isFirst || state.saving;
+    if (els.next) els.next.hidden = isLast;
+    if (els.validate) els.validate.hidden = !isLast;
 
-    els.next.disabled = state.saving;
-    els.validate.disabled = state.saving;
-    els.saveDraft.disabled = state.saving;
+    if (els.next) els.next.disabled = state.saving;
+    if (els.validate) els.validate.disabled = state.saving;
+    if (els.saveDraft) els.saveDraft.disabled = state.saving;
 
     const currentStep = state.steps[state.currentStepIndex];
-    els.footerStep.textContent = `Etape ${state.currentStepIndex + 1}/${state.steps.length} - ${currentStep.label}`;
+    if (els.footerStep && currentStep) {
+      els.footerStep.textContent = `Etape ${state.currentStepIndex + 1}/${state.steps.length} - ${currentStep.label}`;
+    }
 
-    els.next.textContent = STR.btnNext;
+    if (els.next) els.next.textContent = STR.btnNext;
   }
 
   function refreshSummaryFooter() {
@@ -1326,11 +1332,13 @@
     const productsTotal = computeProductsTotalCents(cleanProducts(state.draft.products));
     const signatureOk = state.signature.hasSignature || !state.requirements.signature;
 
-    els.footerSummary.innerHTML = `
-      <span>Photos: <strong>${photosCount}</strong></span>
-      <span>Produits: <strong>${formatCents(productsTotal)}</strong></span>
-      <span>Signature: <strong>${signatureOk ? "OK" : "A faire"}</strong></span>
-    `;
+    if (els.footerSummary) {
+      els.footerSummary.innerHTML = `
+        <span>Photos: <strong>${photosCount}</strong></span>
+        <span>Produits: <strong>${formatCents(productsTotal)}</strong></span>
+        <span>Signature: <strong>${signatureOk ? "OK" : "A faire"}</strong></span>
+      `;
+    }
   }
 
   function wireStaticEvents() {
@@ -1486,9 +1494,9 @@
       const uploadedSignature = await uploadSignatureIfAny(id);
       const uploadedSignedPv = await uploadSignedPvIfAny(id, state.files.signedPv);
 
-      await syncInterventionFilesRows(id, uploadedPhotos, uploadedSignature);
-      await syncSignedPv(id, uploadedSignedPv);
-      await syncProductsExpenses(id, cleanProducts(state.draft.products));
+      const filesSaved = await syncInterventionFilesRows(id, uploadedPhotos, uploadedSignature);
+      const pvSaved = await syncSignedPv(id, uploadedSignedPv);
+      const expensesSaved = await syncProductsExpenses(id, cleanProducts(state.draft.products));
 
       const reportText = buildObservationsText({
         intervention: state.intervention,
@@ -1524,6 +1532,9 @@
       if (!reportSaved) {
         showToast("warning", "Table rapport absente: le resume est conserve dans les observations intervention.");
       }
+      if (!filesSaved) showToast("warning", STR.toastFilesMissing);
+      if (!pvSaved) showToast("warning", STR.toastPvMissing);
+      if (!expensesSaved) showToast("warning", STR.toastExpensesMissing);
 
       clearDraft(state.intervention.id);
       clearActiveInterventionId();
@@ -1635,6 +1646,7 @@
   }
 
   async function syncInterventionFilesRows(interventionId, photos, signature) {
+    if (!CONFIG.FILES_TABLE) return false;
     const payload = [];
 
     (photos || []).forEach((p) => {
@@ -1648,13 +1660,19 @@
     if (!payload.length) return true;
 
     const ins = await insertWithOrgFallback(CONFIG.FILES_TABLE, payload, getOrganizationIdForWrites());
-    if (ins.error) throw new Error(`Enregistrement fichiers impossible: ${ins.error.message}`);
+    if (ins.error) {
+      if (isTableMissing(ins.error) || isMissingColumnError(ins.error)) {
+        return false;
+      }
+      throw new Error(`Enregistrement fichiers impossible: ${ins.error.message}`);
+    }
 
     return true;
   }
 
   async function syncSignedPv(interventionId, signedPvUpload) {
     if (!signedPvUpload?.path) return true;
+    if (!CONFIG.PV_TABLE) return false;
 
     const payload = {
       intervention_id: interventionId,
@@ -1669,12 +1687,9 @@
       .eq("intervention_id", interventionId)
       .maybeSingle();
 
-    if (existing.error && !isTableMissing(existing.error)) {
+    if (existing.error) {
+      if (isTableMissing(existing.error) || isMissingColumnError(existing.error)) return false;
       throw new Error(`Lecture PV impossible: ${existing.error.message}`);
-    }
-
-    if (isTableMissing(existing.error)) {
-      return false;
     }
 
     if (existing.data?.intervention_id) {
@@ -1682,12 +1697,18 @@
         .from(CONFIG.PV_TABLE)
         .update(payload)
         .eq("intervention_id", interventionId);
-      if (up.error) throw new Error(`Mise a jour PV impossible: ${up.error.message}`);
+      if (up.error) {
+        if (isTableMissing(up.error) || isMissingColumnError(up.error)) return false;
+        throw new Error(`Mise a jour PV impossible: ${up.error.message}`);
+      }
       return true;
     }
 
     const ins = await insertWithOrgFallback(CONFIG.PV_TABLE, payload, getOrganizationIdForWrites());
-    if (ins.error) throw new Error(`Insertion PV impossible: ${ins.error.message}`);
+    if (ins.error) {
+      if (isTableMissing(ins.error) || isMissingColumnError(ins.error)) return false;
+      throw new Error(`Insertion PV impossible: ${ins.error.message}`);
+    }
 
     return true;
   }
@@ -1701,11 +1722,10 @@
       .eq("intervention_id", interventionId)
       .eq("type", "material");
 
-    if (existing.error && !isTableMissing(existing.error)) {
+    if (existing.error) {
+      if (isTableMissing(existing.error) || isMissingColumnError(existing.error)) return false;
       throw new Error(`Lecture depenses impossible: ${existing.error.message}`);
     }
-
-    if (isTableMissing(existing.error)) return false;
 
     const existingRows = existing.data || [];
     const idsToDelete = existingRows
@@ -1718,7 +1738,10 @@
         .delete()
         .in("id", idsToDelete);
 
-      if (del.error) throw new Error(`Suppression depenses existantes impossible: ${del.error.message}`);
+      if (del.error) {
+        if (isTableMissing(del.error) || isMissingColumnError(del.error)) return false;
+        throw new Error(`Suppression depenses existantes impossible: ${del.error.message}`);
+      }
     }
 
     if (!rows.length) return true;
@@ -1741,7 +1764,10 @@
     });
 
     const ins = await insertWithOrgFallback(CONFIG.EXPENSES_TABLE, payload, getOrganizationIdForWrites());
-    if (ins.error) throw new Error(`Insertion depenses impossible: ${ins.error.message}`);
+    if (ins.error) {
+      if (isTableMissing(ins.error) || isMissingColumnError(ins.error)) return false;
+      throw new Error(`Insertion depenses impossible: ${ins.error.message}`);
+    }
 
     return true;
   }
@@ -1757,7 +1783,7 @@
     );
 
     if (res.error) {
-      if (isTableMissing(res.error)) return false;
+      if (isTableMissing(res.error) || isMissingColumnError(res.error)) return false;
       console.warn("[TECH RUN] report warning:", res.error.message);
       return false;
     }
@@ -2383,6 +2409,7 @@
   }
 
   function setStatus(type, message) {
+    if (!els?.statusBox) return;
     if (!message) {
       els.statusBox.hidden = true;
       els.statusBox.textContent = "";
@@ -2581,6 +2608,12 @@
     const code = String(error?.code || "");
     const message = String(error?.message || "").toLowerCase();
     return code === "PGRST205" || message.includes("could not find the table") || message.includes("does not exist");
+  }
+
+  function isMissingColumnError(error) {
+    const code = String(error?.code || "");
+    const message = String(error?.message || "").toLowerCase();
+    return code === "42703" || message.includes("column") && message.includes("does not exist");
   }
 
   function getFileExtension(filename) {
