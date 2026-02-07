@@ -5,6 +5,7 @@ Order to run in Supabase SQL Editor:
 1. `001_multitenant_foundation.sql`
 2. `002_constraints_and_rls.sql`
 3. `003_clients_sites_stock_and_billing.sql`
+4. `004_user_type_internal_external.sql`
 
 ## Important
 - Run each file in full, then validate before the next file.

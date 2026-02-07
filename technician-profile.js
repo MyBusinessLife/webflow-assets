@@ -304,6 +304,11 @@
   function hydrateForms() {
     const p = state.profile || {};
     const userEmail = String(state.user?.email || "").trim();
+    const resolvedRole = String(p.role || state.user?.user_metadata?.role || "tech");
+    const resolvedUserType = canonicalUserType(
+      p.user_type || state.user?.user_metadata?.user_type || "",
+      resolvedRole
+    );
 
     els.email.value = String(p.email || userEmail || "");
     els.firstName.value = String(p.first_name || "");
@@ -314,8 +319,8 @@
     els.siret.value = String(p.siret || "");
     els.notes.value = String(p.notes || "");
 
-    els.role.textContent = String(p.role || state.user?.user_metadata?.role || "tech");
-    els.userType.textContent = String(p.user_type || "technician");
+    els.role.textContent = resolvedRole;
+    els.userType.textContent = resolvedUserType;
     els.createdAt.textContent = p.created_at ? formatDateFR(p.created_at) : "—";
     els.updatedAt.textContent = p.updated_at ? formatDateFR(p.updated_at) : "—";
   }
@@ -397,6 +402,10 @@
       last_name: lastName || null,
       name: displayName || null,
       phone: phone || null,
+      user_type: canonicalUserType(
+        state.profile?.user_type || state.user?.user_metadata?.user_type || "",
+        state.profile?.role || state.user?.user_metadata?.role || "tech"
+      ),
       company_name: cleanText(els.company.value, 120) || null,
       siret: siret || null,
       notes: cleanText(els.notes.value, 1200) || null,
@@ -743,6 +752,39 @@
     if (s === "confirmed" || s === "confirmee") return "confirmed";
     if (s === "canceled" || s === "cancelled" || s === "annulee") return "canceled";
     return s || "unknown";
+  }
+
+  function canonicalUserType(value, fallbackRole) {
+    const userType = norm(String(value || "")).replace(/\s+/g, "_");
+    if (["internal", "interne", "employee", "employe", "salarie", "staff", "inhouse"].includes(userType)) {
+      return "internal";
+    }
+    if (
+      [
+        "external",
+        "externe",
+        "freelance",
+        "independant",
+        "independent",
+        "contractor",
+        "subcontractor",
+        "prestataire",
+      ].includes(userType)
+    ) {
+      return "external";
+    }
+    if (["technicien", "technician", "tech"].includes(userType)) {
+      return inferUserTypeFromRole(fallbackRole);
+    }
+    return inferUserTypeFromRole(fallbackRole);
+  }
+
+  function inferUserTypeFromRole(value) {
+    const role = norm(String(value || "")).replace(/\s+/g, "_");
+    if (["external", "externe", "freelance", "prestataire", "contractor", "subcontractor"].includes(role)) {
+      return "external";
+    }
+    return "internal";
   }
 
   function resolveOrganizationId(source) {
