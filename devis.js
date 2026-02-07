@@ -305,92 +305,131 @@ window.Webflow.push(async function () {
   }
 
   function updatePreview() {
-    const itemsHtml = state.draft.items
+    const itemsHtml = (state.draft.items || [])
       .map((item) => {
         const lineTotal = calcLineTotal(item);
         return `
           <tr>
-            <td>${escapeHTML(item.name || "—")}</td>
-            <td>${item.qty}</td>
-            <td>${formatMoney(item.unit_cents, CONFIG.CURRENCY)}</td>
-            <td>${item.vat_rate}%</td>
-            <td>${formatMoney(lineTotal, CONFIG.CURRENCY)}</td>
+            <td class="dv-col-label">${escapeHTML(item.name || "—")}</td>
+            <td class="dv-col-num">${item.qty}</td>
+            <td class="dv-col-num">${formatMoney(item.unit_cents, CONFIG.CURRENCY)}</td>
+            <td class="dv-col-num">${item.vat_rate}%</td>
+            <td class="dv-col-num">${formatMoney(lineTotal, CONFIG.CURRENCY)}</td>
           </tr>
         `;
       })
       .join("");
 
+    const safeItemsHtml = itemsHtml || `<tr><td colspan="5" class="dv-preview-empty">Aucune ligne.</td></tr>`;
+    const clientName = escapeHTML(state.draft.client_name || "Client");
+    const contactName = escapeHTML(state.draft.contact_name || "");
+    const clientAddress = escapeHTML(state.draft.client_address || "");
+    const clientEmail = escapeHTML(state.draft.client_email || "");
+    const clientPhone = escapeHTML(state.draft.client_phone || "");
+    const ref = escapeHTML(state.draft.reference || "—");
+    const validity = escapeHTML(formatDateFR(state.draft.valid_until) || "—");
+    const notes = escapeHTML(state.draft.notes || "");
+    const terms = escapeHTML(state.draft.terms || "");
+
     els.preview.innerHTML = `
-      <div class="dv-preview-header">
-        <div>
-          <div class="dv-preview-title">${escapeHTML(COMPANY.name)}</div>
-          <div class="dv-preview-sub">${escapeHTML(COMPANY.address)}</div>
-          <div class="dv-preview-sub">${escapeHTML(COMPANY.email)} ${COMPANY.phone ? `• ${escapeHTML(COMPANY.phone)}` : ""}</div>
-          ${COMPANY.siret ? `<div class="dv-preview-sub">SIRET: ${escapeHTML(COMPANY.siret)}</div>` : ""}
-          ${COMPANY.tva ? `<div class="dv-preview-sub">TVA: ${escapeHTML(COMPANY.tva)}</div>` : ""}
-        </div>
-        <div class="dv-preview-meta">
-          <div class="dv-preview-doc">DEVIS</div>
-          <div>Ref: ${escapeHTML(state.draft.reference || "—")}</div>
-          <div>Date: ${escapeHTML(todayFR())}</div>
-          <div>Validite: ${escapeHTML(state.draft.valid_until || "—")}</div>
-        </div>
-      </div>
+      <article class="dv-paper">
+        <header class="dv-paper-top">
+          <div class="dv-company">
+            <div class="dv-preview-title">${escapeHTML(COMPANY.name)}</div>
+            <div class="dv-preview-sub">${escapeHTML(COMPANY.address)}</div>
+            <div class="dv-preview-sub">${escapeHTML(COMPANY.email)} ${COMPANY.phone ? `• ${escapeHTML(COMPANY.phone)}` : ""}</div>
+            ${COMPANY.siret ? `<div class="dv-preview-sub">SIRET: ${escapeHTML(COMPANY.siret)}</div>` : ""}
+            ${COMPANY.tva ? `<div class="dv-preview-sub">TVA: ${escapeHTML(COMPANY.tva)}</div>` : ""}
+          </div>
+          <div class="dv-doc">
+            <div class="dv-doc-pill">DEVIS</div>
+            <div class="dv-doc-row"><span>Reference</span><strong>${ref}</strong></div>
+            <div class="dv-doc-row"><span>Date</span><strong>${escapeHTML(todayFR())}</strong></div>
+            <div class="dv-doc-row"><span>Validite</span><strong>${validity}</strong></div>
+          </div>
+        </header>
 
-      <div class="dv-preview-client">
-        <strong>${escapeHTML(state.draft.client_name || "Client")}</strong><br/>
-        ${escapeHTML(state.draft.client_address || "")}<br/>
-        ${escapeHTML(state.draft.client_email || "")}<br/>
-        ${escapeHTML(state.draft.client_phone || "")}
-      </div>
+        <section class="dv-paper-meta">
+          <div class="dv-meta-card">
+            <div class="dv-meta-title">Client</div>
+            <div class="dv-meta-line"><strong>${clientName}</strong></div>
+            ${contactName ? `<div class="dv-meta-line">${contactName}</div>` : ""}
+            ${clientAddress ? `<div class="dv-meta-line">${clientAddress}</div>` : ""}
+            ${clientEmail ? `<div class="dv-meta-line">${clientEmail}</div>` : ""}
+            ${clientPhone ? `<div class="dv-meta-line">${clientPhone}</div>` : ""}
+          </div>
+          <div class="dv-meta-card">
+            <div class="dv-meta-title">Recapitulatif</div>
+            <div class="dv-doc-row"><span>Sous-total</span><strong>${formatMoney(state.draft.subtotal_cents, CONFIG.CURRENCY)}</strong></div>
+            <div class="dv-doc-row"><span>Remise</span><strong>${formatMoney(state.draft.discount_cents, CONFIG.CURRENCY)}</strong></div>
+            <div class="dv-doc-row"><span>TVA</span><strong>${formatMoney(state.draft.vat_cents, CONFIG.CURRENCY)}</strong></div>
+            <div class="dv-doc-row dv-doc-row--total"><span>Total TTC</span><strong>${formatMoney(state.draft.total_cents, CONFIG.CURRENCY)}</strong></div>
+          </div>
+        </section>
 
-      <table class="dv-preview-table">
-        <thead>
-          <tr>
-            <th>Libelle</th>
-            <th>Qt</th>
-            <th>PU</th>
-            <th>TVA</th>
-            <th>Total</th>
-          </tr>
-        </thead>
-        <tbody>${itemsHtml}</tbody>
-      </table>
+        <section class="dv-paper-lines">
+          <table class="dv-preview-table">
+            <thead>
+              <tr>
+                <th>Libelle</th>
+                <th class="dv-col-num">Qt</th>
+                <th class="dv-col-num">PU</th>
+                <th class="dv-col-num">TVA</th>
+                <th class="dv-col-num">Total</th>
+              </tr>
+            </thead>
+            <tbody>${safeItemsHtml}</tbody>
+          </table>
+        </section>
 
-      <div class="dv-preview-totals">
-        <div><span>Sous-total</span><strong>${formatMoney(state.draft.subtotal_cents, CONFIG.CURRENCY)}</strong></div>
-        <div><span>Remise</span><strong>${formatMoney(state.draft.discount_cents, CONFIG.CURRENCY)}</strong></div>
-        <div><span>TVA</span><strong>${formatMoney(state.draft.vat_cents, CONFIG.CURRENCY)}</strong></div>
-        <div class="dv-preview-total"><span>Total</span><strong>${formatMoney(state.draft.total_cents, CONFIG.CURRENCY)}</strong></div>
-      </div>
-
-      <div class="dv-preview-notes">
-        ${state.draft.notes ? `<div><strong>Notes:</strong> ${escapeHTML(state.draft.notes)}</div>` : ""}
-        ${state.draft.terms ? `<div><strong>Conditions:</strong> ${escapeHTML(state.draft.terms)}</div>` : ""}
-      </div>
+        <section class="dv-paper-notes">
+          ${notes ? `
+            <div class="dv-note-block">
+              <div class="dv-note-title">Notes</div>
+              <div class="dv-note-text">${notes}</div>
+            </div>
+          ` : ""}
+          ${terms ? `
+            <div class="dv-note-block">
+              <div class="dv-note-title">Conditions</div>
+              <div class="dv-note-text">${terms}</div>
+            </div>
+          ` : ""}
+        </section>
+      </article>
     `;
   }
 
   async function generatePdfBlob() {
     await ensurePdfLibs();
     const target = els.preview;
-    const canvas = await window.html2canvas(target, { scale: 2, backgroundColor: "#ffffff" });
+    const canvas = await window.html2canvas(target, {
+      scale: 2.2,
+      backgroundColor: "#ffffff",
+      useCORS: true,
+      windowWidth: target.scrollWidth,
+      scrollX: 0,
+      scrollY: -window.scrollY,
+    });
     const imgData = canvas.toDataURL("image/png");
     const pdf = new window.jspdf.jsPDF("p", "pt", "a4");
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
-    const imgHeight = (canvas.height * pageWidth) / canvas.width;
+    const margin = 16;
+    const printableWidth = pageWidth - margin * 2;
+    const printableHeight = pageHeight - margin * 2;
+    const imgHeight = (canvas.height * printableWidth) / canvas.width;
     let heightLeft = imgHeight;
-    let position = 0;
+    let position = margin;
 
-    pdf.addImage(imgData, "PNG", 0, position, pageWidth, imgHeight);
-    heightLeft -= pageHeight;
+    pdf.addImage(imgData, "PNG", margin, position, printableWidth, imgHeight);
+    heightLeft -= printableHeight;
 
     while (heightLeft > 0) {
-      position -= pageHeight;
+      position -= printableHeight;
       pdf.addPage();
-      pdf.addImage(imgData, "PNG", 0, position, pageWidth, imgHeight);
-      heightLeft -= pageHeight;
+      pdf.addImage(imgData, "PNG", margin, position, printableWidth, imgHeight);
+      heightLeft -= printableHeight;
     }
 
     return pdf.output("blob");
@@ -1108,72 +1147,167 @@ window.Webflow.push(async function () {
         font-size: 13px;
       }
       .dv-preview {
-        background: #fff;
+        background: #f5f9ff;
         border-radius: 16px;
-        padding: 18px;
+        padding: 14px;
         border: 1px solid #e2ebff;
-        box-shadow: 0 12px 34px rgba(15, 23, 42, 0.08);
+        box-shadow: inset 0 1px 0 #ffffff;
         min-height: 460px;
       }
-      .dv-preview-header {
+      .dv-paper {
+        width: 100%;
+        max-width: 820px;
+        margin: 0 auto;
+        background: #fff;
+        border: 1px solid #dce7ff;
+        border-radius: 14px;
+        box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+        padding: 18px;
+        display: grid;
+        gap: 14px;
+      }
+      .dv-paper-top {
         display: flex;
         justify-content: space-between;
-        gap: 12px;
-        margin-bottom: 16px;
+        gap: 16px;
+        align-items: flex-start;
+        padding-bottom: 12px;
+        border-bottom: 1px solid #e6eefc;
+      }
+      .dv-company {
+        display: grid;
+        gap: 4px;
       }
       .dv-preview-title {
-        font-size: 16px;
+        font-size: 17px;
         font-weight: 700;
       }
       .dv-preview-sub {
+        font-size: 11px;
+        color: var(--dv-ink-soft);
+        line-height: 1.4;
+        word-break: break-word;
+      }
+      .dv-doc {
+        min-width: 230px;
+        display: grid;
+        gap: 8px;
+      }
+      .dv-doc-pill {
+        justify-self: end;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        color: #075985;
+        background: #e0f2fe;
+        border: 1px solid #bae6fd;
+        border-radius: 999px;
+        padding: 5px 10px;
+      }
+      .dv-doc-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
         font-size: 12px;
         color: var(--dv-ink-soft);
       }
-      .dv-preview-meta {
-        text-align: right;
-        font-size: 12px;
-        color: var(--dv-ink-soft);
-      }
-      .dv-preview-doc {
-        font-size: 18px;
-        font-weight: 700;
+      .dv-doc-row strong {
         color: #0f172a;
+        font-weight: 700;
       }
-      .dv-preview-client {
-        background: #f5f9ff;
-        padding: 10px 12px;
-        border-radius: 10px;
+      .dv-doc-row--total {
+        margin-top: 2px;
+        padding-top: 8px;
+        border-top: 1px dashed #c9daff;
+      }
+      .dv-paper-meta {
+        display: grid;
+        grid-template-columns: 1.2fr 0.8fr;
+        gap: 12px;
+      }
+      .dv-meta-card {
+        background: #f8fbff;
+        border: 1px solid #deebff;
+        border-radius: 12px;
+        padding: 12px;
+        display: grid;
+        gap: 6px;
+      }
+      .dv-meta-title {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #64748b;
+        margin-bottom: 2px;
+      }
+      .dv-meta-line {
         font-size: 12px;
-        margin-bottom: 12px;
+        color: #0f172a;
+        line-height: 1.45;
+        word-break: break-word;
+      }
+      .dv-paper-lines {
+        border-top: 1px solid #e6eefc;
+        padding-top: 10px;
       }
       .dv-preview-table {
         width: 100%;
         border-collapse: collapse;
         font-size: 12px;
+        table-layout: fixed;
       }
       .dv-preview-table th,
       .dv-preview-table td {
         border-bottom: 1px solid #e2e8f0;
-        padding: 6px 4px;
+        padding: 9px 8px;
         text-align: left;
+        vertical-align: top;
       }
       .dv-preview-table th {
         font-weight: 700;
         color: #0f172a;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        background: #f8fbff;
       }
-      .dv-preview-totals {
+      .dv-col-label {
+        width: 44%;
+        word-break: break-word;
+      }
+      .dv-col-num {
+        text-align: right !important;
+        white-space: nowrap;
+      }
+      .dv-preview-empty {
+        text-align: center !important;
+        color: #64748b;
+        padding: 16px 8px !important;
+      }
+      .dv-paper-notes {
         margin-top: 12px;
         display: grid;
-        gap: 6px;
-        font-size: 12px;
+        gap: 10px;
       }
-      .dv-preview-total {
-        font-size: 14px;
+      .dv-note-block {
+        border: 1px solid #deebff;
+        border-radius: 12px;
+        padding: 10px 12px;
+        background: #fbfdff;
       }
-      .dv-preview-notes {
-        margin-top: 12px;
+      .dv-note-title {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #64748b;
+        margin-bottom: 6px;
+      }
+      .dv-note-text {
         font-size: 12px;
         color: #334155;
+        line-height: 1.55;
+        white-space: pre-line;
+        word-break: break-word;
       }
       .dv-toasts {
         display: grid;
@@ -1194,6 +1328,7 @@ window.Webflow.push(async function () {
       @media (max-width: 980px) {
         .dv-grid { grid-template-columns: 1fr; }
         .dv-preview-panel { position: static; }
+        .dv-paper-meta { grid-template-columns: 1fr; }
       }
       @media (max-width: 720px) {
         .dv-shell { padding: 16px; }
@@ -1201,6 +1336,10 @@ window.Webflow.push(async function () {
         .dv-header { align-items: flex-start; }
         .dv-row { grid-template-columns: 1fr 1fr; }
         .dv-line-total { grid-column: span 2; }
+        .dv-paper { padding: 14px; }
+        .dv-paper-top { flex-direction: column; }
+        .dv-doc { min-width: 0; width: 100%; }
+        .dv-doc-pill { justify-self: start; }
       }
     `;
     document.head.appendChild(style);
