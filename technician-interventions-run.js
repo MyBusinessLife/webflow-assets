@@ -325,45 +325,50 @@
   }
 
   async function loadCatalog() {
-    const activeRes = await supabase
-      .from(CONFIG.PRODUCTS_TABLE)
-      .select("id, name, price_cents, is_active")
-      .eq("is_active", true)
-      .order("name", { ascending: true })
-      .limit(1000);
+    try {
+      const activeRes = await supabase
+        .from(CONFIG.PRODUCTS_TABLE)
+        .select("id, name, price_cents, is_active")
+        .eq("is_active", true)
+        .order("name", { ascending: true })
+        .limit(1000);
 
-    if (!activeRes.error && (activeRes.data || []).length) {
-      return activeRes.data || [];
-    }
+      if (!activeRes.error && (activeRes.data || []).length) {
+        return activeRes.data || [];
+      }
 
-    if (activeRes.error) {
-      console.warn("[TECH RUN] catalog(active) warning:", activeRes.error.message);
-    }
+      if (activeRes.error) {
+        console.warn("[TECH RUN] catalog(active) warning:", activeRes.error.message);
+      }
 
-    const relaxedRes = await supabase
-      .from(CONFIG.PRODUCTS_TABLE)
-      .select("id, name, price_cents, is_active")
-      .order("name", { ascending: true })
-      .limit(1000);
+      const relaxedRes = await supabase
+        .from(CONFIG.PRODUCTS_TABLE)
+        .select("id, name, price_cents, is_active")
+        .order("name", { ascending: true })
+        .limit(1000);
 
-    if (!relaxedRes.error) {
-      return (relaxedRes.data || []).filter((row) => String(row?.name || "").trim());
-    }
+      if (!relaxedRes.error) {
+        return (relaxedRes.data || []).filter((row) => String(row?.name || "").trim());
+      }
 
-    console.warn("[TECH RUN] catalog(relaxed) warning:", relaxedRes.error.message);
+      console.warn("[TECH RUN] catalog(relaxed) warning:", relaxedRes.error.message);
 
-    const minimalRes = await supabase
-      .from(CONFIG.PRODUCTS_TABLE)
-      .select("id, name, price_cents")
-      .order("name", { ascending: true })
-      .limit(1000);
+      const minimalRes = await supabase
+        .from(CONFIG.PRODUCTS_TABLE)
+        .select("id, name, price_cents")
+        .order("name", { ascending: true })
+        .limit(1000);
 
-    if (minimalRes.error) {
-      console.warn("[TECH RUN] catalog(minimal) warning:", minimalRes.error.message);
+      if (minimalRes.error) {
+        console.warn("[TECH RUN] catalog(minimal) warning:", minimalRes.error.message);
+        return [];
+      }
+
+      return (minimalRes.data || []).filter((row) => String(row?.name || "").trim());
+    } catch (error) {
+      console.warn("[TECH RUN] catalog runtime warning:", error?.message || error);
       return [];
     }
-
-    return (minimalRes.data || []).filter((row) => String(row?.name || "").trim());
   }
 
   function hydrateCatalog(rows) {
@@ -1453,17 +1458,42 @@
     const uploads = [];
 
     for (const file of files) {
-      const ext = getFileExtension(file.name) || "jpg";
-      const path = `interventions/${interventionId}/photos/${Date.now()}_${randomId()}.${ext}`;
+      const defaultExt = getFileExtension(file.name) || "jpg";
+      let ext = defaultExt;
+      let uploadPayload = file;
+      let uploadMime = file.type || "image/jpeg";
+      let path = `interventions/${interventionId}/photos/${Date.now()}_${randomId()}.${ext}`;
 
       try {
-        await uploadWithBucketFallback(path, file, {
+        await uploadWithBucketFallback(path, uploadPayload, {
           cacheControl: "3600",
           upsert: false,
-          contentType: file.type || "image/jpeg",
+          contentType: uploadMime,
         });
       } catch (error) {
-        throw new Error(`Upload photo impossible (${file.name}): ${error?.message || "erreur inconnue"}`);
+        const canRetryAsPng =
+          isMimeNotSupportedError(error) &&
+          String(file.type || "").toLowerCase().includes("jpeg");
+
+        if (!canRetryAsPng) {
+          throw new Error(`Upload photo impossible (${file.name}): ${error?.message || "erreur inconnue"}`);
+        }
+
+        const pngBlob = await convertImageFileToPng(file);
+        ext = "png";
+        uploadPayload = pngBlob;
+        uploadMime = "image/png";
+        path = `interventions/${interventionId}/photos/${Date.now()}_${randomId()}.${ext}`;
+
+        try {
+          await uploadWithBucketFallback(path, uploadPayload, {
+            cacheControl: "3600",
+            upsert: false,
+            contentType: uploadMime,
+          });
+        } catch (pngError) {
+          throw new Error(`Upload photo impossible (${file.name}): ${pngError?.message || "erreur inconnue"}`);
+        }
       }
 
       uploads.push({
@@ -1787,6 +1817,8 @@
 
   function isMimeNotSupportedError(error) {
     const msg = String(error?.message || "").toLowerCase();
+    if (msg.includes("type mime non autorise")) return true;
+    if (msg.includes("mime non autorise")) return true;
     return msg.includes("mime type") && (msg.includes("not supported") || msg.includes("unsupported"));
   }
 
@@ -1981,6 +2013,58 @@
   async function canvasToBlob(canvas) {
     return new Promise((resolve) => {
       canvas.toBlob((blob) => resolve(blob || null), "image/png", 0.92);
+    });
+  }
+
+  async function convertImageFileToPng(file) {
+    const bitmap = await readImageBitmap(file);
+    const width = Math.max(1, Math.floor(bitmap.width || 1));
+    const height = Math.max(1, Math.floor(bitmap.height || 1));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas indisponible pour convertir la photo.");
+    ctx.drawImage(bitmap, 0, 0, width, height);
+
+    if (typeof bitmap.close === "function") {
+      try {
+        bitmap.close();
+      } catch (_) {
+        // ignore close errors
+      }
+    }
+
+    const blob = await new Promise((resolve) => {
+      canvas.toBlob((result) => resolve(result || null), "image/png", 0.92);
+    });
+
+    if (!blob) throw new Error("Conversion PNG impossible.");
+    return blob;
+  }
+
+  async function readImageBitmap(file) {
+    if (window.createImageBitmap) {
+      return window.createImageBitmap(file);
+    }
+
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+
+      img.onload = () => {
+        resolve(img);
+        URL.revokeObjectURL(url);
+      };
+
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("Lecture image impossible."));
+      };
+
+      img.src = url;
     });
   }
 
