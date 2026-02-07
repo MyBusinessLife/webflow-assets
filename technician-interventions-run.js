@@ -1,40 +1,51 @@
 (() => {
   if (window.__techInterventionRunLoaded) return;
   window.__techInterventionRunLoaded = true;
-  // Empêche le script "liste" de perturber cette page si chargé par erreur
   window.__techInterventionsLoaded = true;
 
   const CONFIG = {
     SUPABASE_URL: "https://jrjdhdechcdlygpgaoes.supabase.co",
-    SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpyamRoZGVjaGNkbHlncGdhb2VzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc3NzczMzQsImV4cCI6MjA4MzM1MzMzNH0.E13XKKpIjB1auVtTmgBgV7jxmvS-EOv52t0mT1neKXE",
+    SUPABASE_ANON_KEY:
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJqcmpkaGRlY2hjZGx5Z3BnYW9lcyIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzY3Nzc3MzM0LCJleHAiOjIwODMzNTMzMzR9.E13XKKpIjB1auVtTmgBgV7jxmvS-EOv52t0mT1neKXE",
 
     STORAGE_BUCKET: "interventions-files",
     REPORTS_TABLE: "intervention_reports",
     EXPENSES_TABLE: "intervention_expenses",
     PRODUCTS_TABLE: "products",
+    FILES_TABLE: "intervention_files",
+    PV_TABLE: "intervention_pv",
 
-    STATUS_DONE: "done",
+    LIST_PAGE_PATH: "/extranet/technician/interventions",
+
     STATUS_IN_PROGRESS: "in_progress",
+    STATUS_DONE: "done",
 
     REQUIRE_CHECKLIST_DEFAULT: true,
     REQUIRE_PHOTOS_DEFAULT: false,
     REQUIRE_SIGNATURE_DEFAULT: false,
 
-    PV_URL_FIELD: "pv_blank_url",
-    PV_PATH_FIELD: "pv_blank_path",
-    SIGNED_PV_URL_FIELD: "pv_signed_url",
-    SIGNED_PV_PATH_FIELD: "pv_signed_path",
-    REMUNERATION_FIELD: "tech_fee",
+    ACTIVE_STORAGE_KEY: "mbl-active-intervention",
+    DRAFT_STORAGE_PREFIX: "mbl-tech-run-draft",
+
+    TECH_RUN_NOTE_PREFIX: "[TECH-RUN]",
     CURRENCY: "EUR",
-
-    LIST_PAGE_PATH: "/extranet/technician/interventions",
-
-    STEPS_STORAGE_KEY: "mbl-intervention-steps"
+    SIGNED_URL_TTL: 3600,
   };
 
   const STR = {
     title: "Intervention en cours",
-    subtitle: "Parcours terrain et validation",
+    subtitle: "Parcours technicien guide",
+
+    btnCall: "Appeler",
+    btnMap: "Itineraire",
+    btnPvBlank: "PV vierge",
+    btnBackList: "Retour liste",
+
+    msgLoading: "Chargement de l'intervention...",
+    msgNoSession: "Session expiree. Merci de vous reconnecter.",
+    msgNoId: "ID intervention manquant dans l'URL.",
+    msgNotFound: "Intervention introuvable ou non assignee.",
+
     stepArrive: "Arrivee",
     stepDiagnostic: "Diagnostic",
     stepResolution: "Resolution",
@@ -43,852 +54,903 @@
     stepSignature: "Signature",
     stepObservations: "Observations",
     stepValidate: "Validation",
-    callCTA: "Appeler",
-    mapCTA: "Itineraire",
-    pvCTA: "PV vierge",
-    arriveCTA: "Arrive sur place",
-    nextCTA: "Continuer",
-    prevCTA: "Retour",
-    validateCTA: "Valider l'intervention",
-    photosLabel: "Photos",
-    photosHint: "Ajoute 1 ou plusieurs photos",
-    checklistLabel: "Checklist",
-    signatureLabel: "Signature client",
-    signatureHint: "Signe dans la zone ci-dessous",
-    signatureClear: "Effacer",
-    signedPvLabel: "PV signe",
-    signedPvHint: "Ajoute un PV signe (PDF ou photo)",
-    notesLabel: "Observations",
-    diagnosticLabel: "Diagnostic",
-    resolutionLabel: "Resolution",
-    confirmValidate: "Confirmer la validation ?",
-    toastSaved: "Intervention validee",
-    toastSavedPartial: "Validation enregistree mais statut non mis a jour",
-    toastError: "Une erreur est survenue",
-    toastNeedDiagnostic: "Renseigne le diagnostic",
-    toastNeedResolution: "Renseigne la resolution",
-    toastNeedPhotos: "Ajoute au moins une photo",
-    toastNeedSignature: "Signature obligatoire",
-    toastProductsInvalid: "Produits incomplets. Verifie les quantites et prix.",
-    toastReportMissing: "Rapport non enregistre (table manquante)",
-    toastExpensesMissing: "Produits non enregistres (table manquante)"
+
+    hintArrive: "Marque ton arrivee pour demarrer le parcours.",
+    hintDiagnostic: "Explique clairement le probleme constate.",
+    hintResolution: "Decris ce que tu as fait pour resoudre.",
+    hintPhotos: "Ajoute des photos avant/apres (obligatoire selon l'intervention).",
+    hintProducts: "Ajoute les produits ou frais engages pendant l'intervention.",
+    hintSignature: "La signature client est requise sur cette intervention.",
+    hintObservations: "Ajoute tout contexte utile pour le back-office.",
+    hintValidate: "Valide uniquement quand tout est complet.",
+
+    btnArrived: "Je suis arrive sur place",
+    btnPrev: "Retour",
+    btnNext: "Continuer",
+    btnSaveDraft: "Enregistrer brouillon",
+    btnValidate: "Valider l'intervention",
+    btnClearSignature: "Effacer",
+    btnAddProduct: "Ajouter un produit",
+
+    labelChecklist: "Checklist de cloture",
+    labelSignedPv: "PV signe (optionnel)",
+    labelPhotos: "Photos",
+    labelProductsTotal: "Total produits",
+    labelRefundTotal: "Dont a rembourser",
+
+    toastDraftSaved: "Brouillon enregistre.",
+    toastStepSaved: "Progression enregistree.",
+    toastArrived: "Arrivee enregistree.",
+    toastArriveWarn: "Arrivee enregistree localement, mais non ecrite en base.",
+    toastNeedDiagnostic: "Diagnostic requis pour continuer.",
+    toastNeedResolution: "Resolution requise pour continuer.",
+    toastNeedPhotos: "Ajoute au moins une photo pour continuer.",
+    toastNeedSignature: "Signature requise pour continuer.",
+    toastInvalidProducts: "Verifie les produits: nom, quantite et prix doivent etre valides.",
+    toastNeedChecklist: "Toutes les cases checklist doivent etre cochees pour valider.",
+    toastValidationRunning: "Validation en cours...",
+    toastValidationOk: "Intervention validee avec succes.",
+    toastValidationPartial: "Validation partielle: intervention enregistree mais statut non finalise.",
+    toastValidationError: "Echec de validation. Verifie les messages d'erreur.",
+
+    mapChooseTitle: "Choisir une application de navigation",
+    mapPlans: "Plans",
+    mapGoogle: "Google Maps",
+    mapWaze: "Waze",
+    mapCancel: "Annuler",
   };
 
-  let supabase =
-    window.__MBL_SUPABASE__ ||
-    window.__techSupabase ||
-    window.supabase?.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
+  function findRoot() {
+    return (
+      document.querySelector("[data-tech-interventions]") ||
+      document.querySelector("#technician-interventions-root") ||
+      document.querySelector(".technician-interventions") ||
+      document.querySelector(".intervention-run")
+    );
+  }
+
+  function resolveSupabaseClient() {
+    if (window.__MBL_SUPABASE__) return window.__MBL_SUPABASE__;
+    if (window.__techSupabase) return window.__techSupabase;
+    if (!window.supabase?.createClient) return null;
+
+    const client = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,
-        storageKey: "mbl-extranet-auth"
-      }
+        storageKey: "mbl-extranet-auth",
+      },
     });
 
-  window.__techSupabase = supabase;
+    window.__techSupabase = client;
+    return client;
+  }
 
-  let root = null;
-  let mapAddress = "";
-  let els = null;
+  const root = findRoot();
+  if (!root) {
+    console.error("[TECH RUN] Root introuvable.");
+    return;
+  }
+
+  const supabase = resolveSupabaseClient();
+  if (!supabase) {
+    root.textContent = "Supabase non charge.";
+    return;
+  }
+
+  applyConfigOverrides(root);
+  injectStyles();
 
   const state = {
-    userId: null,
-    row: null,
-    files: {},
-    previews: {},
-    checklist: {},
-    signatures: {},
-    signedPv: {},
-    diagnostic: {},
-    resolution: {},
-    observations: {},
-    products: {},
-    productsLoaded: {},
+    userId: "",
+    intervention: null,
+    steps: [],
+    currentStepIndex: 0,
+    requirements: {
+      checklist: CONFIG.REQUIRE_CHECKLIST_DEFAULT,
+      photos: CONFIG.REQUIRE_PHOTOS_DEFAULT,
+      signature: CONFIG.REQUIRE_SIGNATURE_DEFAULT,
+    },
+    draft: null,
+    files: {
+      photos: [],
+      signedPv: null,
+    },
+    signature: {
+      hasSignature: false,
+      canvas: null,
+      dataUrl: "",
+    },
+    previews: {
+      photos: [],
+    },
+    existing: {
+      fileRows: [],
+      photoCount: 0,
+      signatureCount: 0,
+      pvDraftPath: "",
+      pvSignedPath: "",
+      pvDraftUrl: "",
+    },
     catalog: [],
-    catalogLoaded: false,
-    steps: loadSteps()
+    catalogByName: new Map(),
+    catalogById: new Map(),
+    saving: false,
   };
 
-  waitForRoot();
+  const els = renderShell(root);
 
-  function waitForRoot() {
-    let tries = 0;
-    const timer = setInterval(() => {
-      root = findRoot();
-      if (root) {
-        clearInterval(timer);
-        start(root);
-      } else if (++tries > 40) {
-        clearInterval(timer);
-      }
-    }, 100);
-  }
-
-  function start(rootEl) {
-    if (!window.supabase) {
-      rootEl.textContent = "Supabase non charge.";
-      return;
-    }
-    applyConfigOverrides(rootEl);
-    injectStyles();
-    els = renderShell(rootEl);
-    init();
-  }
+  init();
 
   async function init() {
+    wireStaticEvents();
+    setStatus("info", STR.msgLoading);
+
     try {
-      setStatus("Chargement...");
-      const session = (await supabase.auth.getSession()).data.session;
-      if (!session?.user) {
-        setStatus("Session expiree. Merci de vous reconnecter.");
+      const user = await getCurrentUser();
+      if (!user) {
+        setStatus("error", STR.msgNoSession);
+        disableWholeFlow();
         return;
       }
-      state.userId = session.user.id;
+      state.userId = user.id;
 
       const interventionId = getInterventionId();
       if (!interventionId) {
-        setStatus("ID intervention manquant dans l'URL.");
+        setStatus("error", STR.msgNoId);
+        disableWholeFlow();
         return;
       }
 
-      loadCatalog();
+      const [row, fileRows, pvInfo] = await Promise.all([
+        fetchIntervention(state.userId, interventionId),
+        fetchInterventionFiles(interventionId),
+        fetchPvInfo(interventionId),
+      ]);
 
-      const row = await fetchIntervention(state.userId, interventionId);
       if (!row) {
-        setStatus("Intervention introuvable.");
+        setStatus("error", STR.msgNotFound);
+        disableWholeFlow();
         return;
       }
 
-      state.row = row;
-      mapAddress = row.address || "";
+      state.intervention = row;
+      state.existing.fileRows = fileRows;
+      state.existing.photoCount = fileRows.filter((r) => String(r.type || "").toLowerCase() === "photo").length;
+      state.existing.signatureCount = fileRows.filter((r) => String(r.type || "").toLowerCase() === "signature").length;
+      state.existing.pvDraftPath =
+        pvInfo?.pv_draft_path ||
+        String(row.pv_blank_path || row.pv_draft_path || row.pv_path || "");
+      state.existing.pvSignedPath = pvInfo?.pv_signed_path || "";
 
-      hydrateState(row.id);
-      setStatus("");
-      renderIntervention(row);
-    } catch (e) {
-      console.error(e);
-      setStatus("Erreur de chargement.");
+      state.requirements = {
+        checklist: resolveFlag(row.requires_checklist, CONFIG.REQUIRE_CHECKLIST_DEFAULT),
+        photos: resolveFlag(row.requires_photos, CONFIG.REQUIRE_PHOTOS_DEFAULT),
+        signature: resolveFlag(row.requires_signature, CONFIG.REQUIRE_SIGNATURE_DEFAULT),
+      };
+
+      state.steps = buildSteps(state.requirements);
+
+      const catalog = await loadCatalog();
+      hydrateCatalog(catalog);
+      const existingProducts = await loadExistingProducts(interventionId);
+      hydrateDraft(interventionId, existingProducts);
+
+      renderAll();
+      setStatus("", "");
+
+      saveActiveInterventionId(interventionId);
+    } catch (error) {
+      console.error("[TECH RUN] init error:", error);
+      setStatus("error", `${STR.toastValidationError} ${error?.message || ""}`.trim());
+      disableWholeFlow();
     }
   }
 
+  function disableWholeFlow() {
+    els.progress.hidden = true;
+    els.content.innerHTML = "";
+    els.footer.hidden = true;
+  }
+
+  async function getCurrentUser() {
+    const [{ data: sessionData }, { data: userData, error: userErr }] = await Promise.all([
+      supabase.auth.getSession(),
+      supabase.auth.getUser(),
+    ]);
+
+    if (userErr) return sessionData?.session?.user || null;
+    return userData?.user || sessionData?.session?.user || null;
+  }
+
+  function getInterventionId() {
+    const params = new URLSearchParams(location.search);
+    return params.get("id") || root.dataset.interventionId || "";
+  }
+
   async function fetchIntervention(userId, interventionId) {
-    let res = await supabase
+    const fromAssign = await supabase
       .from("intervention_assignees")
-      .select("id, intervention_id, interventions:intervention_id(*)")
+      .select("intervention_id, interventions:intervention_id(*)")
       .eq("user_id", userId)
       .eq("intervention_id", interventionId)
       .maybeSingle();
 
-    if (res?.data?.interventions) return res.data.interventions;
+    if (fromAssign?.data?.interventions) return fromAssign.data.interventions;
 
-    const res2 = await supabase
+    const direct = await supabase
       .from("interventions")
       .select("*")
       .eq("id", interventionId)
       .maybeSingle();
 
-    return res2.data || null;
+    return direct?.data || null;
   }
 
-  function hydrateState(id) {
-    state.checklist[id] = state.checklist[id] || getChecklist(state.row).map(() => false);
-    state.files[id] = state.files[id] || [];
-    state.previews[id] = state.previews[id] || [];
-    state.signatures[id] = state.signatures[id] || { canvas: null, hasSignature: false };
-    state.signedPv[id] = state.signedPv[id] || null;
-    state.products[id] = state.products[id] || [];
-    state.diagnostic[id] = state.diagnostic[id] || "";
-    state.resolution[id] = state.resolution[id] || "";
-    state.observations[id] = state.observations[id] || "";
-  }
-
-  function renderIntervention(row) {
-    const id = row.id;
-    const pvUrl = getPvUrl(row);
-    const steps = buildSteps(row);
-    const currentStep = getStep(id, steps.length);
-
-    setText(els.title, STR.title);
-    setText(els.subtitle, STR.subtitle);
-    setText(els.client, row.client_name || "Client");
-    setText(els.title2, row.title || "Intervention");
-    setText(els.date, formatDateFR(row.start_at) || "Date a definir");
-    setText(els.address, row.address || "");
-    setText(els.status, getStatusLabel(row.status));
-
-    const phone = normalizePhone(row.support_phone);
-    if (phone) {
-      els.callBtn.href = `tel:${phone}`;
-      els.callBtn.classList.remove("is-disabled");
-    } else {
-      els.callBtn.removeAttribute("href");
-      els.callBtn.classList.add("is-disabled");
-    }
-
-    if (row.address) {
-      els.mapBtn.classList.remove("is-disabled");
-      els.mapBtn.onclick = () => openMapSheet(row.address);
-    } else {
-      els.mapBtn.classList.add("is-disabled");
-      els.mapBtn.onclick = null;
-    }
-
-    if (pvUrl) {
-      els.pvBtn.href = pvUrl;
-      els.pvBtn.hidden = false;
-    } else {
-      els.pvBtn.hidden = true;
-    }
-
-    renderStepper(steps, currentStep);
-    renderFlow(row, steps, currentStep);
-  }
-
-  function renderStepper(steps, currentStep) {
-    if (!els.steps) return;
-    els.steps.innerHTML = steps.map((s, i) => {
-      const n = i + 1;
-      const cls = n < currentStep ? "is-done" : n === currentStep ? "is-active" : "";
-      return `<div class="ti-step ${cls}">${n}. ${s.label}</div>`;
-    }).join("");
-  }
-
-  function renderFlow(row, steps, currentStep) {
-    const id = row.id;
-    const flow = els.flow;
-    const requiresSignature = getFlag(row.requires_signature, CONFIG.REQUIRE_SIGNATURE_DEFAULT);
-    const requiresPhotos = getFlag(row.requires_photos, CONFIG.REQUIRE_PHOTOS_DEFAULT);
-
-    flow.innerHTML = `
-      ${stepSection("arrive", `
-        <div class="ti-flow-title">Informations & PV</div>
-        <div class="ti-flow-info">
-          ${infoRow("Adresse", row.address || "")}
-          ${infoRow("Date", formatDateFR(row.start_at) || "")}
-          ${infoRow("Telephone", formatPhoneReadable(row.support_phone || "") || "")}
-          ${getPvUrl(row) ? infoRow("PV vierge", `<a class="ti-link" href="${getPvUrl(row)}" target="_blank" rel="noopener">${STR.pvCTA}</a>`, true) : ""}
-        </div>
-        <div class="ti-step-actions">
-          <button class="ti-btn ti-btn--primary" data-action="arrive">${STR.arriveCTA}</button>
-        </div>
-      `)}
-
-      ${stepSection("diagnostic", `
-        <div class="ti-flow-title">${STR.diagnosticLabel}</div>
-        <textarea class="ti-textarea" data-field="diagnostic" rows="4" placeholder="Decris le diagnostic...">${escapeHTML(state.diagnostic[id])}</textarea>
-        <div class="ti-step-actions">
-          <button class="ti-btn ti-btn--ghost" data-action="prev">${STR.prevCTA}</button>
-          <button class="ti-btn ti-btn--primary" data-action="next-diagnostic">${STR.nextCTA}</button>
-        </div>
-      `)}
-
-      ${stepSection("resolution", `
-        <div class="ti-flow-title">${STR.resolutionLabel}</div>
-        <textarea class="ti-textarea" data-field="resolution" rows="4" placeholder="Decris la resolution...">${escapeHTML(state.resolution[id])}</textarea>
-        <div class="ti-step-actions">
-          <button class="ti-btn ti-btn--ghost" data-action="prev">${STR.prevCTA}</button>
-          <button class="ti-btn ti-btn--primary" data-action="next-resolution">${STR.nextCTA}</button>
-        </div>
-      `)}
-
-      ${stepSection("photos", `
-        <div class="ti-flow-title">${STR.photosLabel}</div>
-        <div class="ti-hint">${STR.photosHint}</div>
-        <div class="ti-photo-actions">
-          <button class="ti-btn ti-btn--ghost ti-btn--xs" data-action="photo-camera">Prendre une photo</button>
-          <button class="ti-btn ti-btn--ghost ti-btn--xs" data-action="photo-gallery">Ajouter depuis galerie</button>
-          <input type="file" class="ti-file" data-camera accept="image/*" capture="environment" />
-          <input type="file" class="ti-file" data-gallery accept="image/*" multiple />
-        </div>
-        <div class="ti-previews" data-previews></div>
-        <div class="ti-step-actions">
-          <button class="ti-btn ti-btn--ghost" data-action="prev">${STR.prevCTA}</button>
-          <button class="ti-btn ti-btn--primary" data-action="next-photos">${STR.nextCTA}</button>
-        </div>
-      `)}
-
-      ${stepSection("products", `
-        <div class="ti-flow-title">Produits / Depenses</div>
-        <div class="ti-products" data-products></div>
-        <button type="button" class="ti-btn ti-btn--ghost ti-btn--xs" data-action="add-product">Ajouter un produit</button>
-        <div class="ti-products-total" data-products-total></div>
-        <div class="ti-step-actions">
-          <button class="ti-btn ti-btn--ghost" data-action="prev">${STR.prevCTA}</button>
-          <button class="ti-btn ti-btn--primary" data-action="next-products">${STR.nextCTA}</button>
-        </div>
-      `)}
-
-      ${requiresSignature ? stepSection("signature", `
-        <div class="ti-flow-title">${STR.signatureLabel}</div>
-        <div class="ti-hint">${STR.signatureHint}</div>
-        <div class="ti-signature">
-          <canvas class="ti-signature-canvas"></canvas>
-          <button type="button" class="ti-btn ti-btn--ghost ti-btn--xs" data-action="sig-clear">${STR.signatureClear}</button>
-        </div>
-        <div class="ti-step-actions">
-          <button class="ti-btn ti-btn--ghost" data-action="prev">${STR.prevCTA}</button>
-          <button class="ti-btn ti-btn--primary" data-action="next-signature">${STR.nextCTA}</button>
-        </div>
-      `) : ""}
-
-      ${stepSection("observations", `
-        <div class="ti-flow-title">${STR.notesLabel}</div>
-        <textarea class="ti-textarea" data-field="observations" rows="4" placeholder="Observations libres...">${escapeHTML(state.observations[id])}</textarea>
-        <div class="ti-block">
-          <div class="ti-label">${STR.signedPvLabel}</div>
-          <div class="ti-hint">${STR.signedPvHint}</div>
-          <input type="file" class="ti-file" data-signed-pv accept="application/pdf,image/*" />
-        </div>
-        <div class="ti-step-actions">
-          <button class="ti-btn ti-btn--ghost" data-action="prev">${STR.prevCTA}</button>
-          <button class="ti-btn ti-btn--primary" data-action="next-observations">${STR.nextCTA}</button>
-        </div>
-      `)}
-
-      ${stepSection("validate", `
-        <div class="ti-flow-title">Validation</div>
-        <div class="ti-block">
-          <div class="ti-label">${STR.checklistLabel}</div>
-          <div class="ti-checklist" data-checklist></div>
-        </div>
-        <div class="ti-step-actions">
-          <button class="ti-btn ti-btn--ghost" data-action="prev">${STR.prevCTA}</button>
-          <button class="ti-btn ti-btn--primary" data-action="confirm-validate">${STR.validateCTA}</button>
-        </div>
-      `)}
-    `;
-
-    bindFlowEvents(row, steps, currentStep, requiresPhotos, requiresSignature);
-  }
-
-  function bindFlowEvents(row, steps, currentStep, requiresPhotos, requiresSignature) {
-    const id = row.id;
-    const flow = els.flow;
-
-    showFlowStep(steps[currentStep - 1].key);
-    renderStepper(steps, currentStep);
-
-    flow.querySelector("[data-action='arrive']")?.addEventListener("click", () => {
-      markArrived(row);
-      goNext(steps);
-    });
-
-    const diag = flow.querySelector("[data-field='diagnostic']");
-    diag?.addEventListener("input", () => (state.diagnostic[id] = diag.value));
-    flow.querySelector("[data-action='next-diagnostic']")?.addEventListener("click", () => {
-      if (!state.diagnostic[id].trim()) return showToast("warn", STR.toastNeedDiagnostic);
-      goNext(steps);
-    });
-
-    const reso = flow.querySelector("[data-field='resolution']");
-    reso?.addEventListener("input", () => (state.resolution[id] = reso.value));
-    flow.querySelector("[data-action='next-resolution']")?.addEventListener("click", () => {
-      if (!state.resolution[id].trim()) return showToast("warn", STR.toastNeedResolution);
-      goNext(steps);
-    });
-
-    const previews = flow.querySelector("[data-previews]");
-    renderPreviews(id, previews, state.files[id]);
-
-    const cameraInput = flow.querySelector("[data-camera]");
-    const galleryInput = flow.querySelector("[data-gallery]");
-    flow.querySelector("[data-action='photo-camera']")?.addEventListener("click", () => cameraInput.click());
-    flow.querySelector("[data-action='photo-gallery']")?.addEventListener("click", () => galleryInput.click());
-
-    cameraInput?.addEventListener("change", () => {
-      appendFiles(id, cameraInput.files, previews);
-      cameraInput.value = "";
-    });
-
-    galleryInput?.addEventListener("change", () => {
-      appendFiles(id, galleryInput.files, previews);
-      galleryInput.value = "";
-    });
-
-    flow.querySelector("[data-action='next-photos']")?.addEventListener("click", () => {
-      if (requiresPhotos && (!state.files[id] || state.files[id].length === 0)) {
-        return showToast("warn", STR.toastNeedPhotos);
-      }
-      goNext(steps);
-    });
-
-    const productsWrap = flow.querySelector("[data-products]");
-    const addProductBtn = flow.querySelector("[data-action='add-product']");
-    ensureProductsLoaded(id).then(() => renderProducts(productsWrap, id));
-    addProductBtn?.addEventListener("click", () => {
-      state.products[id].push(createEmptyProduct());
-      renderProducts(productsWrap, id);
-    });
-
-    flow.querySelector("[data-action='next-products']")?.addEventListener("click", () => {
-      if (!validateProducts(id).ok) return showToast("warn", STR.toastProductsInvalid);
-      goNext(steps);
-    });
-
-    if (requiresSignature) {
-      const canvas = flow.querySelector(".ti-signature-canvas");
-      const clearBtn = flow.querySelector("[data-action='sig-clear']");
-      setupSignatureCanvas(canvas, id);
-      clearBtn?.addEventListener("click", () => clearSignature(canvas, id));
-
-      flow.querySelector("[data-action='next-signature']")?.addEventListener("click", () => {
-        if (!state.signatures[id].hasSignature) return showToast("warn", STR.toastNeedSignature);
-        goNext(steps);
-      });
-    }
-
-    const obs = flow.querySelector("[data-field='observations']");
-    obs?.addEventListener("input", () => (state.observations[id] = obs.value));
-    const signedPvInput = flow.querySelector("[data-signed-pv]");
-    signedPvInput?.addEventListener("change", () => {
-      state.signedPv[id] = signedPvInput.files?.[0] || null;
-    });
-
-    flow.querySelector("[data-action='next-observations']")?.addEventListener("click", () => {
-      goNext(steps);
-    });
-
-    const checklistWrap = flow.querySelector("[data-checklist]");
-    if (checklistWrap) {
-      const list = getChecklist(row);
-      checklistWrap.innerHTML = "";
-      list.forEach((label, idx) => {
-        const item = document.createElement("label");
-        item.className = "ti-check";
-        item.innerHTML = `
-          <input type="checkbox" data-check-index="${idx}" ${state.checklist[id][idx] ? "checked" : ""} />
-          <span>${escapeHTML(label)}</span>
-        `;
-        checklistWrap.appendChild(item);
-      });
-      checklistWrap.addEventListener("change", (e) => {
-        const el = e.target;
-        if (el && el.matches("input[type='checkbox']")) {
-          const i = Number(el.dataset.checkIndex);
-          state.checklist[id][i] = el.checked;
-        }
-      });
-    }
-
-    flow.querySelector("[data-action='confirm-validate']")?.addEventListener("click", async () => {
-      if (!confirm(STR.confirmValidate)) return;
-      await validateIntervention(row);
-    });
-
-    flow.querySelectorAll("[data-action='prev']").forEach((btn) => {
-      btn.addEventListener("click", () => goPrev(steps));
-    });
-  }
-
-  function goNext(steps) {
-    const id = state.row.id;
-    const next = Math.min(getStep(id, steps.length) + 1, steps.length);
-    setStep(id, next);
-    showFlowStep(steps[next - 1].key);
-    renderStepper(steps, next);
-  }
-
-  function goPrev(steps) {
-    const id = state.row.id;
-    const prev = Math.max(getStep(id, steps.length) - 1, 1);
-    setStep(id, prev);
-    showFlowStep(steps[prev - 1].key);
-    renderStepper(steps, prev);
-  }
-
-  function showFlowStep(key) {
-    els.flow.querySelectorAll("[data-flow]").forEach((el) => {
-      el.classList.toggle("is-active", el.dataset.flow === key);
-    });
-  }
-
-
-  async function validateIntervention(row) {
-    const id = row.id;
-
-    const requiresChecklist = getFlag(row.requires_checklist, CONFIG.REQUIRE_CHECKLIST_DEFAULT);
-    const requiresPhotos = getFlag(row.requires_photos, CONFIG.REQUIRE_PHOTOS_DEFAULT);
-    const requiresSignature = getFlag(row.requires_signature, CONFIG.REQUIRE_SIGNATURE_DEFAULT);
-
-    const checklistOk = !requiresChecklist || state.checklist[id].every(Boolean);
-    const photosOk = !requiresPhotos || (state.files[id] && state.files[id].length > 0);
-    const signatureOk = !requiresSignature || state.signatures[id].hasSignature;
-
-    if (!checklistOk || !photosOk || !signatureOk) return;
-    if (!validateProducts(id).ok) return showToast("warn", STR.toastProductsInvalid);
-
-    try {
-      const completedAt = new Date().toISOString();
-
-      const photoUploads = await uploadPhotos(id, state.files[id] || []);
-      const signedPvUpload = await uploadSignedPv(id, state.signedPv[id]);
-
-      const observationsText = buildObservations(row, {
-        diagnostic: state.diagnostic[id],
-        resolution: state.resolution[id],
-        products: cleanProducts(state.products[id] || []),
-        photos: photoUploads,
-        signedPv: signedPvUpload,
-        notes: state.observations[id]
-      });
-
-      const reportPayload = {
-        intervention_id: id,
-        user_id: state.userId,
-        checklist: state.checklist[id],
-        diagnostic: state.diagnostic[id] || "",
-        resolution: state.resolution[id] || "",
-        observations: observationsText,
-        notes: state.observations[id] || "",
-        photos: photoUploads,
-        products: cleanProducts(state.products[id] || []),
-        signed_pv: signedPvUpload,
-        completed_at: completedAt
-      };
-
-      const reportOk = await saveReport(reportPayload);
-      const expensesOk = await saveExpenses(id);
-
-      const statusUpdated = await updateIntervention(id, completedAt, row, observationsText, signedPvUpload);
-
-      if (statusUpdated) showToast("success", STR.toastSaved);
-      else showToast("warn", STR.toastSavedPartial);
-
-      if (statusUpdated) {
-        setTimeout(() => {
-          window.location.href = CONFIG.LIST_PAGE_PATH;
-        }, 600);
-      }
-
-
-      if (!reportOk) showToast("warn", STR.toastReportMissing);
-      if (!expensesOk) showToast("warn", STR.toastExpensesMissing);
-
-    } catch (e) {
-      console.error(e);
-      showToast("error", STR.toastError);
-    }
-  }
-
-  // -------- Uploads / Save / Products / Photos (identiques à avant) --------
-  async function uploadPhotos(interventionId, files) {
-    if (!files || !files.length) return [];
-    const bucket = CONFIG.STORAGE_BUCKET;
-    const uploads = await Promise.all(files.map(async (file) => {
-      const ext = getFileExtension(file.name);
-      const name = `${Date.now()}_${randomId()}.${ext || "jpg"}`;
-      const path = `interventions/${interventionId}/${name}`;
-      const { error } = await supabase.storage.from(bucket).upload(path, file, { cacheControl: "3600", upsert: false });
-      if (error) throw error;
-      const { data } = supabase.storage.from(bucket).getPublicUrl(path);
-      return { path, url: data?.publicUrl || null, name: file.name, size: file.size, type: file.type || null };
-    }));
-    return uploads;
-  }
-
-  async function uploadSignedPv(interventionId, file) {
-    if (!file) return null;
-    const bucket = CONFIG.STORAGE_BUCKET;
-    const ext = getFileExtension(file.name);
-    const name = `pv_signed_${Date.now()}_${randomId()}.${ext || "pdf"}`;
-    const path = `interventions/${interventionId}/${name}`;
-    const { error } = await supabase.storage.from(bucket).upload(path, file, { cacheControl: "3600", upsert: true });
-    if (error) return null;
-    const { data } = supabase.storage.from(bucket).getPublicUrl(path);
-    return { path, url: data?.publicUrl || null, name: file.name, size: file.size, type: file.type || null };
-  }
-
-  async function saveReport(payload) {
-    const { error, status } = await supabase
-      .from(CONFIG.REPORTS_TABLE)
-      .upsert(payload, { onConflict: "intervention_id,user_id" });
-  
-    if (error) {
-      if (isTableMissing(error) || status === 404) return false;
-      console.warn("Report error", error);
-      return false;
-    }
-    return true;
-  }
-
-
-  async function saveExpenses(interventionId) {
-    const rows = cleanProducts(state.products[interventionId] || []);
-    if (!rows.length) return true;
-  
-    const del = await supabase
-      .from(CONFIG.EXPENSES_TABLE)
-      .delete()
+  async function fetchInterventionFiles(interventionId) {
+    const res = await supabase
+      .from(CONFIG.FILES_TABLE)
+      .select("id, intervention_id, type, file_path, created_at")
       .eq("intervention_id", interventionId)
-      .eq("user_id", state.userId);
-  
-    if (del.error) {
-      if (isTableMissing(del.error)) return false;
-      console.warn("Expenses delete error", del.error);
+      .order("created_at", { ascending: false });
+
+    if (res.error) {
+      console.warn("[TECH RUN] files read warning:", res.error.message);
+      return [];
     }
-  
-    const payload = rows.map((r) => ({
-      intervention_id: interventionId,
-      user_id: state.userId,
-      label: r.name,
-      quantity: r.qty,
-      unit_price: r.unitPrice,
-      total: r.total,
-      paid_by_tech: r.paidByTech,
-      note: r.note || null
-    }));
-  
-    const ins = await supabase.from(CONFIG.EXPENSES_TABLE).insert(payload);
-    if (ins.error) {
-      if (isTableMissing(ins.error)) return false;
-      console.warn("Expenses insert error", ins.error);
-    }
-    return !ins.error;
+
+    return res.data || [];
   }
 
+  async function fetchPvInfo(interventionId) {
+    const res = await supabase
+      .from(CONFIG.PV_TABLE)
+      .select("intervention_id, pv_draft_path, pv_signed_path")
+      .eq("intervention_id", interventionId)
+      .maybeSingle();
 
-  async function updateIntervention(id, completedAt, row, observationsText, signedPv) {
-    const payload = { status: CONFIG.STATUS_DONE };
-    if (hasField(row, "completed_at")) payload.completed_at = completedAt;
-  
-    const obsField = findExistingField(row, ["observations", "tech_observations", "report_notes", "notes_tech"]);
-    if (obsField) payload[obsField] = observationsText;
-  
-    if (signedPv) {
-      const pvField = findExistingField(row, [CONFIG.SIGNED_PV_URL_FIELD, "pv_signed_url"]);
-      const pvPathField = findExistingField(row, [CONFIG.SIGNED_PV_PATH_FIELD, "pv_signed_path"]);
-      if (pvField && signedPv.url) payload[pvField] = signedPv.url;
-      if (pvPathField && signedPv.path) payload[pvPathField] = signedPv.path;
-    }
-  
-    const res = await supabase.from("interventions").update(payload).eq("id", id);
-    if (!res.error) return true;
-  
-    // fallback si contrainte status
-    if (String(res.error?.code || "") === "23514") {
-      const fallback = { ...payload };
-      delete fallback.status;
-      const res2 = await supabase.from("interventions").update(fallback).eq("id", id);
-      return !res2.error;
-    }
-  
-    return false;
-  }
-
-
-  async function ensureProductsLoaded(interventionId) {
-    if (state.productsLoaded[interventionId]) return;
-    state.productsLoaded[interventionId] = true;
-
-    try {
-      const res = await supabase
-        .from(CONFIG.EXPENSES_TABLE)
-        .select("*")
-        .eq("intervention_id", interventionId)
-        .eq("user_id", state.userId);
-
-      if (res.error) return;
-
-      if (Array.isArray(res.data) && res.data.length) {
-        state.products[interventionId] = res.data.map((r) => ({
-          name: r.label || r.name || "",
-          qty: Number(r.quantity || 1),
-          unitPrice: Number(r.unit_price || r.price || 0),
-          paidByTech: !!r.paid_by_tech,
-          note: r.note || ""
-        }));
+    if (res.error) {
+      if (!isTableMissing(res.error)) {
+        console.warn("[TECH RUN] pv table warning:", res.error.message);
       }
-    } catch (_) {}
+      return null;
+    }
+
+    return res.data || null;
   }
 
   async function loadCatalog() {
-    if (state.catalogLoaded) return;
-    state.catalogLoaded = true;
+    const res = await supabase
+      .from(CONFIG.PRODUCTS_TABLE)
+      .select("id, name, price_cents, is_active")
+      .eq("is_active", true)
+      .order("name", { ascending: true })
+      .limit(1000);
 
-    const res = await supabase.from(CONFIG.PRODUCTS_TABLE).select("*").limit(500);
-    if (res.error) return;
+    if (res.error) {
+      console.warn("[TECH RUN] catalog warning:", res.error.message);
+      return [];
+    }
 
-    state.catalog = (res.data || [])
-      .map((r) => ({
-        name: r.name || r.title || r.label,
-        price: r.price ?? r.unit_price ?? r.cost ?? null
-      }))
-      .filter((r) => r.name);
-
-    renderCatalogList();
+    return res.data || [];
   }
 
-  function renderCatalogList() {
-    const list = root.querySelector("#ti-products-list");
-    if (!list) return;
-    list.innerHTML = state.catalog
+  function hydrateCatalog(rows) {
+    state.catalog = rows.map((r) => ({
+      id: r.id,
+      name: String(r.name || "").trim(),
+      priceCents: Number.isFinite(r.price_cents) ? r.price_cents : null,
+    }));
+
+    state.catalogByName = new Map();
+    state.catalogById = new Map();
+
+    state.catalog.forEach((p) => {
+      const key = norm(p.name);
+      if (key && !state.catalogByName.has(key)) state.catalogByName.set(key, p);
+      state.catalogById.set(String(p.id), p);
+    });
+
+    els.catalog.innerHTML = state.catalog
+      .filter((p) => p.name)
       .map((p) => `<option value="${escapeHTML(p.name)}"></option>`)
       .join("");
   }
 
-  function findCatalogItem(name) {
-    if (!name) return null;
-    const n = String(name).trim().toLowerCase();
-    return state.catalog.find((p) => String(p.name).trim().toLowerCase() === n) || null;
-  }
+  async function loadExistingProducts(interventionId) {
+    const res = await supabase
+      .from(CONFIG.EXPENSES_TABLE)
+      .select("id, intervention_id, type, product_id, qty, unit_cost_cents, amount_cents, note")
+      .eq("intervention_id", interventionId)
+      .eq("type", "material")
+      .order("created_at", { ascending: true });
 
-  function renderProducts(container, interventionId) {
-    container.innerHTML = "";
-    const items = state.products[interventionId] || [];
-
-    if (!items.length) {
-      container.innerHTML = `<div class="ti-products-empty">Aucun produit ajoute</div>`;
-    } else {
-      items.forEach((item, idx) => appendProductRow(container, interventionId, item, idx));
+    if (res.error) {
+      if (!isTableMissing(res.error)) {
+        console.warn("[TECH RUN] existing products warning:", res.error.message);
+      }
+      return [];
     }
 
-    updateProductsTotal(container, interventionId);
+    return (res.data || []).map((r) => {
+      const catalog = r.product_id ? state.catalogById.get(String(r.product_id)) : null;
+      const parsedNote = parseTechRunNote(r.note || "");
+
+      return {
+        productId: r.product_id || "",
+        name: catalog?.name || parsedNote.name || "",
+        qty: Math.max(1, Number(r.qty || 1)),
+        unitCents: Number.isFinite(r.unit_cost_cents) ? r.unit_cost_cents : 0,
+        paidByTech: parsedNote.paidByTech,
+        note: parsedNote.note,
+      };
+    });
   }
 
-  function appendProductRow(container, interventionId, item, idx) {
-    const row = document.createElement("div");
-    row.className = "ti-product-row";
-    row.dataset.index = String(idx);
+  function parseTechRunNote(raw) {
+    const text = String(raw || "");
+    const hasPrefix = text.startsWith(CONFIG.TECH_RUN_NOTE_PREFIX);
+    if (!hasPrefix) return { paidByTech: false, note: "", name: "" };
 
-    row.innerHTML = `
-      <input class="ti-input" list="ti-products-list" data-field="name" placeholder="Produit / piece" value="${escapeHTML(item.name || "")}" />
-      <input class="ti-input ti-input--xs" data-field="qty" type="number" inputmode="numeric" min="1" step="1" placeholder="Qté" value="${item.qty || ""}" />
-      <input class="ti-input ti-input--xs" data-field="unitPrice" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Prix" value="${item.unitPrice || ""}" />
-      <div class="ti-product-total">${formatMoney(computeLineTotal(item))}</div>
-      <label class="ti-check-inline">
-        <input type="checkbox" data-field="paidByTech" ${item.paidByTech ? "checked" : ""} />
-        Paye par tech
-      </label>
-      <input class="ti-input" data-field="note" placeholder="Note" value="${escapeHTML(item.note || "")}" />
-      <button class="ti-btn ti-btn--ghost ti-btn--xs" data-action="remove-product">Supprimer</button>
+    const body = text.replace(CONFIG.TECH_RUN_NOTE_PREFIX, "").trim();
+    const paidByTech = body.startsWith("paid_by_tech");
+    const cleaned = paidByTech ? body.replace(/^paid_by_tech\s*/i, "") : body;
+
+    return {
+      paidByTech,
+      note: cleaned,
+      name: "",
+    };
+  }
+
+  function hydrateDraft(interventionId, existingProducts) {
+    const saved = loadDraft(interventionId);
+
+    const defaultChecklist = getChecklist(state.intervention).map(() => false);
+
+    state.draft = {
+      arrivedAt:
+        saved?.arrivedAt ||
+        String(
+          state.intervention.arrived_at ||
+            (canonicalStatus(state.intervention.status) === "in_progress" ? state.intervention.start_at || "" : "") ||
+            ""
+        ),
+      diagnostic: saved?.diagnostic || "",
+      resolution: saved?.resolution || "",
+      observations: saved?.observations || "",
+      checklist:
+        Array.isArray(saved?.checklist) && saved.checklist.length === defaultChecklist.length
+          ? saved.checklist.map(Boolean)
+          : defaultChecklist,
+      products:
+        Array.isArray(saved?.products) && saved.products.length
+          ? saved.products.map(normalizeProductDraftRow)
+          : existingProducts.length
+          ? existingProducts.map(normalizeProductDraftRow)
+          : [],
+      stepIndex:
+        Number.isFinite(saved?.stepIndex) && saved.stepIndex >= 0 && saved.stepIndex < state.steps.length
+          ? saved.stepIndex
+          : 0,
+    };
+
+    state.currentStepIndex = state.draft.stepIndex;
+  }
+
+  function normalizeProductDraftRow(row) {
+    const qty = Math.max(1, parseInt(row?.qty || "1", 10) || 1);
+    const unitCents = Math.max(0, parseInt(row?.unitCents || "0", 10) || 0);
+
+    return {
+      productId: row?.productId ? String(row.productId) : "",
+      name: String(row?.name || "").trim(),
+      qty,
+      unitCents,
+      paidByTech: Boolean(row?.paidByTech),
+      note: String(row?.note || "").trim(),
+    };
+  }
+
+  function renderAll() {
+    renderHeader();
+    renderRequirementChips();
+    renderStepper();
+    renderCurrentStep();
+    renderFooter();
+    refreshSummaryFooter();
+  }
+
+  function renderHeader() {
+    const row = state.intervention;
+    setText(els.title, STR.title);
+    setText(els.subtitle, STR.subtitle);
+    setText(els.ref, row.internal_ref || "Sans reference");
+    setText(els.client, row.client_name || "Client");
+    setText(els.subject, row.title || "Intervention");
+    setText(els.date, formatDateFR(row.start_at) || "Date a definir");
+    setText(els.address, row.address || "Adresse non renseignee");
+    setText(els.status, statusLabel(canonicalStatus(row.status)));
+
+    const statusTone = statusClass(canonicalStatus(row.status));
+    els.status.className = `tr-status ${statusTone}`;
+
+    const phone = normalizePhone(row.support_phone);
+    if (phone) {
+      els.call.href = `tel:${phone}`;
+      els.call.classList.remove("is-disabled");
+    } else {
+      els.call.removeAttribute("href");
+      els.call.classList.add("is-disabled");
+    }
+
+    const address = String(row.address || "").trim();
+    if (address) {
+      els.map.disabled = false;
+      els.map.classList.remove("is-disabled");
+    } else {
+      els.map.disabled = true;
+      els.map.classList.add("is-disabled");
+    }
+
+    const hasPv = Boolean(state.existing.pvDraftPath);
+    els.pv.hidden = !hasPv;
+    if (hasPv) {
+      els.pv.onclick = async (e) => {
+        e.preventDefault();
+        await openDraftPv();
+      };
+    }
+  }
+
+  function renderRequirementChips() {
+    const chips = [];
+    chips.push(`<span class="tr-chip">Checklist: ${state.requirements.checklist ? "obligatoire" : "optionnelle"}</span>`);
+    chips.push(`<span class="tr-chip">Photos: ${state.requirements.photos ? "obligatoires" : "optionnelles"}</span>`);
+    chips.push(`<span class="tr-chip">Signature: ${state.requirements.signature ? "obligatoire" : "optionnelle"}</span>`);
+
+    chips.push(
+      `<span class="tr-chip">Photos deja en base: ${state.existing.photoCount}</span>`
+    );
+
+    els.requirements.innerHTML = chips.join("");
+  }
+
+  function renderStepper() {
+    const total = state.steps.length;
+    const current = state.currentStepIndex;
+
+    els.steps.innerHTML = state.steps
+      .map((step, idx) => {
+        const cls = idx < current ? "is-done" : idx === current ? "is-active" : "";
+        return `<button type="button" class="tr-step ${cls}" data-step-index="${idx}">${idx + 1}. ${escapeHTML(step.label)}</button>`;
+      })
+      .join("");
+
+    const pct = total <= 1 ? 100 : ((current + 1) / total) * 100;
+    els.progressBar.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+
+    els.steps.querySelectorAll("[data-step-index]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const target = Number(btn.dataset.stepIndex);
+        if (target < state.currentStepIndex) {
+          goToStep(target);
+          return;
+        }
+
+        if (target === state.currentStepIndex) return;
+
+        if (!validateStep(state.currentStepIndex, { silent: false })) return;
+        goToStep(target);
+      });
+    });
+  }
+
+  function renderCurrentStep() {
+    const step = state.steps[state.currentStepIndex];
+    if (!step) return;
+
+    switch (step.key) {
+      case "arrive":
+        renderStepArrive();
+        break;
+      case "diagnostic":
+        renderStepDiagnostic();
+        break;
+      case "resolution":
+        renderStepResolution();
+        break;
+      case "photos":
+        renderStepPhotos();
+        break;
+      case "products":
+        renderStepProducts();
+        break;
+      case "signature":
+        renderStepSignature();
+        break;
+      case "observations":
+        renderStepObservations();
+        break;
+      case "validate":
+        renderStepValidate();
+        break;
+      default:
+        els.content.innerHTML = "";
+    }
+
+    renderFooter();
+    refreshSummaryFooter();
+  }
+
+  function renderStepArrive() {
+    const arrived = Boolean(state.draft.arrivedAt);
+    const arrivedText = arrived ? formatDateFR(state.draft.arrivedAt) : "Non renseignee";
+
+    els.content.innerHTML = `
+      <section class="tr-section is-active">
+        <h3 class="tr-title">${STR.stepArrive}</h3>
+        <p class="tr-hint">${STR.hintArrive}</p>
+
+        <div class="tr-card">
+          <div class="tr-label">Arrivee</div>
+          <div class="tr-value">${escapeHTML(arrivedText)}</div>
+        </div>
+
+        <button type="button" class="tr-btn tr-btn--primary" data-action="mark-arrived">
+          ${arrived ? "Arrivee deja marquee" : STR.btnArrived}
+        </button>
+      </section>
     `;
 
-    row.addEventListener("input", (e) => {
-      const field = e.target.dataset.field;
-      const arr = state.products[interventionId];
+    const btn = els.content.querySelector('[data-action="mark-arrived"]');
+    if (arrived) btn.disabled = true;
 
-      if (field === "paidByTech") {
-        arr[idx].paidByTech = e.target.checked;
-      } else if (field === "qty") {
-        arr[idx].qty = toNumber(e.target.value);
-      } else if (field === "unitPrice") {
-        arr[idx].unitPrice = toNumber(e.target.value);
-      } else if (field === "name") {
-        arr[idx].name = e.target.value;
-        const catalog = findCatalogItem(arr[idx].name);
-        if (catalog && !arr[idx].unitPrice) {
-          arr[idx].unitPrice = Number(catalog.price || 0);
-          row.querySelector('[data-field="unitPrice"]').value = arr[idx].unitPrice || "";
-        }
-      } else if (field === "note") {
-        arr[idx].note = e.target.value;
-      }
-
-      row.querySelector(".ti-product-total").textContent = formatMoney(computeLineTotal(arr[idx]));
-      updateProductsTotal(container, interventionId);
+    btn?.addEventListener("click", async () => {
+      await markArrived();
     });
-
-    row.querySelector("[data-action='remove-product']")?.addEventListener("click", () => {
-      state.products[interventionId].splice(idx, 1);
-      renderProducts(container, interventionId);
-    });
-
-    container.appendChild(row);
   }
 
-  function updateProductsTotal(container, interventionId) {
-    const items = state.products[interventionId] || [];
-    const total = computeProductsTotal(items);
-    const totalPaidByTech = computeProductsTotal(items, true);
-    const totalEl = container.closest(".ti-flow-section").querySelector("[data-products-total]");
-    totalEl.textContent = `Total: ${formatMoney(total)} | A rembourser: ${formatMoney(totalPaidByTech)}`;
-  }
+  async function markArrived() {
+    if (!state.intervention) return;
 
-  function createEmptyProduct() {
-    return { name: "", qty: 1, unitPrice: 0, paidByTech: false, note: "" };
-  }
+    const nowIso = new Date().toISOString();
+    state.draft.arrivedAt = nowIso;
+    persistDraft();
 
-  function validateProducts(interventionId) {
-    const items = state.products[interventionId] || [];
-    for (const it of items) {
-      const hasAny = (it.name || it.qty || it.unitPrice || it.note);
-      if (!hasAny) continue;
-      if (!it.name || toNumber(it.qty) <= 0 || toNumber(it.unitPrice) < 0) return { ok: false };
+    const payload = {};
+    if (hasField(state.intervention, "arrived_at")) payload.arrived_at = nowIso;
+
+    const currentStatus = canonicalStatus(state.intervention.status);
+    if (currentStatus !== CONFIG.STATUS_IN_PROGRESS && currentStatus !== CONFIG.STATUS_DONE) {
+      payload.status = CONFIG.STATUS_IN_PROGRESS;
     }
-    return { ok: true };
+
+    if (!Object.keys(payload).length) {
+      showToast("success", STR.toastArrived);
+      renderCurrentStep();
+      return;
+    }
+
+    const res = await supabase
+      .from("interventions")
+      .update(payload)
+      .eq("id", state.intervention.id);
+
+    if (res.error) {
+      console.warn("[TECH RUN] markArrived warning:", res.error.message);
+      showToast("warning", `${STR.toastArriveWarn} (${res.error.message})`);
+    } else {
+      if (payload.status) state.intervention.status = payload.status;
+      showToast("success", STR.toastArrived);
+    }
+
+    renderHeader();
+    renderCurrentStep();
   }
 
-  function cleanProducts(items) {
-    return (items || [])
-      .filter((it) => it.name && toNumber(it.qty) > 0)
-      .map((it) => ({
-        name: it.name,
-        qty: toNumber(it.qty),
-        unitPrice: toNumber(it.unitPrice),
-        total: computeLineTotal(it),
-        paidByTech: !!it.paidByTech,
-        note: it.note || ""
-      }));
-  }
+  function renderStepDiagnostic() {
+    els.content.innerHTML = `
+      <section class="tr-section is-active">
+        <h3 class="tr-title">${STR.stepDiagnostic}</h3>
+        <p class="tr-hint">${STR.hintDiagnostic}</p>
+        <textarea class="tr-textarea" data-field="diagnostic" placeholder="Ex: carte mere KO suite surtension...">${escapeHTML(state.draft.diagnostic)}</textarea>
+      </section>
+    `;
 
-  function computeLineTotal(item) {
-    const qty = toNumber(item.qty);
-    const price = toNumber(item.unitPrice);
-    return qty * price;
-  }
-
-  function computeProductsTotal(items, onlyPaidByTech = false) {
-    return (items || []).reduce((acc, it) => {
-      if (onlyPaidByTech && !it.paidByTech) return acc;
-      return acc + computeLineTotal(it);
-    }, 0);
-  }
-
-  function appendFiles(id, fileList, previews) {
-    const files = Array.from(fileList || []);
-    if (!files.length) return;
-    state.files[id] = (state.files[id] || []).concat(files);
-    renderPreviews(id, previews, state.files[id]);
-  }
-
-  function renderPreviews(id, container, files) {
-    clearPreviews(id);
-    container.innerHTML = "";
-    if (!files || !files.length) return;
-
-    state.previews[id] = files.map((file, idx) => {
-      const url = URL.createObjectURL(file);
-      const item = document.createElement("div");
-      item.className = "ti-preview";
-      item.innerHTML = `
-        <img src="${url}" alt="photo" />
-        <div class="ti-preview-meta">${escapeHTML(file.name)} (${formatBytes(file.size)})</div>
-        <button class="ti-preview-remove" data-remove="${idx}">Supprimer</button>
-      `;
-      item.querySelector("img").addEventListener("click", () => window.open(url, "_blank"));
-      item.querySelector("[data-remove]").addEventListener("click", () => {
-        state.files[id].splice(idx, 1);
-        renderPreviews(id, container, state.files[id]);
-      });
-      container.appendChild(item);
-      return url;
+    els.content.querySelector('[data-field="diagnostic"]').addEventListener("input", (e) => {
+      state.draft.diagnostic = e.target.value;
+      persistDraftDebounced();
+      refreshSummaryFooter();
     });
   }
 
-  function clearPreviews(id) {
-    const urls = state.previews[id] || [];
-    urls.forEach((u) => URL.revokeObjectURL(u));
-    state.previews[id] = [];
+  function renderStepResolution() {
+    els.content.innerHTML = `
+      <section class="tr-section is-active">
+        <h3 class="tr-title">${STR.stepResolution}</h3>
+        <p class="tr-hint">${STR.hintResolution}</p>
+        <textarea class="tr-textarea" data-field="resolution" placeholder="Ex: remplacement carte + test complet OK...">${escapeHTML(state.draft.resolution)}</textarea>
+      </section>
+    `;
+
+    els.content.querySelector('[data-field="resolution"]').addEventListener("input", (e) => {
+      state.draft.resolution = e.target.value;
+      persistDraftDebounced();
+      refreshSummaryFooter();
+    });
   }
 
-  function setupSignatureCanvas(canvas, id) {
+  function renderStepPhotos() {
+    els.content.innerHTML = `
+      <section class="tr-section is-active">
+        <h3 class="tr-title">${STR.stepPhotos}</h3>
+        <p class="tr-hint">${STR.hintPhotos}</p>
+
+        <div class="tr-photo-actions">
+          <button type="button" class="tr-btn tr-btn--ghost" data-action="camera">Prendre une photo</button>
+          <button type="button" class="tr-btn tr-btn--ghost" data-action="gallery">Ajouter depuis la galerie</button>
+          <input type="file" accept="image/*" capture="environment" data-input="camera" hidden />
+          <input type="file" accept="image/*" multiple data-input="gallery" hidden />
+        </div>
+
+        <div class="tr-inline-note">Photos en base: ${state.existing.photoCount}</div>
+        <div class="tr-previews" data-previews></div>
+      </section>
+    `;
+
+    const cameraBtn = els.content.querySelector('[data-action="camera"]');
+    const galleryBtn = els.content.querySelector('[data-action="gallery"]');
+    const cameraInput = els.content.querySelector('[data-input="camera"]');
+    const galleryInput = els.content.querySelector('[data-input="gallery"]');
+
+    cameraBtn?.addEventListener("click", () => cameraInput.click());
+    galleryBtn?.addEventListener("click", () => galleryInput.click());
+
+    cameraInput?.addEventListener("change", () => {
+      appendPhotoFiles(cameraInput.files);
+      cameraInput.value = "";
+    });
+
+    galleryInput?.addEventListener("change", () => {
+      appendPhotoFiles(galleryInput.files);
+      galleryInput.value = "";
+    });
+
+    renderPhotoPreviews();
+  }
+
+  function appendPhotoFiles(fileList) {
+    const files = Array.from(fileList || []).filter((f) => f && String(f.type || "").startsWith("image/"));
+    if (!files.length) return;
+
+    state.files.photos = state.files.photos.concat(files);
+    persistDraftDebounced();
+    renderPhotoPreviews();
+    refreshSummaryFooter();
+  }
+
+  function renderPhotoPreviews() {
+    const wrap = els.content.querySelector('[data-previews]');
+    if (!wrap) return;
+
+    clearPreviewUrls();
+
+    if (!state.files.photos.length) {
+      wrap.innerHTML = `<div class="tr-empty-small">Aucune photo ajoutee pour le moment.</div>`;
+      return;
+    }
+
+    wrap.innerHTML = "";
+
+    state.files.photos.forEach((file, idx) => {
+      const url = URL.createObjectURL(file);
+      state.previews.photos.push(url);
+
+      const item = document.createElement("article");
+      item.className = "tr-preview";
+      item.innerHTML = `
+        <img src="${url}" alt="Photo intervention" />
+        <div class="tr-preview-meta">
+          <span>${escapeHTML(file.name)}</span>
+          <span>${escapeHTML(formatBytes(file.size))}</span>
+        </div>
+        <button type="button" class="tr-btn tr-btn--ghost tr-btn--xs" data-remove-photo="${idx}">Supprimer</button>
+      `;
+
+      item.querySelector("img").addEventListener("click", () => window.open(url, "_blank", "noopener"));
+      item.querySelector("[data-remove-photo]").addEventListener("click", () => {
+        state.files.photos.splice(idx, 1);
+        persistDraftDebounced();
+        renderPhotoPreviews();
+        refreshSummaryFooter();
+      });
+
+      wrap.appendChild(item);
+    });
+  }
+
+  function renderStepProducts() {
+    els.content.innerHTML = `
+      <section class="tr-section is-active">
+        <h3 class="tr-title">${STR.stepProducts}</h3>
+        <p class="tr-hint">${STR.hintProducts}</p>
+
+        <div class="tr-products" data-products></div>
+
+        <div class="tr-products-actions">
+          <button type="button" class="tr-btn tr-btn--ghost" data-action="add-product">${STR.btnAddProduct}</button>
+        </div>
+
+        <div class="tr-products-summary">
+          <div>${STR.labelProductsTotal}: <strong data-products-total>0</strong></div>
+          <div>${STR.labelRefundTotal}: <strong data-products-refund>0</strong></div>
+        </div>
+      </section>
+    `;
+
+    const addBtn = els.content.querySelector('[data-action="add-product"]');
+    addBtn?.addEventListener("click", () => {
+      state.draft.products.push(createEmptyProduct());
+      persistDraftDebounced();
+      renderProductRows();
+      refreshSummaryFooter();
+    });
+
+    renderProductRows();
+  }
+
+  function renderProductRows() {
+    const wrap = els.content.querySelector('[data-products]');
+    if (!wrap) return;
+
+    if (!state.draft.products.length) {
+      wrap.innerHTML = `<div class="tr-empty-small">Aucun produit ajoute.</div>`;
+      updateProductsSummary();
+      return;
+    }
+
+    wrap.innerHTML = "";
+
+    state.draft.products.forEach((row, idx) => {
+      const line = document.createElement("article");
+      line.className = "tr-product-row";
+
+      const unitEuro = centsToEuroInput(row.unitCents);
+      const totalCents = computeLineTotalCents(row);
+
+      line.innerHTML = `
+        <input class="tr-input" data-field="name" data-index="${idx}" list="tr-products-catalog" placeholder="Produit / piece" value="${escapeHTML(row.name)}" />
+        <input class="tr-input tr-input--small" data-field="qty" data-index="${idx}" type="number" min="1" step="1" value="${row.qty}" />
+        <input class="tr-input tr-input--small" data-field="unit" data-index="${idx}" type="text" placeholder="Prix EUR" value="${escapeHTML(unitEuro)}" />
+        <div class="tr-product-total">${escapeHTML(formatCents(totalCents))}</div>
+        <label class="tr-check-inline">
+          <input type="checkbox" data-field="paidByTech" data-index="${idx}" ${row.paidByTech ? "checked" : ""} />
+          Paye par technicien
+        </label>
+        <input class="tr-input" data-field="note" data-index="${idx}" placeholder="Note" value="${escapeHTML(row.note)}" />
+        <button type="button" class="tr-btn tr-btn--ghost tr-btn--xs" data-remove-index="${idx}">Supprimer</button>
+      `;
+
+      line.querySelectorAll("[data-field]").forEach((input) => {
+        const field = input.dataset.field;
+        const index = Number(input.dataset.index);
+
+        input.addEventListener("input", () => {
+          onProductFieldChange(index, field, input);
+          renderProductRows();
+          refreshSummaryFooter();
+        });
+
+        if (field === "unit") {
+          input.addEventListener("focusout", () => {
+            const cents = parseEuroInputToCents(input.value);
+            if (cents !== null) input.value = centsToEuroInput(cents);
+          });
+        }
+      });
+
+      line.querySelector("[data-remove-index]")?.addEventListener("click", () => {
+        const index = Number(line.querySelector("[data-remove-index]").dataset.removeIndex);
+        state.draft.products.splice(index, 1);
+        persistDraftDebounced();
+        renderProductRows();
+        refreshSummaryFooter();
+      });
+
+      wrap.appendChild(line);
+    });
+
+    updateProductsSummary();
+  }
+
+  function onProductFieldChange(index, field, el) {
+    const row = state.draft.products[index];
+    if (!row) return;
+
+    if (field === "name") {
+      row.name = String(el.value || "").trim();
+      const matched = state.catalogByName.get(norm(row.name));
+      if (matched) {
+        row.productId = matched.id;
+        if (!row.unitCents && Number.isFinite(matched.priceCents)) {
+          row.unitCents = matched.priceCents;
+        }
+      } else {
+        row.productId = "";
+      }
+    }
+
+    if (field === "qty") {
+      row.qty = Math.max(1, parseInt(el.value || "1", 10) || 1);
+    }
+
+    if (field === "unit") {
+      const cents = parseEuroInputToCents(el.value);
+      row.unitCents = Math.max(0, cents === null ? 0 : cents);
+    }
+
+    if (field === "paidByTech") {
+      row.paidByTech = Boolean(el.checked);
+    }
+
+    if (field === "note") {
+      row.note = String(el.value || "").trim();
+    }
+
+    persistDraftDebounced();
+  }
+
+  function updateProductsSummary() {
+    const totalEl = els.content.querySelector("[data-products-total]");
+    const refundEl = els.content.querySelector("[data-products-refund]");
+    if (!totalEl || !refundEl) return;
+
+    const totalCents = computeProductsTotalCents(state.draft.products);
+    const refundCents = computeProductsTotalCents(state.draft.products, true);
+
+    totalEl.textContent = formatCents(totalCents);
+    refundEl.textContent = formatCents(refundCents);
+  }
+
+  function renderStepSignature() {
+    els.content.innerHTML = `
+      <section class="tr-section is-active">
+        <h3 class="tr-title">${STR.stepSignature}</h3>
+        <p class="tr-hint">${STR.hintSignature}</p>
+
+        <div class="tr-signature-wrap">
+          <canvas class="tr-signature-canvas" data-signature-canvas></canvas>
+          <div class="tr-signature-actions">
+            <button type="button" class="tr-btn tr-btn--ghost tr-btn--xs" data-action="clear-signature">${STR.btnClearSignature}</button>
+            <span class="tr-inline-note" data-signature-state>${state.signature.hasSignature ? "Signature capturee" : "Aucune signature"}</span>
+          </div>
+        </div>
+      </section>
+    `;
+
+    const canvas = els.content.querySelector("[data-signature-canvas]");
+    setupSignatureCanvas(canvas);
+
+    els.content.querySelector('[data-action="clear-signature"]').addEventListener("click", () => {
+      clearSignatureCanvas();
+      refreshSummaryFooter();
+    });
+  }
+
+  function setupSignatureCanvas(canvas) {
     if (!canvas) return;
+
+    state.signature.canvas = canvas;
+
     const ratio = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = Math.max(1, Math.floor(rect.width * ratio));
-    canvas.height = Math.max(1, Math.floor(160 * ratio));
-    canvas.style.height = "160px";
+    const width = Math.max(1, canvas.getBoundingClientRect().width);
+    const height = 180;
+
+    canvas.width = Math.floor(width * ratio);
+    canvas.height = Math.floor(height * ratio);
+    canvas.style.height = `${height}px`;
     canvas.style.touchAction = "none";
 
     const ctx = canvas.getContext("2d");
@@ -899,256 +961,1139 @@
     let drawing = false;
 
     const getPos = (e) => {
-      const r = canvas.getBoundingClientRect();
-      return { x: (e.clientX - r.left) * ratio, y: (e.clientY - r.top) * ratio };
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: (e.clientX - rect.left) * ratio,
+        y: (e.clientY - rect.top) * ratio,
+      };
     };
 
-    canvas.addEventListener("pointerdown", (e) => {
+    const onDown = (e) => {
       drawing = true;
       const p = getPos(e);
       ctx.beginPath();
       ctx.moveTo(p.x, p.y);
-      state.signatures[id].hasSignature = true;
-    });
+      state.signature.hasSignature = true;
+      updateSignatureStateLabel();
+    };
 
-    canvas.addEventListener("pointermove", (e) => {
+    const onMove = (e) => {
       if (!drawing) return;
       const p = getPos(e);
       ctx.lineTo(p.x, p.y);
       ctx.stroke();
-    });
+    };
 
-    const end = () => (drawing = false);
-    canvas.addEventListener("pointerup", end);
-    canvas.addEventListener("pointerleave", end);
+    const onUp = () => {
+      drawing = false;
+      if (state.signature.hasSignature) {
+        state.signature.dataUrl = canvas.toDataURL("image/png");
+      }
+    };
 
-    state.signatures[id].canvas = canvas;
+    canvas.addEventListener("pointerdown", onDown);
+    canvas.addEventListener("pointermove", onMove);
+    canvas.addEventListener("pointerup", onUp);
+    canvas.addEventListener("pointerleave", onUp);
+
+    if (state.signature.dataUrl) {
+      const img = new Image();
+      img.onload = () => {
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        state.signature.hasSignature = true;
+        updateSignatureStateLabel();
+      };
+      img.src = state.signature.dataUrl;
+    } else {
+      state.signature.hasSignature = false;
+      updateSignatureStateLabel();
+    }
   }
 
-  function clearSignature(canvas, id) {
+  function clearSignatureCanvas() {
+    const canvas = state.signature.canvas;
+    if (!canvas) return;
     const ctx = canvas.getContext("2d");
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    state.signatures[id].hasSignature = false;
+    state.signature.hasSignature = false;
+    state.signature.dataUrl = "";
+    updateSignatureStateLabel();
   }
 
-  function markArrived(row) {
-    const arrivedAt = new Date().toISOString();
-    const payload = {};
-    if (hasField(row, "arrived_at")) payload.arrived_at = arrivedAt;
-    if (Object.keys(payload).length) {
-      supabase.from("interventions").update(payload).eq("id", row.id);
+  function updateSignatureStateLabel() {
+    const label = els.content.querySelector("[data-signature-state]");
+    if (!label) return;
+    label.textContent = state.signature.hasSignature ? "Signature capturee" : "Aucune signature";
+  }
+
+  function renderStepObservations() {
+    const signedName = state.files.signedPv?.name || "Aucun fichier choisi";
+
+    els.content.innerHTML = `
+      <section class="tr-section is-active">
+        <h3 class="tr-title">${STR.stepObservations}</h3>
+        <p class="tr-hint">${STR.hintObservations}</p>
+
+        <textarea class="tr-textarea" data-field="observations" placeholder="Infos utiles pour l'equipe admin...">${escapeHTML(state.draft.observations)}</textarea>
+
+        <div class="tr-card">
+          <div class="tr-label">${STR.labelSignedPv}</div>
+          <input type="file" accept="application/pdf,image/*" data-input="signed-pv" class="tr-input-file" />
+          <div class="tr-inline-note" data-signed-pv-label>${escapeHTML(signedName)}</div>
+          ${state.existing.pvSignedPath ? `<div class="tr-inline-note">PV signe deja present en base.</div>` : ""}
+        </div>
+      </section>
+    `;
+
+    els.content.querySelector('[data-field="observations"]').addEventListener("input", (e) => {
+      state.draft.observations = e.target.value;
+      persistDraftDebounced();
+      refreshSummaryFooter();
+    });
+
+    els.content.querySelector('[data-input="signed-pv"]').addEventListener("change", (e) => {
+      state.files.signedPv = e.target.files?.[0] || null;
+      const label = els.content.querySelector("[data-signed-pv-label]");
+      if (label) label.textContent = state.files.signedPv?.name || "Aucun fichier choisi";
+      refreshSummaryFooter();
+    });
+  }
+
+  function renderStepValidate() {
+    const checklistItems = getChecklist(state.intervention);
+    const checks = state.draft.checklist;
+
+    els.content.innerHTML = `
+      <section class="tr-section is-active">
+        <h3 class="tr-title">${STR.stepValidate}</h3>
+        <p class="tr-hint">${STR.hintValidate}</p>
+
+        <div class="tr-card">
+          <div class="tr-label">${STR.labelChecklist}</div>
+          <div class="tr-checklist" data-checklist>
+            ${checklistItems
+              .map((label, idx) => {
+                const checked = checks[idx] ? "checked" : "";
+                return `
+                  <label class="tr-check-item">
+                    <input type="checkbox" data-check-index="${idx}" ${checked} />
+                    <span>${escapeHTML(label)}</span>
+                  </label>
+                `;
+              })
+              .join("")}
+          </div>
+        </div>
+
+        <div class="tr-card tr-summary" data-summary></div>
+
+        <div class="tr-card tr-warning">
+          Assure-toi que toutes les informations sont correctes avant validation definitive.
+        </div>
+      </section>
+    `;
+
+    els.content.querySelector("[data-checklist]").addEventListener("change", (e) => {
+      const input = e.target;
+      if (!input.matches("input[type='checkbox']")) return;
+
+      const idx = Number(input.dataset.checkIndex);
+      state.draft.checklist[idx] = Boolean(input.checked);
+      persistDraftDebounced();
+      refreshSummaryFooter();
+      renderValidationSummary();
+    });
+
+    renderValidationSummary();
+  }
+
+  function renderValidationSummary() {
+    const summary = els.content.querySelector("[data-summary]");
+    if (!summary) return;
+
+    const photosCount = state.existing.photoCount + state.files.photos.length;
+    const products = cleanProducts(state.draft.products);
+    const productsTotal = computeProductsTotalCents(products);
+
+    const lines = [
+      [`Diagnostic`, shortState(state.draft.diagnostic, 60)],
+      [`Resolution`, shortState(state.draft.resolution, 60)],
+      [`Photos`, `${photosCount} fichier(s)`],
+      [`Produits`, `${products.length} ligne(s), total ${formatCents(productsTotal)}`],
+      [`Signature`, state.signature.hasSignature ? "Capturee" : state.requirements.signature ? "Manquante" : "Optionnelle"],
+      [`Observations`, shortState(state.draft.observations, 60)],
+    ];
+
+    summary.innerHTML = lines
+      .map(([label, value]) => {
+        return `<div class="tr-summary-row"><span>${escapeHTML(label)}</span><strong>${escapeHTML(value)}</strong></div>`;
+      })
+      .join("");
+  }
+
+  function renderFooter() {
+    const isFirst = state.currentStepIndex === 0;
+    const isLast = state.currentStepIndex === state.steps.length - 1;
+
+    els.prev.disabled = isFirst || state.saving;
+    els.next.hidden = isLast;
+    els.validate.hidden = !isLast;
+
+    els.next.disabled = state.saving;
+    els.validate.disabled = state.saving;
+    els.saveDraft.disabled = state.saving;
+
+    const currentStep = state.steps[state.currentStepIndex];
+    els.footerStep.textContent = `Etape ${state.currentStepIndex + 1}/${state.steps.length} - ${currentStep.label}`;
+
+    els.next.textContent = STR.btnNext;
+  }
+
+  function refreshSummaryFooter() {
+    const photosCount = state.existing.photoCount + state.files.photos.length;
+    const productsTotal = computeProductsTotalCents(cleanProducts(state.draft.products));
+    const signatureOk = state.signature.hasSignature || !state.requirements.signature;
+
+    els.footerSummary.innerHTML = `
+      <span>Photos: <strong>${photosCount}</strong></span>
+      <span>Produits: <strong>${formatCents(productsTotal)}</strong></span>
+      <span>Signature: <strong>${signatureOk ? "OK" : "A faire"}</strong></span>
+    `;
+  }
+
+  function wireStaticEvents() {
+    els.map.addEventListener("click", () => {
+      const address = String(state.intervention?.address || "").trim();
+      if (!address) return;
+      openMapSheet(address);
+    });
+
+    els.sheet.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-map]");
+      if (!btn) return;
+      openMapProvider(btn.dataset.map || "google");
+    });
+
+    els.sheetClose.forEach((el) => el.addEventListener("click", closeMapSheet));
+
+    els.prev.addEventListener("click", () => {
+      goToStep(state.currentStepIndex - 1);
+    });
+
+    els.next.addEventListener("click", () => {
+      if (!validateStep(state.currentStepIndex, { silent: false })) return;
+      goToStep(state.currentStepIndex + 1);
+      showToast("success", STR.toastStepSaved);
+    });
+
+    els.saveDraft.addEventListener("click", () => {
+      persistDraft();
+      showToast("success", STR.toastDraftSaved);
+    });
+
+    els.validate.addEventListener("click", async () => {
+      await submitValidation();
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        persistDraft();
+        showToast("success", STR.toastDraftSaved);
+      }
+    });
+  }
+
+  function goToStep(index) {
+    const next = Math.max(0, Math.min(index, state.steps.length - 1));
+    state.currentStepIndex = next;
+    state.draft.stepIndex = next;
+    persistDraftDebounced();
+
+    renderStepper();
+    renderCurrentStep();
+  }
+
+  function validateStep(index, opts = { silent: true }) {
+    const silent = Boolean(opts?.silent);
+    const key = state.steps[index]?.key;
+
+    if (!key) return true;
+
+    if (key === "arrive") {
+      if (!state.draft.arrivedAt) {
+        if (!silent) showToast("warning", "Marque ton arrivee avant de continuer.");
+        return false;
+      }
+      return true;
+    }
+
+    if (key === "diagnostic") {
+      if (!String(state.draft.diagnostic || "").trim()) {
+        if (!silent) showToast("warning", STR.toastNeedDiagnostic);
+        return false;
+      }
+      return true;
+    }
+
+    if (key === "resolution") {
+      if (!String(state.draft.resolution || "").trim()) {
+        if (!silent) showToast("warning", STR.toastNeedResolution);
+        return false;
+      }
+      return true;
+    }
+
+    if (key === "photos") {
+      const totalPhotos = state.existing.photoCount + state.files.photos.length;
+      if (state.requirements.photos && totalPhotos <= 0) {
+        if (!silent) showToast("warning", STR.toastNeedPhotos);
+        return false;
+      }
+      return true;
+    }
+
+    if (key === "products") {
+      const check = validateProducts(state.draft.products);
+      if (!check.ok) {
+        if (!silent) showToast("warning", `${STR.toastInvalidProducts} ${check.message || ""}`.trim());
+        return false;
+      }
+      return true;
+    }
+
+    if (key === "signature") {
+      if (state.requirements.signature && !state.signature.hasSignature) {
+        if (!silent) showToast("warning", STR.toastNeedSignature);
+        return false;
+      }
+      return true;
+    }
+
+    if (key === "validate") {
+      if (state.requirements.checklist && !state.draft.checklist.every(Boolean)) {
+        if (!silent) showToast("warning", STR.toastNeedChecklist);
+        return false;
+      }
+      return true;
+    }
+
+    return true;
+  }
+
+  function validateAllStepsBeforeSubmit() {
+    for (let i = 0; i < state.steps.length; i += 1) {
+      if (!validateStep(i, { silent: true })) {
+        goToStep(i);
+        validateStep(i, { silent: false });
+        return false;
+      }
+    }
+    return true;
+  }
+
+  async function submitValidation() {
+    if (state.saving) return;
+
+    if (!validateAllStepsBeforeSubmit()) return;
+
+    const ok = window.confirm("Confirmer la validation finale de l'intervention ?");
+    if (!ok) return;
+
+    state.saving = true;
+    renderFooter();
+
+    showToast("success", STR.toastValidationRunning);
+    setStatus("info", "Validation en cours: envoi des fichiers et enregistrement des donnees...");
+
+    try {
+      const id = state.intervention.id;
+      const nowIso = new Date().toISOString();
+
+      const uploadedPhotos = await uploadPhotoFiles(id, state.files.photos);
+      const uploadedSignature = await uploadSignatureIfAny(id);
+      const uploadedSignedPv = await uploadSignedPvIfAny(id, state.files.signedPv);
+
+      await syncInterventionFilesRows(id, uploadedPhotos, uploadedSignature);
+      await syncSignedPv(id, uploadedSignedPv);
+      await syncProductsExpenses(id, cleanProducts(state.draft.products));
+
+      const reportText = buildObservationsText({
+        intervention: state.intervention,
+        diagnostic: state.draft.diagnostic,
+        resolution: state.draft.resolution,
+        observations: state.draft.observations,
+        checklist: state.draft.checklist,
+        products: cleanProducts(state.draft.products),
+        photosCount: state.existing.photoCount + state.files.photos.length,
+        signedPv: uploadedSignedPv,
+      });
+
+      const reportSaved = await saveReportOptional({
+        intervention_id: id,
+        user_id: state.userId,
+        diagnostic: state.draft.diagnostic,
+        resolution: state.draft.resolution,
+        observations: reportText,
+        notes: state.draft.observations,
+        checklist: state.draft.checklist,
+        completed_at: nowIso,
+        products: cleanProducts(state.draft.products),
+      });
+
+      const interventionUpdated = await updateInterventionRecord(id, nowIso, reportText, uploadedSignedPv);
+
+      if (interventionUpdated) {
+        showToast("success", STR.toastValidationOk);
+      } else {
+        showToast("warning", STR.toastValidationPartial);
+      }
+
+      if (!reportSaved) {
+        showToast("warning", "Table rapport absente: le resume est conserve dans les observations intervention.");
+      }
+
+      clearDraft(state.intervention.id);
+      clearActiveInterventionId();
+      clearTransientFiles();
+
+      setStatus("success", "Intervention finalisee. Redirection vers la liste...");
+      setTimeout(() => {
+        window.location.href = CONFIG.LIST_PAGE_PATH;
+      }, 850);
+    } catch (error) {
+      console.error("[TECH RUN] submitValidation error:", error);
+      showToast("error", `${STR.toastValidationError} ${error?.message || ""}`.trim());
+      setStatus("error", `Erreur: ${error?.message || "validation interrompue"}`);
+    } finally {
+      state.saving = false;
+      renderFooter();
     }
   }
 
-  function stepSection(key, content) {
-    return `<div class="ti-flow-section" data-flow="${key}">${content}</div>`;
-  }
+  async function uploadPhotoFiles(interventionId, files) {
+    if (!files?.length) return [];
 
-  function setStatus(msg) {
-    if (els?.statusBox) {
-      els.statusBox.textContent = msg || "";
+    const uploads = [];
+
+    for (const file of files) {
+      const ext = getFileExtension(file.name) || "jpg";
+      const path = `interventions/${interventionId}/photos/${Date.now()}_${randomId()}.${ext}`;
+
+      const up = await supabase.storage
+        .from(CONFIG.STORAGE_BUCKET)
+        .upload(path, file, { cacheControl: "3600", upsert: false, contentType: file.type || "image/jpeg" });
+
+      if (up.error) throw new Error(`Upload photo impossible (${file.name}): ${up.error.message}`);
+
+      uploads.push({
+        type: "photo",
+        path,
+      });
     }
+
+    return uploads;
   }
 
-  function setText(el, value) {
-    if (!el) return;
-    el.textContent = value ?? "";
+  async function uploadSignatureIfAny(interventionId) {
+    if (!state.signature.hasSignature || !state.signature.canvas) return null;
+
+    const blob = await canvasToBlob(state.signature.canvas);
+    if (!blob) return null;
+
+    const path = `interventions/${interventionId}/signature/${Date.now()}_${randomId()}.png`;
+    const up = await supabase.storage
+      .from(CONFIG.STORAGE_BUCKET)
+      .upload(path, blob, { cacheControl: "3600", upsert: true, contentType: "image/png" });
+
+    if (up.error) throw new Error(`Upload signature impossible: ${up.error.message}`);
+
+    return { type: "signature", path };
   }
 
-  function getInterventionId() {
-    const params = new URLSearchParams(location.search);
-    return params.get("id") || root?.dataset?.interventionId || "";
+  async function uploadSignedPvIfAny(interventionId, file) {
+    if (!file) return null;
+
+    const ext = getFileExtension(file.name) || "pdf";
+    const path = `interventions/${interventionId}/pv/signed_${Date.now()}_${randomId()}.${ext}`;
+
+    const up = await supabase.storage
+      .from(CONFIG.STORAGE_BUCKET)
+      .upload(path, file, { cacheControl: "3600", upsert: true, contentType: file.type || "application/pdf" });
+
+    if (up.error) throw new Error(`Upload PV signe impossible: ${up.error.message}`);
+
+    return { path, name: file.name, type: file.type || "application/octet-stream" };
   }
 
-  function buildSteps(row) {
+  async function syncInterventionFilesRows(interventionId, photos, signature) {
+    const payload = [];
+
+    (photos || []).forEach((p) => {
+      payload.push({ intervention_id: interventionId, type: "photo", file_path: p.path });
+    });
+
+    if (signature?.path) {
+      payload.push({ intervention_id: interventionId, type: "signature", file_path: signature.path });
+    }
+
+    if (!payload.length) return true;
+
+    const ins = await supabase.from(CONFIG.FILES_TABLE).insert(payload);
+    if (ins.error) throw new Error(`Enregistrement fichiers impossible: ${ins.error.message}`);
+
+    return true;
+  }
+
+  async function syncSignedPv(interventionId, signedPvUpload) {
+    if (!signedPvUpload?.path) return true;
+
+    const payload = {
+      intervention_id: interventionId,
+      pv_signed_path: signedPvUpload.path,
+      signed_origin: "tech",
+      signed_uploaded_at: new Date().toISOString(),
+    };
+
+    const existing = await supabase
+      .from(CONFIG.PV_TABLE)
+      .select("intervention_id")
+      .eq("intervention_id", interventionId)
+      .maybeSingle();
+
+    if (existing.error && !isTableMissing(existing.error)) {
+      throw new Error(`Lecture PV impossible: ${existing.error.message}`);
+    }
+
+    if (isTableMissing(existing.error)) {
+      return false;
+    }
+
+    if (existing.data?.intervention_id) {
+      const up = await supabase
+        .from(CONFIG.PV_TABLE)
+        .update(payload)
+        .eq("intervention_id", interventionId);
+      if (up.error) throw new Error(`Mise a jour PV impossible: ${up.error.message}`);
+      return true;
+    }
+
+    const ins = await supabase.from(CONFIG.PV_TABLE).insert(payload);
+    if (ins.error) throw new Error(`Insertion PV impossible: ${ins.error.message}`);
+
+    return true;
+  }
+
+  async function syncProductsExpenses(interventionId, products) {
+    const rows = products || [];
+
+    const existing = await supabase
+      .from(CONFIG.EXPENSES_TABLE)
+      .select("id, note")
+      .eq("intervention_id", interventionId)
+      .eq("type", "material");
+
+    if (existing.error && !isTableMissing(existing.error)) {
+      throw new Error(`Lecture depenses impossible: ${existing.error.message}`);
+    }
+
+    if (isTableMissing(existing.error)) return false;
+
+    const existingRows = existing.data || [];
+    const idsToDelete = existingRows
+      .filter((r) => String(r.note || "").startsWith(CONFIG.TECH_RUN_NOTE_PREFIX))
+      .map((r) => r.id);
+
+    if (idsToDelete.length) {
+      const del = await supabase
+        .from(CONFIG.EXPENSES_TABLE)
+        .delete()
+        .in("id", idsToDelete);
+
+      if (del.error) throw new Error(`Suppression depenses existantes impossible: ${del.error.message}`);
+    }
+
+    if (!rows.length) return true;
+
+    const payload = rows.map((r) => {
+      const noteParts = [];
+      noteParts.push(CONFIG.TECH_RUN_NOTE_PREFIX);
+      if (r.paidByTech) noteParts.push("paid_by_tech");
+      if (r.note) noteParts.push(r.note);
+
+      return {
+        intervention_id: interventionId,
+        type: "material",
+        product_id: r.productId || null,
+        qty: r.qty,
+        unit_cost_cents: r.unitCents,
+        amount_cents: computeLineTotalCents(r),
+        note: noteParts.join(" ").trim(),
+      };
+    });
+
+    const ins = await supabase.from(CONFIG.EXPENSES_TABLE).insert(payload);
+    if (ins.error) throw new Error(`Insertion depenses impossible: ${ins.error.message}`);
+
+    return true;
+  }
+
+  async function saveReportOptional(payload) {
+    const res = await supabase
+      .from(CONFIG.REPORTS_TABLE)
+      .upsert(payload, { onConflict: "intervention_id,user_id" });
+
+    if (res.error) {
+      if (isTableMissing(res.error)) return false;
+      console.warn("[TECH RUN] report warning:", res.error.message);
+      return false;
+    }
+
+    return true;
+  }
+
+  async function updateInterventionRecord(interventionId, completedAtIso, observationsText, signedPvUpload) {
+    const row = state.intervention;
+
+    const payload = {
+      status: CONFIG.STATUS_DONE,
+    };
+
+    if (hasField(row, "end_at")) payload.end_at = completedAtIso;
+
+    const observationsField = findExistingField(row, ["observations", "infos", "notes", "report_notes"]);
+    if (observationsField) payload[observationsField] = observationsText;
+
+    if (signedPvUpload?.path) {
+      if (hasField(row, "pv_source")) payload.pv_source = "tech";
+      if (hasField(row, "pv_status")) payload.pv_status = "signed";
+    }
+
+    const up = await supabase
+      .from("interventions")
+      .update(payload)
+      .eq("id", interventionId);
+
+    if (!up.error) return true;
+
+    if (String(up.error.code || "") === "23514") {
+      const fallback = { ...payload };
+      delete fallback.status;
+      const fallbackUp = await supabase
+        .from("interventions")
+        .update(fallback)
+        .eq("id", interventionId);
+      return !fallbackUp.error;
+    }
+
+    throw new Error(`Mise a jour intervention impossible: ${up.error.message}`);
+  }
+
+  function buildObservationsText(parts) {
+    const lines = [];
+
+    lines.push(`Intervention: ${parts.intervention?.internal_ref || ""} - ${parts.intervention?.title || ""}`.trim());
+    if (parts.intervention?.client_name) lines.push(`Client: ${parts.intervention.client_name}`);
+
+    if (parts.diagnostic) lines.push(`\n[Diagnostic]\n${parts.diagnostic}`);
+    if (parts.resolution) lines.push(`\n[Resolution]\n${parts.resolution}`);
+
+    if (parts.products?.length) {
+      lines.push("\n[Produits]");
+      parts.products.forEach((p) => {
+        const refund = p.paidByTech ? " (paye par tech)" : "";
+        lines.push(`- ${p.name} x${p.qty} @ ${formatCents(p.unitCents)} = ${formatCents(computeLineTotalCents(p))}${refund}`);
+      });
+    }
+
+    lines.push(`\n[Photos] ${parts.photosCount} photo(s)`);
+
+    if (state.signature.hasSignature) {
+      lines.push("\n[Signature] Capturee par le technicien");
+    }
+
+    if (parts.signedPv?.path) {
+      lines.push(`\n[PV signe] ${parts.signedPv.path}`);
+    }
+
+    if (parts.observations) {
+      lines.push(`\n[Observations]\n${parts.observations}`);
+    }
+
+    lines.push("\n[Checklist]");
+    getChecklist(state.intervention).forEach((label, idx) => {
+      lines.push(`- ${parts.checklist[idx] ? "OK" : "A verifier"}: ${label}`);
+    });
+
+    return lines.join("\n");
+  }
+
+  async function openDraftPv() {
+    if (!state.existing.pvDraftPath) return;
+
+    const signed = await supabase.storage
+      .from(CONFIG.STORAGE_BUCKET)
+      .createSignedUrl(state.existing.pvDraftPath, CONFIG.SIGNED_URL_TTL);
+
+    if (signed.error || !signed.data?.signedUrl) {
+      showToast("warning", `Impossible d'ouvrir le PV vierge: ${signed.error?.message || "lien indisponible"}`);
+      return;
+    }
+
+    window.open(signed.data.signedUrl, "_blank", "noopener");
+  }
+
+  function openMapSheet(address) {
+    const normalized = String(address || "").trim();
+    if (!normalized) return;
+
+    els.sheet.dataset.address = normalized;
+    els.sheet.hidden = false;
+    document.body.classList.add("tr-sheet-open");
+  }
+
+  function closeMapSheet() {
+    els.sheet.hidden = true;
+    document.body.classList.remove("tr-sheet-open");
+  }
+
+  function openMapProvider(provider) {
+    const address = els.sheet.dataset.address || "";
+    const url = buildMapUrl(provider, address);
+    if (url) window.open(url, "_blank", "noopener");
+    closeMapSheet();
+  }
+
+  function buildMapUrl(provider, address) {
+    const q = encodeURIComponent(String(address || "").trim());
+    if (!q) return "";
+
+    if (provider === "apple") return `https://maps.apple.com/?daddr=${q}`;
+    if (provider === "waze") return `https://waze.com/ul?q=${q}&navigate=yes`;
+    return `https://www.google.com/maps/dir/?api=1&destination=${q}`;
+  }
+
+  function buildSteps(requirements) {
     const steps = [
       { key: "arrive", label: STR.stepArrive },
       { key: "diagnostic", label: STR.stepDiagnostic },
       { key: "resolution", label: STR.stepResolution },
       { key: "photos", label: STR.stepPhotos },
-      { key: "products", label: STR.stepProducts }
+      { key: "products", label: STR.stepProducts },
     ];
-    if (getFlag(row.requires_signature, CONFIG.REQUIRE_SIGNATURE_DEFAULT)) steps.push({ key: "signature", label: STR.stepSignature });
+
+    if (requirements.signature) {
+      steps.push({ key: "signature", label: STR.stepSignature });
+    }
+
     steps.push({ key: "observations", label: STR.stepObservations });
     steps.push({ key: "validate", label: STR.stepValidate });
+
     return steps;
   }
 
   function getChecklist(row) {
-    if (Array.isArray(row.checklist) && row.checklist.length) return row.checklist;
+    if (Array.isArray(row?.checklist) && row.checklist.length) return row.checklist;
+
     return [
-      "Confirmer le contact sur place",
-      "Photos avant intervention",
-      "Diagnostic / verification",
-      "Realisation de l'intervention",
-      "Tests de fonctionnement",
-      "Explication au client",
-      "Photos apres intervention",
-      "Nettoyage de la zone"
+      "Contact client confirme",
+      "Zone securisee",
+      "Diagnostic realise",
+      "Intervention terminee",
+      "Tests fonctionnels OK",
+      "Compte-rendu explique au client",
+      "Photos ou preuves completees",
+      "Site propre et remis en etat",
     ];
   }
 
-  function getFlag(value, fallback) {
-    if (typeof value === "boolean") return value;
-    return !!fallback;
+  function validateProducts(rows) {
+    const normalized = rows || [];
+
+    for (let i = 0; i < normalized.length; i += 1) {
+      const row = normalized[i];
+      const hasAny = Boolean(row.name || row.note || row.qty || row.unitCents || row.productId || row.paidByTech);
+      if (!hasAny) continue;
+
+      if (!String(row.name || "").trim()) {
+        return { ok: false, message: `Ligne ${i + 1}: nom manquant.` };
+      }
+
+      if (!Number.isFinite(row.qty) || row.qty <= 0) {
+        return { ok: false, message: `Ligne ${i + 1}: quantite invalide.` };
+      }
+
+      if (!Number.isFinite(row.unitCents) || row.unitCents < 0) {
+        return { ok: false, message: `Ligne ${i + 1}: prix invalide.` };
+      }
+    }
+
+    return { ok: true };
   }
 
-  function getStatusLabel(status) {
-    const s = String(status || "").toLowerCase();
-    if (s === "planned") return "Planifiee";
-    if (s === "pending") return "En attente";
-    if (s === "in_progress") return "En cours";
-    if (s === "confirmed") return "Confirmee";
-    if (s === "done") return "Terminee";
-    if (s === "canceled") return "Annulee";
-    return status ? capitalize(status) : "A faire";
+  function cleanProducts(rows) {
+    return (rows || [])
+      .map(normalizeProductDraftRow)
+      .filter((r) => String(r.name || "").trim());
+  }
+
+  function createEmptyProduct() {
+    return {
+      productId: "",
+      name: "",
+      qty: 1,
+      unitCents: 0,
+      paidByTech: false,
+      note: "",
+    };
+  }
+
+  function computeLineTotalCents(row) {
+    const qty = Math.max(0, parseInt(row?.qty || "0", 10) || 0);
+    const unit = Math.max(0, parseInt(row?.unitCents || "0", 10) || 0);
+    return qty * unit;
+  }
+
+  function computeProductsTotalCents(rows, paidByTechOnly = false) {
+    return (rows || []).reduce((sum, row) => {
+      if (paidByTechOnly && !row.paidByTech) return sum;
+      return sum + computeLineTotalCents(row);
+    }, 0);
+  }
+
+  async function canvasToBlob(canvas) {
+    return new Promise((resolve) => {
+      canvas.toBlob((blob) => resolve(blob || null), "image/png", 0.92);
+    });
+  }
+
+  function clearPreviewUrls() {
+    (state.previews.photos || []).forEach((url) => URL.revokeObjectURL(url));
+    state.previews.photos = [];
+  }
+
+  function clearTransientFiles() {
+    clearPreviewUrls();
+    state.files.photos = [];
+    state.files.signedPv = null;
+    state.signature.hasSignature = false;
+    state.signature.canvas = null;
+    state.signature.dataUrl = "";
+  }
+
+  function persistDraft() {
+    if (!state.intervention?.id) return;
+
+    const payload = {
+      stepIndex: state.currentStepIndex,
+      arrivedAt: state.draft.arrivedAt,
+      diagnostic: state.draft.diagnostic,
+      resolution: state.draft.resolution,
+      observations: state.draft.observations,
+      checklist: state.draft.checklist,
+      products: state.draft.products,
+      updatedAt: new Date().toISOString(),
+    };
+
+    try {
+      localStorage.setItem(getDraftKey(state.intervention.id), JSON.stringify(payload));
+    } catch (_) {
+      // ignore localStorage quota errors
+    }
+  }
+
+  const persistDraftDebounced = debounce(persistDraft, 180);
+
+  function loadDraft(interventionId) {
+    try {
+      const raw = localStorage.getItem(getDraftKey(interventionId));
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function clearDraft(interventionId) {
+    try {
+      localStorage.removeItem(getDraftKey(interventionId));
+    } catch (_) {
+      // noop
+    }
+  }
+
+  function getDraftKey(interventionId) {
+    return `${CONFIG.DRAFT_STORAGE_PREFIX}:${interventionId}`;
+  }
+
+  function saveActiveInterventionId(id) {
+    try {
+      localStorage.setItem(CONFIG.ACTIVE_STORAGE_KEY, String(id));
+    } catch (_) {
+      // noop
+    }
+  }
+
+  function clearActiveInterventionId() {
+    try {
+      localStorage.removeItem(CONFIG.ACTIVE_STORAGE_KEY);
+    } catch (_) {
+      // noop
+    }
+  }
+
+  function applyConfigOverrides(rootEl) {
+    const d = rootEl.dataset || {};
+    if (d.storageBucket) CONFIG.STORAGE_BUCKET = d.storageBucket;
+    if (d.reportsTable) CONFIG.REPORTS_TABLE = d.reportsTable;
+    if (d.expensesTable) CONFIG.EXPENSES_TABLE = d.expensesTable;
+    if (d.productsTable) CONFIG.PRODUCTS_TABLE = d.productsTable;
+    if (d.filesTable) CONFIG.FILES_TABLE = d.filesTable;
+    if (d.pvTable) CONFIG.PV_TABLE = d.pvTable;
+    if (d.requireChecklist) CONFIG.REQUIRE_CHECKLIST_DEFAULT = d.requireChecklist === "true";
+    if (d.requirePhotos) CONFIG.REQUIRE_PHOTOS_DEFAULT = d.requirePhotos === "true";
+    if (d.requireSignature) CONFIG.REQUIRE_SIGNATURE_DEFAULT = d.requireSignature === "true";
+    if (d.listPath) CONFIG.LIST_PAGE_PATH = d.listPath;
+    if (d.currency) CONFIG.CURRENCY = d.currency;
+  }
+
+  function renderShell(rootEl) {
+    rootEl.innerHTML = `
+      <datalist id="tr-products-catalog"></datalist>
+
+      <section class="tr-shell">
+        <header class="tr-header">
+          <div>
+            <div class="tr-eyebrow" data-subtitle></div>
+            <h1 class="tr-h1" data-title></h1>
+          </div>
+          <a class="tr-btn tr-btn--ghost" href="${CONFIG.LIST_PAGE_PATH}">${STR.btnBackList}</a>
+        </header>
+
+        <section class="tr-card tr-main-card">
+          <div class="tr-main-top">
+            <div>
+              <div class="tr-ref" data-ref>—</div>
+              <div class="tr-client" data-client>—</div>
+              <div class="tr-subject" data-subject>—</div>
+              <div class="tr-meta">
+                <span data-date>—</span>
+                <span data-address>—</span>
+              </div>
+            </div>
+            <div class="tr-status" data-status>—</div>
+          </div>
+
+          <div class="tr-actions">
+            <a class="tr-btn tr-btn--primary" data-call>${STR.btnCall}</a>
+            <button type="button" class="tr-btn tr-btn--ghost" data-map>${STR.btnMap}</button>
+            <button type="button" class="tr-btn tr-btn--ghost" data-pv hidden>${STR.btnPvBlank}</button>
+          </div>
+
+          <div class="tr-requirements" data-requirements></div>
+        </section>
+
+        <div class="tr-status-box" data-status-box></div>
+
+        <section class="tr-progress" data-progress>
+          <div class="tr-progress-top">
+            <div class="tr-progress-label" data-footer-step></div>
+            <div class="tr-progress-bar-wrap"><div class="tr-progress-bar" data-progress-bar></div></div>
+          </div>
+          <div class="tr-steps" data-steps></div>
+        </section>
+
+        <section class="tr-content" data-content></section>
+
+        <footer class="tr-footer" data-footer>
+          <div class="tr-footer-summary" data-footer-summary></div>
+          <div class="tr-footer-actions">
+            <button type="button" class="tr-btn tr-btn--ghost" data-prev>${STR.btnPrev}</button>
+            <button type="button" class="tr-btn tr-btn--ghost" data-save-draft>${STR.btnSaveDraft}</button>
+            <button type="button" class="tr-btn tr-btn--primary" data-next>${STR.btnNext}</button>
+            <button type="button" class="tr-btn tr-btn--primary" data-validate hidden>${STR.btnValidate}</button>
+          </div>
+        </footer>
+
+        <div class="tr-toasts" data-toasts></div>
+
+        <div class="tr-sheet" data-sheet hidden>
+          <div class="tr-sheet-backdrop" data-sheet-close></div>
+          <div class="tr-sheet-panel">
+            <div class="tr-sheet-title">${STR.mapChooseTitle}</div>
+            <button class="tr-sheet-btn" data-map="apple">${STR.mapPlans}</button>
+            <button class="tr-sheet-btn" data-map="google">${STR.mapGoogle}</button>
+            <button class="tr-sheet-btn" data-map="waze">${STR.mapWaze}</button>
+            <button class="tr-sheet-btn tr-sheet-cancel" data-sheet-close>${STR.mapCancel}</button>
+          </div>
+        </div>
+      </section>
+    `;
+
+    return {
+      catalog: rootEl.querySelector("#tr-products-catalog"),
+      title: rootEl.querySelector("[data-title]"),
+      subtitle: rootEl.querySelector("[data-subtitle]"),
+      ref: rootEl.querySelector("[data-ref]"),
+      client: rootEl.querySelector("[data-client]"),
+      subject: rootEl.querySelector("[data-subject]"),
+      date: rootEl.querySelector("[data-date]"),
+      address: rootEl.querySelector("[data-address]"),
+      status: rootEl.querySelector("[data-status]"),
+      call: rootEl.querySelector("[data-call]"),
+      map: rootEl.querySelector("[data-map]:not(.tr-sheet-btn)"),
+      pv: rootEl.querySelector("[data-pv]"),
+      requirements: rootEl.querySelector("[data-requirements]"),
+      statusBox: rootEl.querySelector("[data-status-box]"),
+      progress: rootEl.querySelector("[data-progress]"),
+      progressBar: rootEl.querySelector("[data-progress-bar]"),
+      steps: rootEl.querySelector("[data-steps]"),
+      content: rootEl.querySelector("[data-content]"),
+      footer: rootEl.querySelector("[data-footer]"),
+      footerStep: rootEl.querySelector("[data-footer-step]"),
+      footerSummary: rootEl.querySelector("[data-footer-summary]"),
+      prev: rootEl.querySelector("[data-prev]"),
+      next: rootEl.querySelector("[data-next]"),
+      saveDraft: rootEl.querySelector("[data-save-draft]"),
+      validate: rootEl.querySelector("[data-validate]"),
+      toasts: rootEl.querySelector("[data-toasts]"),
+      sheet: rootEl.querySelector("[data-sheet]"),
+      sheetClose: Array.from(rootEl.querySelectorAll("[data-sheet-close]")),
+    };
+  }
+
+  function setStatus(type, message) {
+    if (!message) {
+      els.statusBox.hidden = true;
+      els.statusBox.textContent = "";
+      els.statusBox.className = "tr-status-box";
+      return;
+    }
+
+    els.statusBox.hidden = false;
+    els.statusBox.className = `tr-status-box is-${type || "info"}`;
+    els.statusBox.textContent = message;
+  }
+
+  function showToast(type, message) {
+    const toast = document.createElement("div");
+    toast.className = `tr-toast tr-toast--${type}`;
+    toast.textContent = message;
+    els.toasts.appendChild(toast);
+    setTimeout(() => toast.remove(), 3600);
+  }
+
+  function statusLabel(status) {
+    if (status === "planned") return "Planifiee";
+    if (status === "pending") return "En attente";
+    if (status === "in_progress") return "En cours";
+    if (status === "confirmed") return "Confirmee";
+    if (status === "done") return "Terminee";
+    if (status === "canceled") return "Annulee";
+    return "Statut inconnu";
+  }
+
+  function statusClass(status) {
+    if (["planned", "pending"].includes(status)) return "is-pending";
+    if (status === "in_progress") return "is-progress";
+    if (status === "confirmed") return "is-confirmed";
+    if (status === "done") return "is-done";
+    if (status === "canceled") return "is-canceled";
+    return "is-unknown";
+  }
+
+  function canonicalStatus(value) {
+    const s = norm(String(value || "")).replace(/\s+/g, "_");
+    if (s === "in_progress" || s === "inprogress" || s === "en_cours") return "in_progress";
+    if (s === "done" || s === "terminee" || s === "completed") return "done";
+    if (s === "confirmed" || s === "confirmee") return "confirmed";
+    if (s === "planned" || s === "planifiee") return "planned";
+    if (s === "pending" || s === "en_attente") return "pending";
+    if (s === "canceled" || s === "cancelled" || s === "annulee") return "canceled";
+    return s || "unknown";
+  }
+
+  function resolveFlag(value, fallback) {
+    if (typeof value === "boolean") return value;
+    if (typeof value === "string") {
+      const s = norm(value);
+      if (["true", "1", "yes", "oui"].includes(s)) return true;
+      if (["false", "0", "no", "non"].includes(s)) return false;
+    }
+    return Boolean(fallback);
+  }
+
+  function findExistingField(row, fields) {
+    for (const field of fields) {
+      if (hasField(row, field)) return field;
+    }
+    return "";
+  }
+
+  function hasField(row, key) {
+    return row && Object.prototype.hasOwnProperty.call(row, key);
+  }
+
+  function parseEuroInputToCents(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return null;
+
+    const normalized = raw.replace(/\s/g, "").replace(/€/g, "").replace(/,/g, ".");
+    if (!/^[-+]?\d*(?:\.\d+)?$/.test(normalized)) return null;
+
+    const n = Number(normalized);
+    if (!Number.isFinite(n)) return null;
+    return Math.round(n * 100);
+  }
+
+  function centsToEuroInput(cents) {
+    const n = Number(cents || 0);
+    return (n / 100).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function formatCents(cents) {
+    const n = Number(cents || 0);
+    return new Intl.NumberFormat("fr-FR", { style: "currency", currency: CONFIG.CURRENCY }).format(n / 100);
   }
 
   function formatDateFR(value) {
     if (!value) return "";
-    let s = String(value).trim();
-    if (/^\d{4}-\d{2}-\d{2} \d/.test(s)) s = s.replace(" ", "T");
-    const d = new Date(s);
-    if (isNaN(d.getTime())) return String(value);
+    const d = new Date(String(value).replace(" ", "T"));
+    if (Number.isNaN(d.getTime())) return String(value);
 
     return new Intl.DateTimeFormat("fr-FR", {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
       hour: "2-digit",
-      minute: "2-digit"
+      minute: "2-digit",
     }).format(d);
   }
 
   function normalizePhone(phone) {
-    if (!phone) return null;
-    let p = String(phone).replace(/[^\d+]/g, "");
-    if (p.startsWith("00")) p = "+" + p.slice(2);
-    if (/^0\d{9}$/.test(p)) p = "+33" + p.slice(1);
-    return p || null;
-  }
-
-  function formatPhoneReadable(phone) {
     if (!phone) return "";
     let p = String(phone).replace(/[^\d+]/g, "");
-    if (p.startsWith("00")) p = "+" + p.slice(2);
-
-    if (p.startsWith("+33")) {
-      const rest = p.slice(3);
-      const grouped = rest.replace(/(\d)(?=(\d{2})+$)/g, "$1 ").trim();
-      return `+33 ${grouped}`;
-    }
-
-    if (/^0\d{9}$/.test(p)) {
-      return p.replace(/(\d{2})(?=\d)/g, "$1 ").trim();
-    }
-
-    return p.replace(/(\d{2})(?=\d)/g, "$1 ").trim();
+    if (p.startsWith("00")) p = `+${p.slice(2)}`;
+    if (/^0\d{9}$/.test(p)) p = `+33${p.slice(1)}`;
+    return p;
   }
 
-  function getPvUrl(row) {
-    const keys = [
-      CONFIG.PV_URL_FIELD,
-      "pv_url",
-      "pv",
-      "pv_file",
-      "pv_blank",
-      CONFIG.PV_PATH_FIELD,
-      "pv_path"
-    ];
-    for (const k of keys) {
-      const v = row?.[k];
-      if (!v) continue;
-      if (typeof v === "string") {
-        if (/^https?:\/\//i.test(v)) return v;
-        const { data } = supabase.storage.from(CONFIG.STORAGE_BUCKET).getPublicUrl(String(v));
-        return data?.publicUrl || "";
-      }
-      if (typeof v === "object") {
-        if (v.url) return v.url;
-        if (v.path) {
-          const { data } = supabase.storage.from(CONFIG.STORAGE_BUCKET).getPublicUrl(String(v.path));
-          return data?.publicUrl || "";
-        }
-      }
-    }
-    return "";
+  function shortState(value, maxLen) {
+    const s = String(value || "").trim();
+    if (!s) return "Non renseigne";
+    if (s.length <= maxLen) return s;
+    return `${s.slice(0, maxLen - 1)}...`;
   }
 
-  function buildObservations(row, parts) {
-    const lines = [];
-    lines.push(`Intervention: ${row.title || ""}`);
-    if (row.client_name) lines.push(`Client: ${row.client_name}`);
-    if (parts.diagnostic) lines.push(`\n[Diagnostic]\n${parts.diagnostic}`);
-    if (parts.resolution) lines.push(`\n[Resolution]\n${parts.resolution}`);
-
-    if (parts.products && parts.products.length) {
-      lines.push("\n[Produits]");
-      parts.products.forEach((p) => {
-        const paid = p.paidByTech ? " (paye par tech)" : "";
-        lines.push(`- ${p.name} x${p.qty} @ ${formatMoney(p.unitPrice)} = ${formatMoney(p.total)}${paid}`);
-      });
-    }
-
-    if (parts.photos && parts.photos.length) {
-      lines.push(`\n[Photos] ${parts.photos.length} photo(s) jointes`);
-    }
-
-    if (parts.signedPv) {
-      lines.push(`\n[PV signe] ${parts.signedPv.url || parts.signedPv.path}`);
-    }
-
-    if (parts.notes) {
-      lines.push(`\n[Observations]\n${parts.notes}`);
-    }
-
-    return lines.join("\n");
+  function isTableMissing(error) {
+    const code = String(error?.code || "");
+    const message = String(error?.message || "").toLowerCase();
+    return code === "PGRST205" || message.includes("could not find the table") || message.includes("does not exist");
   }
 
-  function infoRow(label, value, isHtml = false) {
-    if (!value) return "";
-    const safeLabel = escapeHTML(label);
-    const safeValue = isHtml ? value : escapeHTML(value);
-    return `
-      <div class="ti-info">
-        <div class="ti-label">${safeLabel}</div>
-        <div class="ti-value">${safeValue}</div>
-      </div>
-    `;
-  }
-
-  function formatMoney(value) {
-    if (value === null || value === undefined || value === "") return "";
-    const num = Number(value);
-    if (Number.isNaN(num)) return String(value);
-    return new Intl.NumberFormat("fr-FR", { style: "currency", currency: CONFIG.CURRENCY }).format(num);
-  }
-
-  function toNumber(v) {
-    const n = Number(v);
-    return Number.isNaN(n) ? 0 : n;
-  }
-
-  function escapeHTML(str) {
-    return String(str || "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
-  }
-
-  function formatBytes(bytes) {
-    if (!bytes && bytes !== 0) return "";
-    const sizes = ["B", "KB", "MB", "GB"];
-    const i = Math.min(sizes.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
-    const val = bytes / Math.pow(1024, i);
-    return `${val.toFixed(val >= 10 || i === 0 ? 0 : 1)} ${sizes[i]}`;
-  }
-
-  function capitalize(str) {
-    const s = String(str || "");
-    return s.charAt(0).toUpperCase() + s.slice(1);
+  function getFileExtension(filename) {
+    const parts = String(filename || "").split(".");
+    return parts.length > 1 ? parts.pop().toLowerCase() : "";
   }
 
   function randomId() {
@@ -1156,270 +2101,659 @@
     return Math.random().toString(36).slice(2, 10);
   }
 
-  function getFileExtension(name) {
-    const parts = String(name || "").split(".");
-    return parts.length > 1 ? parts.pop().toLowerCase() : "";
+  function formatBytes(bytes) {
+    if (!Number.isFinite(bytes)) return "";
+    const units = ["B", "KB", "MB", "GB"];
+    const i = Math.min(units.length - 1, Math.floor(Math.log(Math.max(bytes, 1)) / Math.log(1024)));
+    const value = bytes / Math.pow(1024, i);
+    return `${value.toFixed(value >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
   }
 
-  function isTableMissing(error) {
-    const msg = String(error?.message || "");
-    return msg.includes("Could not find the table") || String(error?.code || "") === "PGRST205";
+  function norm(value) {
+    return String(value || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
   }
 
-  function showToast(type, message) {
-    const el = document.createElement("div");
-    el.className = `ti-toast ti-toast--${type}`;
-    el.textContent = message;
-    els.toasts.appendChild(el);
-    setTimeout(() => el.remove(), 3200);
-  }
-
-  function loadSteps() {
-    try {
-      const raw = localStorage.getItem(CONFIG.STEPS_STORAGE_KEY);
-      return raw ? JSON.parse(raw) : {};
-    } catch (_) { return {}; }
-  }
-
-  function saveSteps() {
-    try { localStorage.setItem(CONFIG.STEPS_STORAGE_KEY, JSON.stringify(state.steps)); }
-    catch (_) {}
-  }
-
-  function getStep(id, max = 999) {
-    const v = Number(state.steps[id] || 1);
-    return Math.max(1, Math.min(v, max));
-  }
-
-  function setStep(id, step) {
-    state.steps[id] = step;
-    saveSteps();
-  }
-
-  function openMapSheet(address) {
-    if (!address) return;
-    mapAddress = address;
-    els.sheet.hidden = false;
-    document.body.classList.add("ti-sheet-open");
-  }
-
-  function closeMapSheet() {
-    els.sheet.hidden = true;
-    document.body.classList.remove("ti-sheet-open");
-  }
-
-  function openMapProvider(provider) {
-    const url = buildMapUrl(provider, mapAddress);
-    if (url) window.open(url, "_blank");
-    closeMapSheet();
-  }
-
-  function buildMapUrl(provider, address) {
-    const q = encodeURIComponent(String(address).trim());
-    if (provider === "apple") return `https://maps.apple.com/?daddr=${q}`;
-    if (provider === "google") return `https://www.google.com/maps/dir/?api=1&destination=${q}`;
-    if (provider === "waze") return `https://waze.com/ul?q=${q}&navigate=yes`;
-    return "";
-  }
-
-  function applyConfigOverrides(rootEl) {
-    const d = rootEl.dataset;
-    if (d.storageBucket) CONFIG.STORAGE_BUCKET = d.storageBucket;
-    if (d.reportsTable) CONFIG.REPORTS_TABLE = d.reportsTable;
-    if (d.expensesTable) CONFIG.EXPENSES_TABLE = d.expensesTable;
-    if (d.productsTable) CONFIG.PRODUCTS_TABLE = d.productsTable;
-    if (d.requireChecklist) CONFIG.REQUIRE_CHECKLIST_DEFAULT = d.requireChecklist === "true";
-    if (d.requirePhotos) CONFIG.REQUIRE_PHOTOS_DEFAULT = d.requirePhotos === "true";
-    if (d.requireSignature) CONFIG.REQUIRE_SIGNATURE_DEFAULT = d.requireSignature === "true";
-    if (d.pvUrlField) CONFIG.PV_URL_FIELD = d.pvUrlField;
-    if (d.pvPathField) CONFIG.PV_PATH_FIELD = d.pvPathField;
-    if (d.signedPvUrlField) CONFIG.SIGNED_PV_URL_FIELD = d.signedPvUrlField;
-    if (d.signedPvPathField) CONFIG.SIGNED_PV_PATH_FIELD = d.signedPvPathField;
-    if (d.remunerationField) CONFIG.REMUNERATION_FIELD = d.remunerationField;
-    if (d.currency) CONFIG.CURRENCY = d.currency;
-  }
-
-  function renderShell(rootEl) {
-    rootEl.innerHTML = `
-      <datalist id="ti-products-list"></datalist>
-      <div class="ti-shell">
-        <div class="ti-header">
-          <div>
-            <div class="ti-eyebrow" data-ti-subtitle></div>
-            <div class="ti-h1" data-ti-title></div>
-          </div>
-        </div>
-
-        <div class="ti-run-card">
-          <div class="ti-run-top">
-            <div class="ti-run-main">
-              <div class="ti-run-client" data-ti-client></div>
-              <div class="ti-run-title" data-ti-title2></div>
-              <div class="ti-run-meta">
-                <span data-ti-date></span>
-                <span data-ti-address></span>
-              </div>
-            </div>
-            <div class="ti-run-status" data-ti-status></div>
-          </div>
-
-          <div class="ti-run-actions">
-            <a class="ti-btn ti-btn--primary" data-action="call">${STR.callCTA}</a>
-            <button class="ti-btn ti-btn--ghost" data-action="map">${STR.mapCTA}</button>
-            <a class="ti-btn ti-btn--ghost" data-action="pv" hidden>${STR.pvCTA}</a>
-          </div>
-        </div>
-
-        <div class="ti-status-box" data-ti-status-box></div>
-
-        <div class="ti-steps" data-ti-steps></div>
-        <div class="ti-flow" data-ti-flow></div>
-
-        <div class="ti-toasts" data-ti-toasts></div>
-
-        <div class="ti-sheet" data-ti-sheet hidden>
-          <div class="ti-sheet-backdrop" data-ti-sheet-close></div>
-          <div class="ti-sheet-panel">
-            <div class="ti-sheet-title">Choisir une app</div>
-            <button class="ti-sheet-btn" data-map="apple">Plans</button>
-            <button class="ti-sheet-btn" data-map="google">Google Maps</button>
-            <button class="ti-sheet-btn" data-map="waze">Waze</button>
-            <button class="ti-sheet-btn ti-sheet-cancel" data-ti-sheet-close>Annuler</button>
-          </div>
-        </div>
-      </div>
-    `;
-
-    const sheet = rootEl.querySelector("[data-ti-sheet]");
-    sheet.addEventListener("click", (e) => {
-      const btn = e.target.closest("[data-map]");
-      if (!btn) return;
-      openMapProvider(btn.dataset.map);
-    });
-
-    rootEl.querySelectorAll("[data-ti-sheet-close]").forEach((el) => {
-      el.addEventListener("click", closeMapSheet);
-    });
-
-    return {
-      title: rootEl.querySelector("[data-ti-title]"),
-      subtitle: rootEl.querySelector("[data-ti-subtitle]"),
-      client: rootEl.querySelector("[data-ti-client]"),
-      title2: rootEl.querySelector("[data-ti-title2]"),
-      date: rootEl.querySelector("[data-ti-date]"),
-      address: rootEl.querySelector("[data-ti-address]"),
-      status: rootEl.querySelector("[data-ti-status]"),
-      callBtn: rootEl.querySelector("[data-action='call']"),
-      mapBtn: rootEl.querySelector("[data-action='map']"),
-      pvBtn: rootEl.querySelector("[data-action='pv']"),
-      statusBox: rootEl.querySelector("[data-ti-status-box]"),
-      steps: rootEl.querySelector("[data-ti-steps]"),
-      flow: rootEl.querySelector("[data-ti-flow]"),
-      toasts: rootEl.querySelector("[data-ti-toasts]"),
-      sheet
+  function debounce(fn, waitMs) {
+    let timer;
+    return (...args) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => fn(...args), waitMs);
     };
   }
 
+  function setText(el, value) {
+    if (!el) return;
+    el.textContent = value || "";
+  }
+
+  function escapeHTML(value) {
+    return String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
   function injectStyles() {
-    if (document.getElementById("ti-styles")) return;
+    if (document.getElementById("tr-run-styles-v2")) return;
+
     const style = document.createElement("style");
-    style.id = "ti-styles";
+    style.id = "tr-run-styles-v2";
     style.textContent = `
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Space+Grotesk:wght@500;700&display=swap');
+      .tr-shell {
+        font-family: "Manrope", sans-serif;
+        color: #10233f;
+        background:
+          radial-gradient(920px 430px at 6% -8%, rgba(15, 118, 110, 0.14), transparent 68%),
+          radial-gradient(860px 470px at 100% 0%, rgba(14, 165, 233, 0.14), transparent 70%),
+          linear-gradient(180deg, #f4f8fc, #edf4fb);
+        border: 1px solid #d6e2ee;
+        border-radius: 18px;
+        padding: 16px;
+      }
 
-.ti-shell{font-family:"Manrope",sans-serif;background:radial-gradient(1200px 600px at 10% -10%, #e3f2ff 0%, #f6f7fb 55%, #f6f7fb 100%);color:#0f172a;padding:20px;border-radius:18px}
-.ti-header{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:12px}
-.ti-eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#64748b;margin-bottom:6px}
-.ti-h1{font-family:"Space Grotesk",sans-serif;font-size:24px;font-weight:700}
-.ti-run-card{background:#fff;border-radius:16px;padding:14px;box-shadow:0 10px 30px rgba(15,23,42,.08);display:grid;gap:12px}
-.ti-run-top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
-.ti-run-client{font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.06em}
-.ti-run-title{font-size:16px;font-weight:600}
-.ti-run-meta{font-size:12px;color:#64748b;display:grid;gap:4px;margin-top:6px}
-.ti-run-status{font-size:11px;padding:6px 10px;border-radius:999px;background:#e0f2fe;color:#075985;font-weight:600;white-space:nowrap}
-.ti-run-actions{display:flex;gap:8px;flex-wrap:wrap}
-.ti-btn{border:none;padding:8px 12px;border-radius:10px;font-size:13px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
-.ti-btn--ghost{background:#f1f5f9;color:#0f172a}
-.ti-btn--primary{background:#0ea5e9;color:#fff}
-.ti-btn--xs{padding:6px 10px;font-size:12px}
-.ti-btn.is-disabled{opacity:.4;pointer-events:none}
-.ti-status-box{margin:10px 0;font-size:13px;color:#475569}
-.ti-steps{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:12px 0;font-size:12px}
-.ti-step{background:#f1f5f9;padding:6px 8px;border-radius:8px;text-align:center}
-.ti-step.is-done{background:#dcfce7;color:#166534;font-weight:600}
-.ti-step.is-active{background:#e0f2fe;color:#075985;font-weight:600}
-.ti-flow{border-top:1px dashed #e2e8f0;padding-top:12px}
-.ti-flow-section{display:grid;gap:10px}
-.ti-flow-title{font-weight:700}
-.ti-flow-info{display:grid;gap:6px}
-.ti-step-actions{display:flex;gap:8px;flex-wrap:wrap}
-.ti-block{margin-top:12px;display:grid;gap:8px}
-.ti-checklist{display:grid;gap:6px}
-.ti-check{display:flex;gap:8px;align-items:center;font-size:14px}
-.ti-label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#64748b;margin-bottom:6px}
-.ti-value{font-size:14px}
-.ti-link{color:#0ea5e9;text-decoration:none;font-weight:600}
-.ti-textarea{width:100%;border:1px solid #cbd5f5;border-radius:12px;padding:10px;font-size:14px}
-.ti-file{width:100%}
-.ti-previews{display:grid;gap:10px}
-.ti-preview{display:grid;gap:6px}
-.ti-preview img{width:100%;border-radius:12px;object-fit:cover}
-.ti-preview-meta{font-size:11px;color:#64748b}
-.ti-preview-remove{border:none;background:#fee2e2;color:#991b1b;padding:6px 10px;border-radius:8px;font-size:12px;justify-self:start}
-.ti-signature{border:1px solid #cbd5f5;border-radius:12px;padding:10px;display:grid;gap:8px}
-.ti-signature-canvas{width:100%;height:160px;background:#fff;border-radius:10px}
-.ti-products{display:grid;gap:8px}
-.ti-products-empty{font-size:12px;color:#64748b}
-.ti-product-row{display:grid;grid-template-columns:1.6fr .6fr .8fr .7fr 1fr 1.2fr auto;gap:6px;align-items:center}
-.ti-input{border:1px solid #cbd5f5;border-radius:10px;padding:8px;font-size:13px}
-.ti-input--xs{width:100%}
-.ti-product-total{font-weight:600;font-size:13px}
-.ti-check-inline{display:flex;align-items:center;gap:6px;font-size:12px}
-.ti-products-total{font-size:12px;color:#475569;margin-top:4px}
-.ti-photo-actions{display:flex;gap:8px;flex-wrap:wrap}
-.ti-toasts{position:sticky;bottom:16px;display:grid;gap:8px;margin-top:16px}
-.ti-toast{background:#0f172a;color:#fff;padding:10px 14px;border-radius:12px;font-size:13px;box-shadow:0 10px 30px rgba(15,23,42,.2)}
-.ti-toast--success{background:#16a34a}
-.ti-toast--warn{background:#f59e0b}
-.ti-toast--error{background:#dc2626}
-.ti-sheet{position:fixed;inset:0;z-index:9999;display:flex;align-items:flex-end;justify-content:center}
-.ti-sheet[hidden]{display:none}
-.ti-sheet-backdrop{position:absolute;inset:0;background:rgba(15,23,42,.45)}
-.ti-sheet-panel{position:relative;width:min(480px,92vw);background:#fff;border-radius:16px;padding:16px;margin:0 12px 12px;display:grid;gap:10px;box-shadow:0 20px 60px rgba(15,23,42,.2)}
-.ti-sheet-title{font-weight:700;font-size:14px;color:#0f172a}
-.ti-sheet-btn{width:100%;text-align:left;padding:12px 14px;border-radius:12px;border:1px solid #e2e8f0;background:#f8fafc;font-size:14px;cursor:pointer}
-.ti-sheet-cancel{background:#0f172a;color:#fff;border-color:#0f172a;text-align:center}
-.ti-flow-section{display:none;}
-.ti-flow-section.is-active{display:grid;}
+      .tr-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 10px;
+        margin-bottom: 12px;
+      }
 
-body.ti-sheet-open{overflow:hidden}
-@media (max-width:820px){.ti-product-row{grid-template-columns:1fr 1fr}.ti-product-total,.ti-check-inline,.ti-btn--xs{grid-column:span 2}}
-@media (min-width:768px){.ti-steps{grid-template-columns:repeat(6,1fr)}}
+      .tr-eyebrow {
+        color: #55708c;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .08em;
+        margin-bottom: 6px;
+      }
+
+      .tr-h1 {
+        margin: 0;
+        color: #143a61;
+        font-size: 25px;
+        line-height: 1.1;
+        font-weight: 800;
+      }
+
+      .tr-card {
+        border: 1px solid #d6e2ee;
+        border-radius: 14px;
+        background: #fff;
+        padding: 12px;
+      }
+
+      .tr-main-card {
+        box-shadow: 0 10px 24px rgba(12, 37, 66, 0.08);
+      }
+
+      .tr-main-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .tr-ref {
+        color: #0c4a6e;
+        font-size: 12px;
+        font-weight: 800;
+        margin-bottom: 4px;
+      }
+
+      .tr-client { color: #143a61; font-size: 18px; font-weight: 800; }
+      .tr-subject { color: #1e3a5f; font-size: 14px; margin-top: 4px; }
+
+      .tr-meta {
+        margin-top: 7px;
+        color: #5b7490;
+        font-size: 12px;
+        display: grid;
+        gap: 3px;
+      }
+
+      .tr-status {
+        border-radius: 999px;
+        padding: 6px 10px;
+        font-size: 11px;
+        font-weight: 800;
+        white-space: nowrap;
+        align-self: flex-start;
+      }
+
+      .tr-status.is-pending { background: #eef2ff; color: #3730a3; }
+      .tr-status.is-progress { background: #fff7d6; color: #92400e; }
+      .tr-status.is-confirmed { background: #e0f2fe; color: #075985; }
+      .tr-status.is-done { background: #dcfce7; color: #166534; }
+      .tr-status.is-canceled { background: #fee2e2; color: #991b1b; }
+      .tr-status.is-unknown { background: #e2e8f0; color: #1f2937; }
+
+      .tr-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .tr-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        text-decoration: none;
+        border: 1px solid #cfdeeb;
+        border-radius: 10px;
+        padding: 9px 12px;
+        font-size: 12px;
+        font-weight: 800;
+        cursor: pointer;
+        background: #fff;
+        color: #123b60;
+      }
+
+      .tr-btn--primary {
+        border-color: #0ea5e9;
+        background: linear-gradient(180deg, #0ea5e9, #0284c7);
+        color: #fff;
+      }
+
+      .tr-btn--ghost {
+        background: #f8fbff;
+      }
+
+      .tr-btn--xs {
+        padding: 6px 9px;
+        font-size: 11px;
+      }
+
+      .tr-btn.is-disabled {
+        opacity: .45;
+        pointer-events: none;
+      }
+
+      .tr-requirements {
+        margin-top: 10px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .tr-chip {
+        border: 1px solid #c9dbe9;
+        border-radius: 999px;
+        padding: 5px 10px;
+        font-size: 12px;
+        font-weight: 700;
+        color: #245279;
+        background: #fff;
+      }
+
+      .tr-status-box {
+        display: none;
+        margin-top: 10px;
+        border: 1px solid #dbeafe;
+        background: #eff6ff;
+        color: #1e3a8a;
+        border-radius: 12px;
+        padding: 10px 12px;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .tr-status-box.is-info,
+      .tr-status-box.is-success,
+      .tr-status-box.is-error {
+        display: block;
+      }
+
+      .tr-status-box.is-success {
+        border-color: #86efac;
+        background: #f0fdf4;
+        color: #166534;
+      }
+
+      .tr-status-box.is-error {
+        border-color: #fecaca;
+        background: #fff1f2;
+        color: #b91c1c;
+      }
+
+      .tr-progress {
+        margin-top: 12px;
+        border: 1px solid #d6e2ee;
+        border-radius: 14px;
+        background: linear-gradient(180deg, #fff, #f7fbff);
+        box-shadow: 0 10px 24px rgba(12, 37, 66, 0.08);
+        padding: 12px;
+      }
+
+      .tr-progress-top {
+        margin-bottom: 8px;
+      }
+
+      .tr-progress-label {
+        color: #4f6b86;
+        font-size: 12px;
+        font-weight: 700;
+        margin-bottom: 6px;
+      }
+
+      .tr-progress-bar-wrap {
+        width: 100%;
+        height: 7px;
+        border-radius: 999px;
+        background: #dbe7f3;
+        overflow: hidden;
+      }
+
+      .tr-progress-bar {
+        height: 100%;
+        width: 0;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #0ea5e9, #0f766e);
+      }
+
+      .tr-steps {
+        display: grid;
+        gap: 6px;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .tr-step {
+        border: 1px solid #cfdeeb;
+        border-radius: 10px;
+        background: #fff;
+        color: #2e5378;
+        font-size: 11px;
+        font-weight: 700;
+        padding: 7px 8px;
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .tr-step.is-done {
+        border-color: #86efac;
+        background: #f0fdf4;
+        color: #166534;
+      }
+
+      .tr-step.is-active {
+        border-color: #38bdf8;
+        background: #f0f9ff;
+        color: #075985;
+      }
+
+      .tr-content {
+        margin-top: 12px;
+      }
+
+      .tr-section {
+        border: 1px solid #d6e2ee;
+        border-radius: 14px;
+        background: #fff;
+        padding: 14px;
+        box-shadow: 0 10px 24px rgba(12, 37, 66, 0.08);
+        display: grid;
+        gap: 10px;
+      }
+
+      .tr-title {
+        margin: 0;
+        color: #143a61;
+        font-size: 18px;
+        font-weight: 800;
+      }
+
+      .tr-hint {
+        margin: 0;
+        color: #5a7490;
+        font-size: 13px;
+      }
+
+      .tr-label {
+        color: #4f6b86;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .tr-value {
+        color: #10233f;
+        font-size: 14px;
+        font-weight: 800;
+        margin-top: 3px;
+      }
+
+      .tr-textarea,
+      .tr-input,
+      .tr-input-file {
+        width: 100%;
+        border: 1px solid #cfdeeb;
+        border-radius: 10px;
+        padding: 10px 11px;
+        background: #fff;
+        color: #10233f;
+        outline: none;
+      }
+
+      .tr-textarea {
+        min-height: 130px;
+        resize: vertical;
+      }
+
+      .tr-textarea:focus,
+      .tr-input:focus,
+      .tr-input-file:focus {
+        border-color: #0ea5e9;
+        box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.16);
+      }
+
+      .tr-inline-note {
+        color: #6d86a0;
+        font-size: 12px;
+      }
+
+      .tr-photo-actions,
+      .tr-products-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .tr-previews {
+        display: grid;
+        gap: 10px;
+      }
+
+      .tr-preview {
+        border: 1px solid #d6e2ee;
+        border-radius: 10px;
+        background: #fbfdff;
+        padding: 8px;
+        display: grid;
+        gap: 7px;
+      }
+
+      .tr-preview img {
+        width: 100%;
+        max-height: 250px;
+        object-fit: cover;
+        border-radius: 8px;
+        border: 1px solid #d6e2ee;
+        cursor: zoom-in;
+      }
+
+      .tr-preview-meta {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        color: #5a7490;
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .tr-products {
+        display: grid;
+        gap: 8px;
+      }
+
+      .tr-product-row {
+        border: 1px solid #d6e2ee;
+        border-radius: 10px;
+        background: #fbfdff;
+        padding: 8px;
+        display: grid;
+        grid-template-columns: 1.5fr .6fr .7fr .7fr 1fr 1.1fr auto;
+        gap: 6px;
+        align-items: center;
+      }
+
+      .tr-input--small {
+        text-align: right;
+      }
+
+      .tr-product-total {
+        color: #143a61;
+        font-size: 12px;
+        font-weight: 800;
+        text-align: right;
+      }
+
+      .tr-check-inline {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        color: #294f74;
+        font-weight: 700;
+      }
+
+      .tr-products-summary {
+        color: #294f74;
+        font-size: 12px;
+        font-weight: 700;
+        display: grid;
+        gap: 4px;
+      }
+
+      .tr-signature-wrap {
+        border: 1px solid #d6e2ee;
+        border-radius: 10px;
+        background: #fbfdff;
+        padding: 10px;
+      }
+
+      .tr-signature-canvas {
+        width: 100%;
+        height: 180px;
+        border: 1px solid #cfdeeb;
+        border-radius: 10px;
+        background: #fff;
+      }
+
+      .tr-signature-actions {
+        margin-top: 8px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .tr-checklist {
+        display: grid;
+        gap: 8px;
+      }
+
+      .tr-check-item {
+        display: flex;
+        gap: 8px;
+        align-items: flex-start;
+        color: #294f74;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .tr-summary {
+        display: grid;
+        gap: 6px;
+      }
+
+      .tr-summary-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        font-size: 13px;
+      }
+
+      .tr-warning {
+        border-style: dashed;
+        border-color: #f59e0b;
+        background: #fffbeb;
+        color: #92400e;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .tr-empty-small {
+        border: 1px dashed #d6e2ee;
+        border-radius: 10px;
+        background: #fbfdff;
+        color: #6d86a0;
+        font-size: 12px;
+        font-weight: 700;
+        padding: 10px;
+      }
+
+      .tr-footer {
+        margin-top: 12px;
+        border: 1px solid #d6e2ee;
+        border-radius: 14px;
+        background: #fff;
+        box-shadow: 0 10px 24px rgba(12, 37, 66, 0.08);
+        padding: 12px;
+      }
+
+      .tr-footer-summary {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        color: #4f6b86;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .tr-footer-actions {
+        margin-top: 10px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: flex-end;
+      }
+
+      .tr-toasts {
+        position: fixed;
+        right: 14px;
+        bottom: 14px;
+        z-index: 100001;
+        display: grid;
+        gap: 8px;
+      }
+
+      .tr-toast {
+        border-radius: 10px;
+        padding: 10px 12px;
+        color: #fff;
+        font-size: 13px;
+        font-weight: 700;
+        box-shadow: 0 12px 30px rgba(12, 37, 66, 0.30);
+      }
+
+      .tr-toast--success { background: #16a34a; }
+      .tr-toast--warning { background: #d97706; }
+      .tr-toast--error { background: #dc2626; }
+
+      .tr-sheet {
+        position: fixed;
+        inset: 0;
+        z-index: 100005;
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+      }
+
+      .tr-sheet[hidden] { display: none; }
+
+      .tr-sheet-backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(10, 31, 53, 0.42);
+      }
+
+      .tr-sheet-panel {
+        position: relative;
+        width: min(460px, calc(100vw - 20px));
+        border: 1px solid #d6e2ee;
+        border-radius: 14px;
+        background: linear-gradient(180deg, #fff, #f7fbff);
+        padding: 12px;
+        margin: 0 0 10px;
+        display: grid;
+        gap: 8px;
+        box-shadow: 0 16px 44px rgba(12, 37, 66, 0.24);
+      }
+
+      .tr-sheet-title {
+        color: #143a61;
+        font-size: 14px;
+        font-weight: 800;
+      }
+
+      .tr-sheet-btn {
+        width: 100%;
+        border: 1px solid #cfdeeb;
+        border-radius: 10px;
+        background: #fff;
+        padding: 10px;
+        text-align: left;
+        color: #10233f;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .tr-sheet-cancel {
+        background: #0f172a;
+        border-color: #0f172a;
+        color: #fff;
+        text-align: center;
+      }
+
+      body.tr-sheet-open { overflow: hidden; }
+
+      @media (max-width: 1080px) {
+        .tr-steps {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .tr-product-row {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .tr-product-total,
+        .tr-check-inline,
+        .tr-product-row .tr-btn {
+          grid-column: 1 / -1;
+          justify-self: start;
+          text-align: left;
+        }
+      }
+
+      @media (max-width: 760px) {
+        .tr-header {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+
+        .tr-main-top {
+          flex-direction: column;
+        }
+
+        .tr-steps {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .tr-footer-actions {
+          justify-content: stretch;
+        }
+
+        .tr-footer-actions .tr-btn {
+          flex: 1 1 auto;
+        }
+      }
     `;
+
     document.head.appendChild(style);
   }
-
-  function findRoot() {
-    return document.querySelector("[data-tech-interventions]") ||
-      document.querySelector("#technician-interventions-root") ||
-      document.querySelector(".technician-interventions");
-  }
-
-  function hasField(row, key) {
-    return row && Object.prototype.hasOwnProperty.call(row, key);
-  }
-  
-  function findExistingField(row, keys) {
-    for (const k of keys) {
-      if (hasField(row, k)) return k;
-    }
-    return "";
-  }
-  
-  function isTableMissing(error) {
-    const code = String(error?.code || "");
-    const msg = String(error?.message || "").toLowerCase();
-    return code === "PGRST205" || msg.includes("could not find the table") || msg.includes("not found");
-  }
-
 })();
