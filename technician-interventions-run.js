@@ -1,7 +1,6 @@
 (() => {
-  if (window.__techInterventionRunLoaded) return;
-  window.__techInterventionRunLoaded = true;
-  window.__techInterventionsLoaded = true;
+  if (window.__techInterventionRunLoaded || window.__techInterventionRunBooting) return;
+  window.__techInterventionRunBooting = true;
 
   const GLOBAL_CFG = window.__MBL_CFG__ || {};
 
@@ -129,21 +128,6 @@
     return client;
   }
 
-  const root = findRoot();
-  if (!root) {
-    console.error("[TECH RUN] Root introuvable.");
-    return;
-  }
-
-  const supabase = resolveSupabaseClient();
-  if (!supabase) {
-    root.textContent = "Supabase non charge.";
-    return;
-  }
-
-  applyConfigOverrides(root);
-  injectStyles();
-
   const state = {
     userId: "",
     intervention: null,
@@ -182,10 +166,54 @@
   };
 
   let resolvedStorageBucket = "";
+  let root = null;
+  let supabase = null;
+  let els = null;
 
-  const els = renderShell(root);
+  startWithRetry();
 
-  init();
+  function startWithRetry() {
+    const MAX_ATTEMPTS = 80;
+    const RETRY_MS = 150;
+    let attempts = 0;
+
+    const tryStart = () => {
+      attempts += 1;
+
+      const rootCandidate = findRoot();
+      const supabaseCandidate = resolveSupabaseClient();
+
+      if (!rootCandidate || !supabaseCandidate) {
+        if (attempts < MAX_ATTEMPTS) {
+          setTimeout(tryStart, RETRY_MS);
+          return;
+        }
+
+        window.__techInterventionRunBooting = false;
+
+        if (!rootCandidate) {
+          console.error("[TECH RUN] Root introuvable apres attente.");
+          return;
+        }
+
+        rootCandidate.textContent = "Supabase non charge.";
+        return;
+      }
+
+      root = rootCandidate;
+      supabase = supabaseCandidate;
+      window.__techInterventionRunLoaded = true;
+      window.__techInterventionRunBooting = false;
+      window.__techInterventionsLoaded = true;
+
+      applyConfigOverrides(root);
+      injectStyles();
+      els = renderShell(root);
+      init();
+    };
+
+    tryStart();
+  }
 
   async function init() {
     wireStaticEvents();
