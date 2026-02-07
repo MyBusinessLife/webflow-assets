@@ -732,24 +732,28 @@ window.Webflow.push(async function () {
           </table>
         </section>
 
-        <section class="dv-totals">
-          <div class="dv-totals-box">
-            ${discountLineHtml}
-            <div class="dv-total-line"><span>Total HT</span><strong>${formatMoney(totalHtCents, CONFIG.CURRENCY)}</strong></div>
-            ${vatLinesHtml}
-            <div class="dv-total-line dv-total-line--grand"><span>Total TTC</span><strong>${formatMoney(state.draft.total_cents, CONFIG.CURRENCY)}</strong></div>
-          </div>
-        </section>
+        <div class="dv-paper-bottom">
+          <section class="dv-bottom-grid">
+            <section class="dv-bank">
+              ${bankHtml}
+              ${legalNoteHtml}
+              ${extraHtml}
+            </section>
 
-        <section class="dv-bank">
-          ${bankHtml}
-          ${legalNoteHtml}
-          ${extraHtml}
-        </section>
+            <section class="dv-totals">
+              <div class="dv-totals-box">
+                ${discountLineHtml}
+                <div class="dv-total-line"><span>Total HT</span><strong>${formatMoney(totalHtCents, CONFIG.CURRENCY)}</strong></div>
+                ${vatLinesHtml}
+                <div class="dv-total-line dv-total-line--grand"><span>Total TTC</span><strong>${formatMoney(state.draft.total_cents, CONFIG.CURRENCY)}</strong></div>
+              </div>
+            </section>
+          </section>
 
-        <footer class="dv-footer-legal">
-          ${footerParts.map((p) => `<div>${escapeHTML(p)}</div>`).join("")}
-        </footer>
+          <footer class="dv-footer-legal">
+            ${footerParts.map((p) => `<div>${escapeHTML(p)}</div>`).join("")}
+          </footer>
+        </div>
       </article>
     `;
   }
@@ -938,9 +942,10 @@ window.Webflow.push(async function () {
       fillColor: (rowIndex) => (rowIndex === 0 ? accent : null),
     };
 
-    const dd = {
-      pageSize: "A4",
-      pageMargins: [42, 42, 42, 86],
+	    const dd = {
+	      pageSize: "A4",
+	      // Keep a generous bottom margin so totals/notes can live in the footer area.
+	      pageMargins: [42, 42, 42, 200],
       info: {
         title: `Facture ${reference}`,
         author: COMPANY.name,
@@ -964,7 +969,7 @@ window.Webflow.push(async function () {
         totalValMuted: { fontSize: 9, color: muted, bold: true },
         footer: { fontSize: 8, color: accent },
       },
-      content: [
+	      content: [
         {
           columns: [
             {
@@ -987,34 +992,38 @@ window.Webflow.push(async function () {
           columnGap: 18,
           margin: [0, 0, 0, 12],
         },
-        {
-          table: {
-            headerRows: 1,
-            widths: ["*", 48, 54, 76, 42, 86],
-            body: tableBody,
-          },
-          layout: tableLayout,
-          margin: [0, 0, 0, 10],
-        },
-        {
-          columns: [
-            { width: "*", stack: bankStack.length ? bankStack : [] },
-            {
-              width: 220,
-              table: { widths: ["*", "auto"], body: totalsBody },
-              layout: "noBorders",
-            },
-          ],
-          columnGap: 18,
-          margin: [0, 8, 0, 0],
-        },
-      ],
-      footer: (currentPage, pageCount) => {
-        const stack = footerLines.map((t) => ({ text: t, style: "footer", alignment: "center" }));
-        stack.push({ text: `Page ${currentPage}/${pageCount}`, style: "footer", alignment: "center", margin: [0, 4, 0, 0] });
-        return { margin: [42, 0, 42, 20], stack };
-      },
-    };
+	        {
+	          table: {
+	            headerRows: 1,
+	            widths: ["*", 48, 54, 76, 42, 86],
+	            body: tableBody,
+	          },
+	          layout: tableLayout,
+	          margin: [0, 0, 0, 10],
+	        },
+	      ],
+	      footer: (currentPage, pageCount) => {
+	        const stack = [];
+	        if (currentPage === pageCount) {
+	          stack.push({
+	            columns: [
+	              { width: "*", stack: bankStack.length ? bankStack : [] },
+	              {
+	                width: 220,
+	                table: { widths: ["*", "auto"], body: totalsBody },
+	                layout: "noBorders",
+	              },
+	            ],
+	            columnGap: 18,
+	            margin: [0, 0, 0, 10],
+	          });
+	        }
+
+	        footerLines.forEach((t) => stack.push({ text: t, style: "footer", alignment: "center" }));
+	        stack.push({ text: `Page ${currentPage}/${pageCount}`, style: "footer", alignment: "center", margin: [0, 4, 0, 0] });
+	        return { margin: [42, 0, 42, 20], stack };
+	      },
+	    };
 
     return dd;
   }
@@ -2443,10 +2452,21 @@ window.Webflow.push(async function () {
       .dv-preview-table--legal td {
         border-bottom-color: #e5e7eb;
       }
+      .dv-paper-bottom {
+        margin-top: auto;
+        display: grid;
+        gap: 12px;
+      }
+      .dv-bottom-grid {
+        display: grid;
+        grid-template-columns: 1fr min(320px, 100%);
+        gap: 18px;
+        align-items: start;
+      }
       .dv-totals {
         display: flex;
         justify-content: flex-end;
-        margin-top: 4px;
+        margin-top: 0;
       }
       .dv-totals-box {
         width: min(320px, 100%);
@@ -2493,7 +2513,7 @@ window.Webflow.push(async function () {
         color: #6b7280;
       }
       .dv-footer-legal {
-        margin-top: auto;
+        margin-top: 0;
         padding-top: 12px;
         text-align: center;
         font-size: 9px;
@@ -2815,10 +2835,11 @@ window.Webflow.push(async function () {
 	        .dv-line-total { grid-column: span 2; }
 	        .dv-paper { padding: 14px; min-height: 0; }
 	        .dv-paper-top { flex-direction: column; }
-	        .dv-paper-top--plain { grid-template-columns: 1fr; }
-	        .dv-buyer { text-align: left; }
-	        .dv-doc-meta { flex-direction: column; }
-	        .dv-doc-meta-right { text-align: left; }
+        .dv-paper-top--plain { grid-template-columns: 1fr; }
+        .dv-buyer { text-align: left; }
+        .dv-doc-meta { flex-direction: column; }
+        .dv-doc-meta-right { text-align: left; }
+        .dv-bottom-grid { grid-template-columns: 1fr; }
         .dv-doc { min-width: 0; width: 100%; }
         .dv-doc-pill { justify-self: start; }
       }

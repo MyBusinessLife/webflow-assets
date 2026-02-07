@@ -931,8 +931,8 @@ window.Webflow.push(async function () {
         background: #fff;
       }
       .dl-chip.is-active {
-        background: #0f172a;
-        border-color: #0f172a;
+        background: var(--dl-primary);
+        border-color: var(--dl-primary);
         color: #fff;
       }
       .dl-search {
