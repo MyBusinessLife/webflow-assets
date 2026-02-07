@@ -3,12 +3,14 @@
   window.__techInterventionRunLoaded = true;
   window.__techInterventionsLoaded = true;
 
+  const GLOBAL_CFG = window.__MBL_CFG__ || {};
+
   const CONFIG = {
     SUPABASE_URL: "https://jrjdhdechcdlygpgaoes.supabase.co",
     SUPABASE_ANON_KEY:
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJqcmpkaGRlY2hjZGx5Z3BnYW9lcyIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzY3Nzc3MzM0LCJleHAiOjIwODMzNTMzMzR9.E13XKKpIjB1auVtTmgBgV7jxmvS-EOv52t0mT1neKXE",
 
-    STORAGE_BUCKET: "interventions-files",
+    STORAGE_BUCKET: GLOBAL_CFG.BUCKET || "interventions-files",
     REPORTS_TABLE: "intervention_reports",
     EXPENSES_TABLE: "intervention_expenses",
     PRODUCTS_TABLE: "products",
@@ -178,6 +180,8 @@
     catalogById: new Map(),
     saving: false,
   };
+
+  let resolvedStorageBucket = "";
 
   const els = renderShell(root);
 
@@ -440,12 +444,19 @@
   }
 
   function normalizeProductDraftRow(row) {
+    const productId = row?.productId ? String(row.productId) : "";
+    const catalog = productId ? state.catalogById.get(productId) : null;
+
     const qty = Math.max(1, parseInt(row?.qty || "1", 10) || 1);
-    const unitCents = Math.max(0, parseInt(row?.unitCents || "0", 10) || 0);
+    const parsedUnit = parseInt(row?.unitCents || "0", 10);
+    let unitCents = Math.max(0, Number.isFinite(parsedUnit) ? parsedUnit : 0);
+    if (unitCents === 0 && Number.isFinite(catalog?.priceCents)) {
+      unitCents = Math.max(0, catalog.priceCents);
+    }
 
     return {
-      productId: row?.productId ? String(row.productId) : "",
-      name: String(row?.name || "").trim(),
+      productId,
+      name: String(row?.name || catalog?.name || "").trim(),
       qty,
       unitCents,
       paidByTech: Boolean(row?.paidByTech),
@@ -819,9 +830,13 @@
 
       const unitEuro = centsToEuroInput(row.unitCents);
       const totalCents = computeLineTotalCents(row);
+      const selectedCatalogId = row.productId && state.catalogById.has(String(row.productId)) ? String(row.productId) : "";
 
       line.innerHTML = `
-        <input class="tr-input" data-field="name" data-index="${idx}" list="tr-products-catalog" placeholder="Produit / piece" value="${escapeHTML(row.name)}" />
+        <select class="tr-input" data-field="catalog" data-index="${idx}">
+          ${buildCatalogOptionsHtml(selectedCatalogId)}
+        </select>
+        <input class="tr-input" data-field="name" data-index="${idx}" list="tr-products-catalog" placeholder="Nom affiche au client" value="${escapeHTML(row.name)}" />
         <input class="tr-input tr-input--small" data-field="qty" data-index="${idx}" type="number" min="1" step="1" value="${row.qty}" />
         <input class="tr-input tr-input--small" data-field="unit" data-index="${idx}" type="text" placeholder="Prix EUR" value="${escapeHTML(unitEuro)}" />
         <div class="tr-product-total">${escapeHTML(formatCents(totalCents))}</div>
@@ -836,10 +851,15 @@
       line.querySelectorAll("[data-field]").forEach((input) => {
         const field = input.dataset.field;
         const index = Number(input.dataset.index);
+        const eventName = field === "catalog" || field === "paidByTech" ? "change" : "input";
 
-        input.addEventListener("input", () => {
+        input.addEventListener(eventName, () => {
           onProductFieldChange(index, field, input);
-          renderProductRows();
+          if (field !== "note") {
+            renderProductRows();
+          } else {
+            updateProductsSummary();
+          }
           refreshSummaryFooter();
         });
 
@@ -865,9 +885,39 @@
     updateProductsSummary();
   }
 
+  function buildCatalogOptionsHtml(selectedId) {
+    const selected = String(selectedId || "");
+    const options = ['<option value="">Produit libre</option>'];
+
+    state.catalog.forEach((p) => {
+      const id = String(p?.id || "").trim();
+      const name = String(p?.name || "").trim();
+      if (!id || !name) return;
+
+      options.push(
+        `<option value="${escapeHTML(id)}" ${id === selected ? "selected" : ""}>${escapeHTML(name)}</option>`
+      );
+    });
+
+    return options.join("");
+  }
+
   function onProductFieldChange(index, field, el) {
     const row = state.draft.products[index];
     if (!row) return;
+
+    if (field === "catalog") {
+      const productId = String(el.value || "").trim();
+      const matched = productId ? state.catalogById.get(productId) : null;
+      row.productId = productId;
+
+      if (matched) {
+        row.name = matched.name || row.name;
+        if (Number.isFinite(matched.priceCents)) {
+          row.unitCents = Math.max(0, matched.priceCents);
+        }
+      }
+    }
 
     if (field === "name") {
       row.name = String(el.value || "").trim();
@@ -1380,11 +1430,15 @@
       const ext = getFileExtension(file.name) || "jpg";
       const path = `interventions/${interventionId}/photos/${Date.now()}_${randomId()}.${ext}`;
 
-      const up = await supabase.storage
-        .from(CONFIG.STORAGE_BUCKET)
-        .upload(path, file, { cacheControl: "3600", upsert: false, contentType: file.type || "image/jpeg" });
-
-      if (up.error) throw new Error(`Upload photo impossible (${file.name}): ${up.error.message}`);
+      try {
+        await uploadWithBucketFallback(path, file, {
+          cacheControl: "3600",
+          upsert: false,
+          contentType: file.type || "image/jpeg",
+        });
+      } catch (error) {
+        throw new Error(`Upload photo impossible (${file.name}): ${error?.message || "erreur inconnue"}`);
+      }
 
       uploads.push({
         type: "photo",
@@ -1402,11 +1456,15 @@
     if (!blob) return null;
 
     const path = `interventions/${interventionId}/signature/${Date.now()}_${randomId()}.png`;
-    const up = await supabase.storage
-      .from(CONFIG.STORAGE_BUCKET)
-      .upload(path, blob, { cacheControl: "3600", upsert: true, contentType: "image/png" });
-
-    if (up.error) throw new Error(`Upload signature impossible: ${up.error.message}`);
+    try {
+      await uploadWithBucketFallback(path, blob, {
+        cacheControl: "3600",
+        upsert: true,
+        contentType: "image/png",
+      });
+    } catch (error) {
+      throw new Error(`Upload signature impossible: ${error?.message || "erreur inconnue"}`);
+    }
 
     return { type: "signature", path };
   }
@@ -1416,12 +1474,15 @@
 
     const ext = getFileExtension(file.name) || "pdf";
     const path = `interventions/${interventionId}/pv/signed_${Date.now()}_${randomId()}.${ext}`;
-
-    const up = await supabase.storage
-      .from(CONFIG.STORAGE_BUCKET)
-      .upload(path, file, { cacheControl: "3600", upsert: true, contentType: file.type || "application/pdf" });
-
-    if (up.error) throw new Error(`Upload PV signe impossible: ${up.error.message}`);
+    try {
+      await uploadWithBucketFallback(path, file, {
+        cacheControl: "3600",
+        upsert: true,
+        contentType: file.type || "application/pdf",
+      });
+    } catch (error) {
+      throw new Error(`Upload PV signe impossible: ${error?.message || "erreur inconnue"}`);
+    }
 
     return { path, name: file.name, type: file.type || "application/octet-stream" };
   }
@@ -1631,16 +1692,14 @@
   async function openDraftPv() {
     if (!state.existing.pvDraftPath) return;
 
-    const signed = await supabase.storage
-      .from(CONFIG.STORAGE_BUCKET)
-      .createSignedUrl(state.existing.pvDraftPath, CONFIG.SIGNED_URL_TTL);
+    const signedUrl = await createSignedUrlWithBucketFallback(state.existing.pvDraftPath, CONFIG.SIGNED_URL_TTL);
 
-    if (signed.error || !signed.data?.signedUrl) {
-      showToast("warning", `Impossible d'ouvrir le PV vierge: ${signed.error?.message || "lien indisponible"}`);
+    if (!signedUrl) {
+      showToast("warning", `Impossible d'ouvrir le PV vierge: bucket ou fichier introuvable.`);
       return;
     }
 
-    window.open(signed.data.signedUrl, "_blank", "noopener");
+    window.open(signedUrl, "_blank", "noopener");
   }
 
   function openMapSheet(address) {
@@ -1671,6 +1730,77 @@
     if (provider === "apple") return `https://maps.apple.com/?daddr=${q}`;
     if (provider === "waze") return `https://waze.com/ul?q=${q}&navigate=yes`;
     return `https://www.google.com/maps/dir/?api=1&destination=${q}`;
+  }
+
+  function getBucketCandidates() {
+    const candidates = [
+      root?.dataset?.storageBucket || "",
+      window.__MBL_CFG__?.BUCKET || "",
+      resolvedStorageBucket || "",
+      CONFIG.STORAGE_BUCKET || "",
+      "interventions-files",
+      "intervention-files",
+      "interventions",
+      "intervention",
+    ]
+      .map((v) => String(v || "").trim())
+      .filter(Boolean);
+
+    return Array.from(new Set(candidates));
+  }
+
+  function isBucketNotFoundError(error) {
+    const msg = String(error?.message || "").toLowerCase();
+    return msg.includes("bucket not found") || msg.includes("bucket does not exist");
+  }
+
+  function isObjectNotFoundError(error) {
+    const msg = String(error?.message || "").toLowerCase();
+    return msg.includes("object not found") || msg.includes("resource was not found");
+  }
+
+  function setResolvedStorageBucket(bucket) {
+    if (!bucket) return;
+    resolvedStorageBucket = bucket;
+    CONFIG.STORAGE_BUCKET = bucket;
+  }
+
+  async function uploadWithBucketFallback(path, file, options) {
+    const candidates = getBucketCandidates();
+    let lastError = null;
+
+    for (const bucket of candidates) {
+      const res = await supabase.storage.from(bucket).upload(path, file, options);
+      if (!res.error) {
+        setResolvedStorageBucket(bucket);
+        return { bucket, path };
+      }
+
+      lastError = res.error;
+      if (isBucketNotFoundError(res.error)) continue;
+
+      throw new Error(`[${bucket}] ${res.error.message}`);
+    }
+
+    throw new Error(
+      `Bucket introuvable. Configure data-storage-bucket sur la page (testes: ${candidates.join(", ")}). ${lastError?.message || ""}`.trim()
+    );
+  }
+
+  async function createSignedUrlWithBucketFallback(path, ttl) {
+    const candidates = getBucketCandidates();
+
+    for (const bucket of candidates) {
+      const res = await supabase.storage.from(bucket).createSignedUrl(path, ttl);
+      if (!res.error && res.data?.signedUrl) {
+        setResolvedStorageBucket(bucket);
+        return res.data.signedUrl;
+      }
+
+      if (isBucketNotFoundError(res.error) || isObjectNotFoundError(res.error)) continue;
+    }
+
+    return "";
   }
 
   function buildSteps(requirements) {
@@ -1715,7 +1845,9 @@
       const hasAny = Boolean(row.name || row.note || row.qty || row.unitCents || row.productId || row.paidByTech);
       if (!hasAny) continue;
 
-      if (!String(row.name || "").trim()) {
+      const catalog = row.productId ? state.catalogById.get(String(row.productId)) : null;
+      const label = String(row.name || catalog?.name || "").trim();
+      if (!label) {
         return { ok: false, message: `Ligne ${i + 1}: nom manquant.` };
       }
 
@@ -2466,7 +2598,7 @@
 
       .tr-previews {
         display: grid;
-        gap: 10px;
+        gap: 8px;
       }
 
       .tr-preview {
@@ -2475,12 +2607,15 @@
         background: #fbfdff;
         padding: 8px;
         display: grid;
-        gap: 7px;
+        grid-template-columns: 86px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 8px;
       }
 
       .tr-preview img {
-        width: 100%;
-        max-height: 250px;
+        width: 86px;
+        height: 64px;
+        max-height: none;
         object-fit: cover;
         border-radius: 8px;
         border: 1px solid #d6e2ee;
@@ -2489,11 +2624,20 @@
 
       .tr-preview-meta {
         display: flex;
-        justify-content: space-between;
+        flex-direction: column;
+        align-items: flex-start;
         gap: 8px;
         color: #5a7490;
         font-size: 11px;
         font-weight: 700;
+        min-width: 0;
+      }
+
+      .tr-preview-meta span {
+        width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       .tr-products {
@@ -2507,7 +2651,7 @@
         background: #fbfdff;
         padding: 8px;
         display: grid;
-        grid-template-columns: 1.5fr .6fr .7fr .7fr 1fr 1.1fr auto;
+        grid-template-columns: 1.15fr 1.2fr .55fr .7fr .75fr .95fr 1.1fr auto;
         gap: 6px;
         align-items: center;
       }
@@ -2750,6 +2894,21 @@
 
         .tr-footer-actions .tr-btn {
           flex: 1 1 auto;
+        }
+
+        .tr-preview {
+          grid-template-columns: 74px minmax(0, 1fr);
+          align-items: start;
+        }
+
+        .tr-preview img {
+          width: 74px;
+          height: 56px;
+        }
+
+        .tr-preview .tr-btn {
+          grid-column: 1 / -1;
+          justify-self: end;
         }
       }
     `;
