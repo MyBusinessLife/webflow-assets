@@ -372,23 +372,6 @@
       let lastError = "";
 
       for (const tableName of candidates) {
-        const activeRes = await supabase
-          .from(tableName)
-          .select("id, name, price_cents, is_active")
-          .eq("is_active", true)
-          .order("name", { ascending: true })
-          .limit(1000);
-
-        if (!activeRes.error && (activeRes.data || []).length) {
-          state.catalogSource = tableName;
-          return activeRes.data || [];
-        }
-
-        if (activeRes.error) {
-          lastError = activeRes.error.message || lastError;
-          console.warn(`[TECH RUN] catalog(active:${tableName}) warning:`, activeRes.error.message);
-        }
-
         const relaxedRes = await supabase
           .from(tableName)
           .select("id, name, price_cents, is_active")
