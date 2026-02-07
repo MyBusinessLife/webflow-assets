@@ -330,9 +330,18 @@ window.Webflow.push(async function () {
     const validity = escapeHTML(formatDateFR(state.draft.valid_until) || "—");
     const notes = escapeHTML(state.draft.notes || "");
     const terms = escapeHTML(state.draft.terms || "");
+    const generatedAt = new Date();
+    const generatedAtFR = escapeHTML(formatDateTimeFR(generatedAt));
+    const generatedIso = escapeHTML(generatedAt.toISOString());
+    const electronicId = escapeHTML(buildElectronicDocumentId());
 
     els.preview.innerHTML = `
       <article class="dv-paper">
+        <div class="dv-edoc-banner">
+          <span>Format electronique</span>
+          <strong>Document numerique clair et structure pour la transition 2026</strong>
+        </div>
+
         <header class="dv-paper-top">
           <div class="dv-company">
             <div class="dv-preview-title">${escapeHTML(COMPANY.name)}</div>
@@ -348,6 +357,13 @@ window.Webflow.push(async function () {
             <div class="dv-doc-row"><span>Validite</span><strong>${validity}</strong></div>
           </div>
         </header>
+
+        <section class="dv-edoc-meta">
+          <div class="dv-edoc-item"><span>ID document</span><strong>${electronicId}</strong></div>
+          <div class="dv-edoc-item"><span>Emission</span><strong>Electronique</strong></div>
+          <div class="dv-edoc-item"><span>Horodatage</span><strong>${generatedAtFR}</strong></div>
+          <div class="dv-edoc-item"><span>Timestamp ISO</span><strong>${generatedIso}</strong></div>
+        </section>
 
         <section class="dv-paper-meta">
           <div class="dv-meta-card">
@@ -402,7 +418,7 @@ window.Webflow.push(async function () {
 
   async function generatePdfBlob() {
     await ensurePdfLibs();
-    const target = els.preview;
+    const target = els.preview.querySelector(".dv-paper") || els.preview;
     const canvas = await window.html2canvas(target, {
       scale: 2.2,
       backgroundColor: "#ffffff",
@@ -805,6 +821,33 @@ window.Webflow.push(async function () {
     return d.toLocaleDateString("fr-FR");
   }
 
+  function formatDateTimeFR(value) {
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toLocaleString("fr-FR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
+  function buildElectronicDocumentId() {
+    const ref = String(state.draft.reference || "").trim();
+    const seed = ref || `DV-${todayCompact()}`;
+    const suffix = randomId().slice(0, 8).toUpperCase();
+    return `${seed}-${suffix}`;
+  }
+
+  function todayCompact() {
+    const d = new Date();
+    const yy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yy}${mm}${dd}`;
+  }
+
   function isTableMissing(error) {
     const code = String(error?.code || "");
     const msg = String(error?.message || "").toLowerCase();
@@ -1166,6 +1209,26 @@ window.Webflow.push(async function () {
         display: grid;
         gap: 14px;
       }
+      .dv-edoc-banner {
+        display: grid;
+        gap: 2px;
+        padding: 10px 12px;
+        border-radius: 10px;
+        background: linear-gradient(135deg, #ecfeff 0%, #eef2ff 100%);
+        border: 1px solid #c7ddff;
+      }
+      .dv-edoc-banner span {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #0369a1;
+        font-weight: 700;
+      }
+      .dv-edoc-banner strong {
+        font-size: 12px;
+        color: #0f172a;
+        line-height: 1.4;
+      }
       .dv-paper-top {
         display: flex;
         justify-content: space-between;
@@ -1219,6 +1282,31 @@ window.Webflow.push(async function () {
         margin-top: 2px;
         padding-top: 8px;
         border-top: 1px dashed #c9daff;
+      }
+      .dv-edoc-meta {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      .dv-edoc-item {
+        background: #f8fbff;
+        border: 1px solid #deebff;
+        border-radius: 10px;
+        padding: 8px 10px;
+        display: grid;
+        gap: 3px;
+      }
+      .dv-edoc-item span {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #64748b;
+      }
+      .dv-edoc-item strong {
+        font-size: 12px;
+        color: #0f172a;
+        line-height: 1.35;
+        word-break: break-word;
       }
       .dv-paper-meta {
         display: grid;
@@ -1328,6 +1416,7 @@ window.Webflow.push(async function () {
       @media (max-width: 980px) {
         .dv-grid { grid-template-columns: 1fr; }
         .dv-preview-panel { position: static; }
+        .dv-edoc-meta { grid-template-columns: 1fr; }
         .dv-paper-meta { grid-template-columns: 1fr; }
       }
       @media (max-width: 720px) {
