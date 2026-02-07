@@ -356,12 +356,12 @@
 
   async function loadCatalog() {
     try {
+      const configuredProductsTable = normalizeRelationName(CONFIG.PRODUCTS_TABLE);
       const candidates = Array.from(
         new Set(
           [
-            String(CONFIG.PRODUCTS_TABLE || "").trim(),
+            configuredProductsTable,
             "products",
-            "public.products",
           ].filter(Boolean)
         )
       );
@@ -2251,17 +2251,26 @@
   function applyConfigOverrides(rootEl) {
     const d = rootEl.dataset || {};
     const pick = (value) => String(value || "").trim();
+    const pickRelation = (value) => normalizeRelationName(pick(value));
     if (d.storageBucket) CONFIG.STORAGE_BUCKET = pick(d.storageBucket);
-    if (d.reportsTable) CONFIG.REPORTS_TABLE = pick(d.reportsTable);
-    if (d.expensesTable) CONFIG.EXPENSES_TABLE = pick(d.expensesTable);
-    if (d.productsTable) CONFIG.PRODUCTS_TABLE = pick(d.productsTable);
-    if (d.filesTable) CONFIG.FILES_TABLE = pick(d.filesTable);
-    if (d.pvTable) CONFIG.PV_TABLE = pick(d.pvTable);
+    if (d.reportsTable) CONFIG.REPORTS_TABLE = pickRelation(d.reportsTable);
+    if (d.expensesTable) CONFIG.EXPENSES_TABLE = pickRelation(d.expensesTable);
+    if (d.productsTable) CONFIG.PRODUCTS_TABLE = pickRelation(d.productsTable);
+    if (d.filesTable) CONFIG.FILES_TABLE = pickRelation(d.filesTable);
+    if (d.pvTable) CONFIG.PV_TABLE = pickRelation(d.pvTable);
     if (d.requireChecklist) CONFIG.REQUIRE_CHECKLIST_DEFAULT = d.requireChecklist === "true";
     if (d.requirePhotos) CONFIG.REQUIRE_PHOTOS_DEFAULT = d.requirePhotos === "true";
     if (d.requireSignature) CONFIG.REQUIRE_SIGNATURE_DEFAULT = d.requireSignature === "true";
     if (d.listPath) CONFIG.LIST_PAGE_PATH = pick(d.listPath);
     if (d.currency) CONFIG.CURRENCY = pick(d.currency);
+  }
+
+  function normalizeRelationName(value) {
+    let relation = String(value || "").trim();
+    while (relation.toLowerCase().startsWith("public.")) {
+      relation = relation.slice("public.".length).trim();
+    }
+    return relation;
   }
 
   function renderShell(rootEl) {
