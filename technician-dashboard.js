@@ -707,10 +707,7 @@
     const totalCompensationCents = items.reduce((sum, i) => sum + toNumber(i._compensationCents), 0);
     const completionRate = total ? Math.round((done / total) * 100) : 0;
 
-    const active =
-      items.find((row) => row._status === "in_progress") ||
-      (state.activeId ? items.find((row) => String(row.id) === String(state.activeId)) : null) ||
-      null;
+    const active = items.find((row) => row._status === "in_progress") || null;
 
     const nextMission = items
       .filter((row) => isOpenStatus(row._status) && row._startTs)
@@ -976,7 +973,7 @@
     const isActiveCard = activeRow && String(activeRow.id) === String(row.id);
     const isLockedByOther = hasGlobalActive && !isActiveCard;
     const canStart = !isDone && !isCanceled && !isInProgress && !isLockedByOther;
-    const canContinue = isInProgress || isActiveCard;
+    const canContinue = isInProgress;
 
     const healthTone = toneByPercent(row._healthScore);
     const progress = clamp(toNumber(row._healthScore), 0, 100);
@@ -1239,12 +1236,10 @@
       return;
     }
 
-    if (!state.activeId) return;
-    const localActive = state.items.find((item) => String(item.id) === String(state.activeId));
-    if (localActive && isOpenStatus(localActive._status)) return;
-
-    state.activeId = "";
-    clearActiveInterventionId();
+    if (state.activeId) {
+      state.activeId = "";
+      clearActiveInterventionId();
+    }
   }
 
   function getPvUrl(row) {

@@ -236,11 +236,11 @@
 
   function renderList() {
     const activeItem = state.activeId
-      ? state.items.find((i) => String(i.id) === String(state.activeId))
+      ? state.items.find((i) => String(i.id) === String(state.activeId) && i._status === "in_progress")
       : null;
 
-    const hasActive = Boolean(activeItem && activeItem._status !== "done" && activeItem._status !== "canceled");
-    setControlsDisabled(hasActive);
+    const hasActive = Boolean(activeItem);
+    setControlsDisabled(false);
 
     if (hasActive) {
       showBanner("warning", `${STR.focusTitle} ${STR.focusBody}`);
@@ -248,7 +248,7 @@
       showBanner("", "");
     }
 
-    const visibleItems = hasActive ? [activeItem] : applyFilters(state.items);
+    const visibleItems = applyFilters(state.items);
     els.count.textContent = String(visibleItems.length);
 
     renderKpis(visibleItems, state.items);
@@ -261,7 +261,7 @@
 
     els.list.innerHTML = "";
     visibleItems.forEach((item) => {
-      els.list.appendChild(buildCard(item, hasActive));
+      els.list.appendChild(buildCard(item, hasActive, activeItem?.id || ""));
     });
 
     renderStickyBar(hasActive ? activeItem : null);
@@ -302,7 +302,7 @@
     `;
   }
 
-  function buildCard(item, hasGlobalActive) {
+  function buildCard(item, hasGlobalActive, activeInterventionId) {
     const card = document.createElement("article");
     card.className = "ti-card";
     card.dataset.id = item.id;
@@ -314,11 +314,11 @@
     const isDone = item._status === "done";
     const isCanceled = item._status === "canceled";
     const isInProgress = item._status === "in_progress";
-    const isActiveCard = state.activeId && String(state.activeId) === String(item.id);
+    const isActiveCard = Boolean(activeInterventionId) && String(activeInterventionId) === String(item.id);
     const isLockedByOther = hasGlobalActive && !isActiveCard;
 
     const canStart = !isDone && !isCanceled && !isInProgress && !isLockedByOther;
-    const canContinue = isInProgress || isActiveCard;
+    const canContinue = isInProgress;
 
     card.innerHTML = `
       <div class="ti-card-head">
@@ -558,12 +558,10 @@
       return;
     }
 
-    if (!state.activeId) return;
-    const localActive = state.items.find((i) => String(i.id) === String(state.activeId));
-    if (localActive && localActive._status !== "done" && localActive._status !== "canceled") return;
-
-    state.activeId = null;
-    clearActiveInterventionId();
+    if (state.activeId) {
+      state.activeId = null;
+      clearActiveInterventionId();
+    }
   }
 
   function getPvUrl(row) {

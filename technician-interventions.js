@@ -204,9 +204,9 @@
       els.focusTitle.textContent = STR.focusTitle;
       els.focusBody.textContent = STR.focusBody;
     }
-    setControlsDisabled(focus);
+    setControlsDisabled(false);
 
-    const listData = focus ? [activeRow] : filterItems(state.items);
+    const listData = filterItems(state.items);
 
     els.count.textContent = String(listData.length);
 
@@ -217,14 +217,14 @@
 
     els.list.innerHTML = "";
     listData.forEach((row) => {
-      const card = buildCard(row);
+      const card = buildCard(row, focus, activeRow?.id || "");
       els.list.appendChild(card);
     });
 
-    renderStickyBar(listData[0]);
+    renderStickyBar(focus ? activeRow : listData[0]);
   }
 
-  function buildCard(row) {
+  function buildCard(row, hasGlobalActive = false, activeInterventionId = "") {
     const card = document.createElement("article");
     card.className = "ti-card";
     card.dataset.id = row.id;
@@ -233,6 +233,8 @@
     const isDone = isDoneStatus(status);
     const isCanceled = status === "canceled";
     const isStarted = isStartedStatus(status) || !!row.started_at;
+    const isActiveCard = Boolean(activeInterventionId) && String(activeInterventionId) === String(row.id);
+    const isLockedByOther = hasGlobalActive && !isActiveCard;
 
     const statusLabel = getStatusLabel(row.status);
     const statusTone = getStatusTone(row.status);
@@ -249,7 +251,7 @@
     const startedAt = row.started_at ? formatDateFR(row.started_at) : "";
     const completedAt = row.completed_at ? formatDateFR(row.completed_at) : "";
 
-    const showStart = !isStarted && !isDone && !isCanceled;
+    const showStart = !isStarted && !isDone && !isCanceled && !isLockedByOther;
     const showFlow = isStarted && !isDone && !isCanceled;
 
     card.innerHTML = `
@@ -263,6 +265,8 @@
         </div>
         <div class="ti-badge ti-badge--${statusTone}">${escapeHTML(statusLabel)}</div>
       </div>
+
+      ${isLockedByOther ? `<div class="ti-lock">Cette intervention est verrouillee tant que l'intervention en cours n'est pas terminee.</div>` : ""}
 
       <div class="ti-actions">
         <a class="ti-btn ti-btn--ghost ${phoneNormalized ? "" : "is-disabled"}" data-action="call" ${phoneNormalized ? `href="tel:${phoneNormalized}"` : ""}>${STR.callCTA}</a>
@@ -1852,6 +1856,7 @@
 .ti-badge--danger{background:#fee2e2;color:#991b1b}
 .ti-badge--info{background:#e0f2fe;color:#075985}
 .ti-badge--neutral{background:#e2e8f0;color:#1e293b}
+.ti-lock{border:1px dashed #f59e0b;background:#fffbeb;color:#92400e;border-radius:10px;padding:8px 10px;font-size:12px;font-weight:700}
 .ti-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .ti-btn{border:none;padding:8px 12px;border-radius:10px;font-size:13px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
 .ti-btn--ghost{background:#f1f5f9;color:#0f172a}
