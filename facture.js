@@ -1,17 +1,17 @@
-document.documentElement.setAttribute("data-page", "devis");
+document.documentElement.setAttribute("data-page", "facture");
 
 window.Webflow ||= [];
 window.Webflow.push(async function () {
   const root = findRoot();
   if (!root) {
-    console.error("[DEVIS] Root introuvable.");
+    console.error("[FACTURE] Root introuvable.");
     return;
   }
 
   const url = new URL(window.location.href);
   const DEBUG = url.searchParams.get("mbl_debug") === "1" || window.location.hostname.includes("webflow.io");
-  const log = (...a) => DEBUG && console.log("[DEVIS]", ...a);
-  const warn = (...a) => DEBUG && console.warn("[DEVIS]", ...a);
+  const log = (...a) => DEBUG && console.log("[FACTURE]", ...a);
+  const warn = (...a) => DEBUG && console.warn("[FACTURE]", ...a);
 
   const GLOBAL_CFG = window.__MBL_CFG__ || {};
 
@@ -20,10 +20,10 @@ window.Webflow.push(async function () {
     SUPABASE_ANON_KEY:
       GLOBAL_CFG.SUPABASE_ANON_KEY ||
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJqcmpkaGRlY2hjZGx5Z3BnYW9lcyIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzY3Nzc3MzM0LCJleHAiOjIwODMzNTMzMzR9.E13XKKpIjB1auVtTmgBgV7jxmvS-EOv52t0mT1neKXE",
-    // Quotes must not inherit the global bucket (used by other modules like interventions).
-    // Use per-page dataset override, otherwise default to devis-files.
-    BUCKET: root.dataset.bucket || "devis-files",
-    QUOTES_TABLE: root.dataset.quotesTable || "devis",
+    // Invoices must not inherit the global bucket (used by other modules like interventions).
+    // Use per-page dataset override, otherwise default to factures-files.
+    BUCKET: root.dataset.bucket || "factures-files",
+    INVOICES_TABLE: root.dataset.invoicesTable || root.dataset.facturesTable || "factures",
     PRODUCTS_TABLE: root.dataset.productsTable || GLOBAL_CFG.PRODUCTS_TABLE || "products",
     CLIENTS_TABLE: root.dataset.clientsTable || "clients",
     INTERVENTIONS_TABLE: root.dataset.interventionsTable || "interventions",
@@ -33,7 +33,7 @@ window.Webflow.push(async function () {
       window.__MBL_ORG_ID__ ||
       "",
     VAT_RATE: Number(root.dataset.vatRate || GLOBAL_CFG.VAT_RATE || 20),
-    VALIDITY_DAYS: Number(root.dataset.validityDays || 30),
+    PAYMENT_TERMS_DAYS: Number(root.dataset.paymentTermsDays || GLOBAL_CFG.PAYMENT_TERMS_DAYS || 30),
     CURRENCY: root.dataset.currency || "EUR",
     PDF_TTL: Number(root.dataset.pdfTtl || 3600),
   };
@@ -79,11 +79,11 @@ window.Webflow.push(async function () {
   };
 
   const STR = {
-    title: "Devis",
-    subtitle: "Creation rapide et export PDF",
+    title: "Facture",
+    subtitle: "Emission et export PDF (legislation FR)",
     btnAddItem: "Ajouter une ligne",
-    btnSave: "Enregistrer",
-    btnValidate: "Valider devis",
+    btnSave: "Enregistrer (brouillon)",
+    btnValidate: "Emettre facture",
     btnDownload: "Telecharger PDF",
     btnPreview: "Apercu",
     btnReset: "Reinitialiser",
@@ -92,32 +92,34 @@ window.Webflow.push(async function () {
     labelEmail: "Email",
     labelPhone: "Telephone",
     labelAddress: "Adresse",
-    labelRef: "Reference devis",
+    labelRef: "Numero facture (auto)",
     labelIntervention: "Intervention",
-    labelValidity: "Validite",
+    labelIssueDate: "Date facture",
+    labelServiceDate: "Date prestation",
+    labelValidity: "Echeance",
     labelNotes: "Notes",
-    labelTerms: "Conditions",
+    labelTerms: "Conditions / mentions",
     labelItems: "Lignes",
     labelSubtotal: "Sous-total",
     labelDiscount: "Remise",
     labelVat: "TVA",
     labelTotal: "Total",
     msgLoading: "Chargement...",
-    msgSaved: "Devis enregistre.",
-    msgSavedPartial: "Devis genere mais non enregistre (table manquante).",
-    msgSavedDenied: "Droits insuffisants pour enregistrer ce devis (RLS).",
+    msgSaved: "Facture enregistree.",
+    msgSavedPartial: "PDF genere mais facture non enregistree (table manquante).",
+    msgSavedDenied: "Droits insuffisants pour enregistrer cette facture (RLS).",
     msgOrgMissing: "Organisation introuvable pour ton compte. Ajoute data-organization-id ou verifie organization_members.",
-    msgSavedWithPdf: "Devis enregistre et PDF disponible.",
-    msgSavedNoPdf: "Devis enregistre, mais impossible de publier le PDF.",
-    msgPdfOnly: "PDF genere localement (devis non enregistre en base).",
+    msgSavedWithPdf: "Facture enregistree et PDF disponible.",
+    msgSavedNoPdf: "Facture enregistree, mais impossible de publier le PDF.",
+    msgPdfOnly: "PDF genere localement (facture non enregistree en base).",
     msgStorageDenied: "PDF genere, mais upload bloque par les droits du bucket.",
-    msgValidated: "Devis valide avec succes.",
+    msgValidated: "Facture emise avec succes.",
     msgPdfReady: "PDF genere.",
     msgPdfFail: "Impossible de generer le PDF.",
   };
   const VAT_OPTIONS = [0, 5.5, 10, 20];
   const STATUS_DRAFT = "draft";
-  const STATUS_VALIDATED = "sent";
+  const STATUS_VALIDATED = "issued";
 
   injectStyles();
 
@@ -126,17 +128,11 @@ window.Webflow.push(async function () {
   const state = {
     currentUserId: "",
     organizationId: String(CONFIG.ORGANIZATION_ID || "").trim(),
-    items: [],
     clients: [],
     interventions: [],
     products: [],
     productByName: new Map(),
-    quoteId: null,
-    statusField: "",
-    nextReference: "",
-    quotePrefix: "DV",
-    quotePadding: 4,
-    quoteColumns: {},
+    invoiceId: null,
     selectedClientId: "",
     selectedInterventionId: "",
     pdf: { url: "", path: "" },
@@ -151,22 +147,22 @@ window.Webflow.push(async function () {
     await resolveAuthContext();
     await loadOrganizationProfile();
     await Promise.all([loadClients(), loadInterventions(), loadProducts()]);
-    state.statusField = await detectStatusField();
-    state.quoteColumns = await detectColumns(CONFIG.QUOTES_TABLE, [
-      "client_id",
-      "site_id",
-      "intervention_id",
-      "contact_name",
-      "converted_facture_id",
-    ]);
-    state.nextReference = await loadNextReference();
+
+    const invoiceId = resolveInvoiceIdFromUrl();
+    if (invoiceId) {
+      state.invoiceId = invoiceId;
+      await loadInvoice(invoiceId);
+    } else {
+      applyInvoiceDefaultsFromOrgProfile();
+    }
+
     hydrateDraft();
-    applyAutoPrefillFromContext();
-    ensureReference();
+    if (!state.invoiceId) {
+      applyAutoPrefillFromContext();
+    }
     renderItems();
     updateTotals();
     updatePreview();
-    persistDraft();
     setStatus(state.organizationId ? "" : STR.msgOrgMissing);
   }
 
@@ -232,67 +228,90 @@ window.Webflow.push(async function () {
     log("Auth context resolved", { userId: uid, organizationId: state.organizationId });
   }
 
-  async function detectStatusField() {
-    const tests = ["status", "quote_status", "state"];
-    for (const field of tests) {
-      const res = await supabase.from(CONFIG.QUOTES_TABLE).select(`id,${field}`).limit(1);
-      if (!res.error) return field;
-      if (!isMissingColumnError(res.error)) break;
-    }
-    return "";
+  function resolveInvoiceIdFromUrl() {
+    const params = new URLSearchParams(window.location.search || "");
+    const raw =
+      params.get("id") ||
+      params.get("facture_id") ||
+      params.get("invoice_id") ||
+      params.get("factureId") ||
+      params.get("invoiceId") ||
+      "";
+    return asUuid(raw);
   }
 
-  async function loadNextReference() {
-    const currentYear = new Date().getFullYear();
-    const prefix = String(state.quotePrefix || "DV").trim() || "DV";
-    const padLen = Math.max(1, Number(state.quotePadding || 4));
-    const basePrefix = `${prefix}-${currentYear}-`;
-    const fallback = `${basePrefix}${String(1).padStart(padLen, "0")}`;
-
-    let query = supabase
-      .from(CONFIG.QUOTES_TABLE)
-      .select("reference,created_at")
-      .limit(500);
-
-    if (state.organizationId) query = query.eq("organization_id", state.organizationId);
-
-    let res = await query;
-    if (res.error && isMissingColumnError(res.error)) {
-      res = await supabase
-        .from(CONFIG.QUOTES_TABLE)
-        .select("reference,created_at")
-        .limit(500);
+  function applyInvoiceDefaultsFromOrgProfile() {
+    const today = todayISODate();
+    if (!String(state.draft.issue_date || "").trim()) state.draft.issue_date = today;
+    if (!String(state.draft.service_date || "").trim()) state.draft.service_date = state.draft.issue_date;
+    if (!String(state.draft.due_date || "").trim()) {
+      state.draft.due_date = addDaysISO(state.draft.issue_date, resolvePaymentTermsDays());
     }
-    if (res.error) return fallback;
+    if (!String(state.draft.terms || "").trim() && String(state.orgProfile?.footer_notes || "").trim()) {
+      state.draft.terms = String(state.orgProfile.footer_notes || "");
+    }
+  }
 
-    let max = 0;
-    (res.data || []).forEach((row) => {
-      const ref = String(row?.reference || "").trim();
-      const m = ref.match(new RegExp(`^${escapeRegExp(prefix)}-${currentYear}-(\\\\d{1,})$`));
-      if (m) {
-        max = Math.max(max, Number(m[1] || 0));
+  async function loadInvoice(invoiceId) {
+    if (!invoiceId) return;
+
+    const res = await supabase.from(CONFIG.INVOICES_TABLE).select("*").eq("id", invoiceId).maybeSingle();
+    if (res.error || !res.data) {
+      console.warn("[FACTURE] load invoice failed:", res.error || null);
+      showToast("error", "Impossible de charger la facture.");
+      return;
+    }
+
+    const row = res.data;
+    const buyer = row.buyer && typeof row.buyer === "object" ? row.buyer : {};
+    const issueDate = String(row.issue_date || todayISODate());
+    const draft = defaultDraft();
+
+    state.draft = {
+      ...draft,
+      client_name: row.client_name || buyer.name || "",
+      contact_name: row.contact_name || "",
+      client_email: row.client_email || buyer.email || "",
+      client_phone: row.client_phone || buyer.phone || "",
+      client_address: row.client_address || buyer.address || "",
+      reference: row.reference || "",
+      issue_date: issueDate,
+      service_date: String(row.service_date || issueDate),
+      due_date: String(row.due_date || addDaysISO(issueDate, resolvePaymentTermsDays())),
+      notes: row.notes || "",
+      terms: row.terms || "",
+      items: parseJsonArray(row.items) || draft.items,
+      discount_type: Number(row.discount_cents || 0) > 0 ? "amount" : "none",
+      discount_value: Number(row.discount_cents || 0) / 100,
+      vat_rate: sanitizeVatRate(CONFIG.VAT_RATE),
+      status: String(row.status || STATUS_DRAFT),
+    };
+
+    state.selectedClientId = String(row.client_id || "");
+    state.selectedInterventionId = String(row.intervention_id || "");
+
+    if (state.selectedClientId) els.clientSelect.value = state.selectedClientId;
+    if (state.selectedInterventionId) els.intervention.value = state.selectedInterventionId;
+
+    // Wire existing PDF (best-effort signed URL).
+    const pdfPath = String(row.pdf_path || "").trim();
+    const pdfUrl = String(row.pdf_url || "").trim();
+    state.pdf = { url: "", path: "" };
+
+    if (pdfPath) {
+      const url = await resolvePdfUrlFromPath(pdfPath);
+      state.pdf = { path: pdfPath, url };
+      if (url && els.previewLink) {
+        els.previewLink.href = url;
+        els.previewLink.hidden = false;
       }
-    });
-
-    if (max <= 0) {
-      (res.data || []).forEach((row) => {
-        const ref = String(row?.reference || "").trim();
-        const m = ref.match(/(\d+)(?!.*\d)/);
-        if (m) max = Math.max(max, Number(m[1] || 0));
-      });
+    } else if (pdfUrl && /^https?:\/\//i.test(pdfUrl)) {
+      state.pdf = { path: "", url: pdfUrl };
+      if (els.previewLink) {
+        els.previewLink.href = pdfUrl;
+        els.previewLink.hidden = false;
+      }
     }
-
-    const next = String(max + 1).padStart(padLen, "0");
-    return `${basePrefix}${next}`;
-  }
-
-  function ensureReference() {
-    if (String(state.draft.reference || "").trim()) return;
-    const year = new Date().getFullYear();
-    const prefix = String(state.quotePrefix || "DV").trim() || "DV";
-    const padLen = Math.max(1, Number(state.quotePadding || 4));
-    state.draft.reference = state.nextReference || `${prefix}-${year}-${String(1).padStart(padLen, "0")}`;
-    els.ref.value = state.draft.reference;
   }
 
   function applyAutoPrefillFromContext() {
@@ -370,7 +389,7 @@ window.Webflow.push(async function () {
       break;
     }
 
-    if (lastErr) console.warn("[DEVIS] loadInterventions failed:", lastErr);
+    if (lastErr) console.warn("[FACTURE] loadInterventions failed:", lastErr);
   }
 
   async function loadProducts() {
@@ -405,7 +424,9 @@ window.Webflow.push(async function () {
     els.phone.value = d.client_phone || "";
     els.address.value = d.client_address || "";
     els.ref.value = d.reference || "";
-    els.validity.value = d.valid_until || defaultValidityDate();
+    els.issueDate.value = d.issue_date || todayISODate();
+    els.serviceDate.value = d.service_date || els.issueDate.value;
+    els.dueDate.value = d.due_date || addDaysISO(els.issueDate.value, resolvePaymentTermsDays());
     els.notes.value = d.notes || "";
     els.terms.value = d.terms || "";
     els.discountType.value = d.discount_type || "none";
@@ -515,8 +536,10 @@ window.Webflow.push(async function () {
     const clientAddress = escapeHTML(state.draft.client_address || "");
     const clientEmail = escapeHTML(state.draft.client_email || "");
     const clientPhone = escapeHTML(state.draft.client_phone || "");
-    const ref = escapeHTML(state.draft.reference || "—");
-    const validity = escapeHTML(formatDateFR(state.draft.valid_until) || "—");
+    const ref = escapeHTML(state.draft.reference || "Brouillon");
+    const issueDate = escapeHTML(formatDateFR(state.draft.issue_date) || "—");
+    const serviceDate = escapeHTML(formatDateFR(state.draft.service_date) || "—");
+    const dueDate = escapeHTML(formatDateFR(state.draft.due_date) || "—");
     const notes = escapeHTML(state.draft.notes || "");
     const terms = escapeHTML(state.draft.terms || "");
     const generatedAt = new Date();
@@ -588,10 +611,11 @@ window.Webflow.push(async function () {
             }
           </div>
           <div class="dv-doc">
-            <div class="dv-doc-pill">DEVIS</div>
-            <div class="dv-doc-row"><span>Reference</span><strong>${ref}</strong></div>
-            <div class="dv-doc-row"><span>Date</span><strong>${escapeHTML(todayFR())}</strong></div>
-            <div class="dv-doc-row"><span>Validite</span><strong>${validity}</strong></div>
+            <div class="dv-doc-pill">FACTURE</div>
+            <div class="dv-doc-row"><span>Numero</span><strong>${ref}</strong></div>
+            <div class="dv-doc-row"><span>Date facture</span><strong>${issueDate}</strong></div>
+            <div class="dv-doc-row"><span>Date prestation</span><strong>${serviceDate}</strong></div>
+            <div class="dv-doc-row"><span>Echeance</span><strong>${dueDate}</strong></div>
           </div>
         </header>
 
@@ -652,28 +676,13 @@ window.Webflow.push(async function () {
         </section>
 
         <section class="dv-paper-accept">
-          <div class="dv-accept-card">
-            <div class="dv-accept-title">Bon pour accord</div>
-            <div class="dv-accept-grid">
-              <div class="dv-accept-field">
-                <span>Nom</span>
-                <div class="dv-accept-blank"></div>
-              </div>
-              <div class="dv-accept-field">
-                <span>Date</span>
-                <div class="dv-accept-blank"></div>
-              </div>
-              <div class="dv-accept-field dv-accept-field--wide">
-                <span>Signature</span>
-                <div class="dv-accept-blank dv-accept-blank--tall"></div>
-              </div>
-            </div>
-          </div>
           <div class="dv-legal-card">
-            <div class="dv-legal-title">Mentions</div>
+            <div class="dv-legal-title">Paiement</div>
             <div class="dv-legal-text">
-              <div>Devis valable jusqu'au ${validity}.</div>
-              <div>Prix en ${escapeHTML(CONFIG.CURRENCY)}. TVA detaillee par taux.</div>
+              <div>Echeance au ${dueDate}.</div>
+              ${renderLateFeeLine()}
+              ${renderRecoveryFeeLine()}
+              ${renderVatExemptionLine()}
               <div>Document emis au format electronique (preparation: septembre 2026).</div>
             </div>
           </div>
@@ -726,10 +735,15 @@ window.Webflow.push(async function () {
     const border = "#dbe7ff";
     const subtle = "#e2e8f0";
 
-    const reference = String(state.draft.reference || "").trim() || "Sans reference";
-    const validUntil = formatDateFR(state.draft.valid_until) || "—";
+    const reference = String(state.draft.reference || "").trim() || "Brouillon";
+    const issueDate = formatDateFR(state.draft.issue_date) || "—";
+    const serviceDate = formatDateFR(state.draft.service_date) || issueDate || "—";
+    const dueDate = formatDateFR(state.draft.due_date) || "—";
     const issuedAtFR = formatDateTimeFR(now) || todayFR();
     const issuedIso = now.toISOString();
+    const lateFeeRate = resolveLateFeeRate();
+    const recoveryFeeCents = resolveRecoveryFeeCents();
+    const vatExemptionText = resolveVatExemptionText();
 
     const companyLines = [
       COMPANY.address,
@@ -856,9 +870,9 @@ window.Webflow.push(async function () {
       pageSize: "A4",
       pageMargins: [42, 42, 42, 42],
       info: {
-        title: `Devis ${reference}`,
+        title: `Facture ${reference}`,
         author: COMPANY.name,
-        subject: "Devis",
+        subject: "Facture",
       },
       defaultStyle: { fontSize: 10, color: ink },
       styles: {
@@ -895,7 +909,7 @@ window.Webflow.push(async function () {
                     body: [
                       [
                         {
-                          text: "DEVIS",
+                          text: "FACTURE",
                           style: "docPill",
                           fillColor: "#e0f2fe",
                           alignment: "center",
@@ -917,9 +931,10 @@ window.Webflow.push(async function () {
                   table: {
                     widths: ["*", "auto"],
                     body: [
-                      [{ text: "Reference", style: "docKey" }, { text: reference, style: "docVal", alignment: "right" }],
-                      [{ text: "Date", style: "docKey" }, { text: todayFR(), style: "docVal", alignment: "right" }],
-                      [{ text: "Validite", style: "docKey" }, { text: validUntil, style: "docVal", alignment: "right" }],
+                      [{ text: "Numero", style: "docKey" }, { text: reference, style: "docVal", alignment: "right" }],
+                      [{ text: "Date facture", style: "docKey" }, { text: issueDate, style: "docVal", alignment: "right" }],
+                      [{ text: "Date prestation", style: "docKey" }, { text: serviceDate, style: "docVal", alignment: "right" }],
+                      [{ text: "Echeance", style: "docKey" }, { text: dueDate, style: "docVal", alignment: "right" }],
                     ],
                   },
                   layout: "noBorders",
@@ -1026,23 +1041,29 @@ window.Webflow.push(async function () {
               [
                 {
                   stack: [
-                    { text: "Bon pour accord", style: "sectionTitle" },
-                    { text: "Nom:", style: "metaKey" },
-                    { text: " ", margin: [0, 2, 0, 10] },
-                    { canvas: [{ type: "line", x1: 0, y1: 0, x2: 220, y2: 0, lineWidth: 1, lineColor: border }] },
-                    { text: "Date:", style: "metaKey", margin: [0, 10, 0, 0] },
-                    { text: " ", margin: [0, 2, 0, 10] },
-                    { canvas: [{ type: "line", x1: 0, y1: 0, x2: 220, y2: 0, lineWidth: 1, lineColor: border }] },
-                    { text: "Signature:", style: "metaKey", margin: [0, 10, 0, 0] },
-                    { text: " ", margin: [0, 2, 0, 26] },
-                    { canvas: [{ type: "rect", x: 0, y: 0, w: 220, h: 46, lineWidth: 1, lineColor: border }] },
+                    { text: "Paiement", style: "sectionTitle" },
+                    { text: `Echeance: ${dueDate}.`, color: "#334155", margin: [0, 0, 0, 6] },
+                    ...(Number.isFinite(lateFeeRate)
+                      ? [{ text: `Penalites de retard: taux annuel ${formatPercentFR(lateFeeRate)}.`, color: "#334155", margin: [0, 0, 0, 6] }]
+                      : []),
+                    ...(Number.isFinite(recoveryFeeCents) && Number(recoveryFeeCents) > 0
+                      ? [
+                          {
+                            text: `Indemnite forfaitaire pour frais de recouvrement: ${formatMoney(recoveryFeeCents, CONFIG.CURRENCY)}.`,
+                            color: "#334155",
+                            margin: [0, 0, 0, 6],
+                          },
+                        ]
+                      : []),
                   ],
                   fillColor: "#fbfdff",
                 },
                 {
                   stack: [
                     { text: "Mentions", style: "sectionTitle" },
-                    { text: `Devis valable jusqu'au ${validUntil}.`, color: "#334155", margin: [0, 0, 0, 6] },
+                    ...(Number(state.draft.vat_cents || 0) === 0 && String(vatExemptionText || "").trim()
+                      ? [{ text: String(vatExemptionText), color: "#334155", margin: [0, 0, 0, 6] }]
+                      : []),
                     { text: `Prix en ${CONFIG.CURRENCY}. TVA detaillee par taux.`, color: "#334155", margin: [0, 0, 0, 6] },
                     { text: "Document emis au format electronique (preparation: septembre 2026).", color: "#334155" },
                   ],
@@ -1134,27 +1155,37 @@ window.Webflow.push(async function () {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${(state.draft.reference || "devis")}.pdf`;
+    a.download = `${(state.draft.reference || "facture")}.pdf`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 2000);
   }
 
-  async function saveQuote(mode = STATUS_DRAFT) {
+  async function saveInvoice(nextStatus = STATUS_DRAFT) {
     if (!state.organizationId) {
       return { ok: false, denied: true, reason: "org_missing" };
     }
 
+    if (!CONFIG.INVOICES_TABLE) {
+      return { ok: false, reason: "missing_table_name" };
+    }
+
     const payload = {
       organization_id: state.organizationId,
+      status: String(nextStatus || STATUS_DRAFT),
       reference: state.draft.reference || null,
-      client_id: state.quoteColumns.client_id ? (state.selectedClientId || null) : undefined,
-      intervention_id: state.quoteColumns.intervention_id ? (state.selectedInterventionId || null) : undefined,
-      contact_name: state.quoteColumns.contact_name ? (state.draft.contact_name || null) : undefined,
+
+      client_id: state.selectedClientId || null,
+      intervention_id: state.selectedInterventionId || null,
+
       client_name: state.draft.client_name || null,
       client_email: state.draft.client_email || null,
       client_phone: state.draft.client_phone || null,
       client_address: state.draft.client_address || null,
-      validity_until: state.draft.valid_until || null,
+
+      issue_date: state.draft.issue_date || null,
+      service_date: state.draft.service_date || null,
+      due_date: state.draft.due_date || null,
+
       notes: state.draft.notes || null,
       terms: state.draft.terms || null,
       items: state.draft.items,
@@ -1163,86 +1194,53 @@ window.Webflow.push(async function () {
       vat_cents: state.draft.vat_cents || 0,
       total_cents: state.draft.total_cents || 0,
       currency: CONFIG.CURRENCY,
+
       created_by: state.currentUserId || null,
-      created_at: new Date().toISOString()
+      created_at: new Date().toISOString(),
     };
-    Object.keys(payload).forEach((k) => payload[k] === undefined && delete payload[k]);
 
-    if (!CONFIG.QUOTES_TABLE) {
-      return { ok: false, reason: "missing_table_name" };
+    const res = await upsertInvoiceRow(payload);
+    if (!res.error) {
+      const row = res.data || {};
+      state.invoiceId = row.id || state.invoiceId || null;
+      if (row.reference) state.draft.reference = String(row.reference || "");
+      if (row.status) state.draft.status = String(row.status || "");
+      if (row.issue_date) state.draft.issue_date = String(row.issue_date || "");
+      if (row.service_date) state.draft.service_date = String(row.service_date || "");
+      if (row.due_date) state.draft.due_date = String(row.due_date || "");
+      return { ok: true, row };
     }
 
-    const statusValues = mode === STATUS_VALIDATED
-      ? [STATUS_VALIDATED, "accepted", "validated", "confirmed"]
-      : [STATUS_DRAFT, "pending"];
-    const payloadVariants = [];
+    if (isPermissionDenied(res.error)) return { ok: false, denied: true, reason: "rls" };
+    if (isTableMissing(res.error)) return { ok: false, reason: "missing_table" };
+    if (isConstraintViolation(res.error)) return { ok: false, reason: "constraint" };
+    if (isMissingColumnError(res.error)) return { ok: false, reason: "missing_column" };
 
-    if (state.statusField) {
-      statusValues.forEach((v) => payloadVariants.push({ ...payload, [state.statusField]: v }));
-    } else {
-      statusValues.forEach((v) => {
-        payloadVariants.push({ ...payload, status: v });
-        payloadVariants.push({ ...payload, quote_status: v });
-        payloadVariants.push({ ...payload, state: v });
-      });
-    }
-    payloadVariants.push(payload);
-
-    let lastError = null;
-    const seen = new Set();
-    for (const candidate of payloadVariants) {
-      const uniqueKey = Object.keys(candidate).sort().join("|");
-      if (seen.has(uniqueKey)) continue;
-      seen.add(uniqueKey);
-      const res = await upsertQuoteRow(candidate);
-      if (!res.error) {
-        state.quoteId = res.data?.id || state.quoteId || null;
-        if (candidate.status !== undefined) state.statusField = "status";
-        if (candidate.quote_status !== undefined) state.statusField = "quote_status";
-        if (candidate.state !== undefined) state.statusField = "state";
-        state.draft.quote_status = String(
-          candidate.status ?? candidate.quote_status ?? candidate.state ?? mode
-        );
-        return { ok: true, mode: state.draft.quote_status };
-      }
-      lastError = res.error;
-      if (isPermissionDenied(res.error)) {
-        return { ok: false, denied: true, reason: "rls" };
-      }
-      if (isConstraintViolation(res.error)) {
-        continue;
-      }
-      if (isMissingColumnError(res.error)) {
-        continue;
-      }
-      if (isTableMissing(res.error)) {
-        return { ok: false, reason: "missing_table" };
-      }
-      break;
-    }
-
-    if (lastError) throw lastError;
-    return { ok: false };
+    throw res.error;
   }
 
-  async function upsertQuoteRow(payload) {
-    if (state.quoteId) {
+  async function upsertInvoiceRow(payload) {
+    if (state.invoiceId) {
       const updatePayload = { ...payload, updated_at: new Date().toISOString() };
       delete updatePayload.created_at;
       delete updatePayload.created_by;
       const upd = await supabase
-        .from(CONFIG.QUOTES_TABLE)
+        .from(CONFIG.INVOICES_TABLE)
         .update(updatePayload)
-        .eq("id", state.quoteId)
-        .select("id")
+        .eq("id", state.invoiceId)
+        .select("id,reference,status,issue_date,service_date,due_date,pdf_path,pdf_url,created_at,updated_at")
         .maybeSingle();
       return upd;
     }
-    return supabase.from(CONFIG.QUOTES_TABLE).insert(payload).select("id").maybeSingle();
+    return supabase
+      .from(CONFIG.INVOICES_TABLE)
+      .insert(payload)
+      .select("id,reference,status,issue_date,service_date,due_date,pdf_path,pdf_url,created_at,updated_at")
+      .maybeSingle();
   }
 
-  async function updateQuotePdfReference(uploaded) {
-    if (!state.quoteId || !uploaded?.path) return;
+  async function updateInvoicePdfReference(uploaded) {
+    if (!state.invoiceId || !uploaded?.path) return;
 
     const nowIso = new Date().toISOString();
     const base = { pdf_path: uploaded.path };
@@ -1255,19 +1253,18 @@ window.Webflow.push(async function () {
     ].filter(Boolean);
 
     for (const payload of variants) {
-      const res = await supabase.from(CONFIG.QUOTES_TABLE).update(payload).eq("id", state.quoteId);
+      const res = await supabase.from(CONFIG.INVOICES_TABLE).update(payload).eq("id", state.invoiceId);
       if (!res.error) return;
       if (!isMissingColumnError(res.error)) return;
     }
   }
 
   async function uploadPdfToStorage(blob) {
-    const quotePart = state.quoteId || randomId();
+    const invoicePart = state.invoiceId || randomId();
     const fileName = `${Date.now()}_${randomId()}.pdf`;
     const orgPart = asUuid(state.organizationId);
-    const candidates = orgPart
-      ? [`devis/${orgPart}/${quotePart}/${fileName}`]
-      : [`devis/${quotePart}/${fileName}`];
+    if (!orgPart) return { denied: true, error: { message: "organization_id missing" } };
+    const candidates = [`factures/${orgPart}/${invoicePart}/${fileName}`];
 
     let denied = false;
     let lastError = null;
@@ -1312,12 +1309,19 @@ window.Webflow.push(async function () {
 
     els.btnReset.addEventListener("click", () => {
       state.draft = defaultDraft();
+      state.invoiceId = null;
+      state.selectedClientId = "";
+      state.selectedInterventionId = "";
+      state.pdf = { url: "", path: "" };
       hydrateDraft();
-      ensureReference();
       renderItems();
       updateTotals();
       updatePreview();
       persistDraft();
+      if (els.previewLink) {
+        els.previewLink.hidden = true;
+        els.previewLink.removeAttribute("href");
+      }
     });
 
     els.btnDownload.addEventListener("click", downloadPdf);
@@ -1329,7 +1333,11 @@ window.Webflow.push(async function () {
       els.btnValidate.disabled = true;
       if (button) button.textContent = busyLabel;
       try {
-        const saved = await saveQuote(mode);
+        const saved = await saveInvoice(mode);
+        if (saved?.ok) {
+          hydrateDraft();
+          updatePreview();
+        }
         const blob = await generatePdfBlob();
         const uploaded = await uploadPdfToStorage(blob);
 
@@ -1340,7 +1348,7 @@ window.Webflow.push(async function () {
             els.previewLink.href = bestUrl;
             els.previewLink.hidden = false;
           }
-          await updateQuotePdfReference({ ...uploaded, url: uploaded.url || "" });
+          await updateInvoicePdfReference({ ...uploaded, url: uploaded.url || "" });
         }
 
         if (saved?.ok && uploaded?.path && mode === STATUS_VALIDATED) {
@@ -1368,9 +1376,7 @@ window.Webflow.push(async function () {
           showToast("success", STR.msgPdfOnly);
         }
 
-        if (saved?.ok) {
-          state.nextReference = bumpReference(state.draft.reference) || (await loadNextReference());
-        }
+        // Reference is assigned by DB when invoice is issued (status moves out of draft).
       } catch (e) {
         console.error(e);
         if (isPermissionDenied(e)) {
@@ -1387,15 +1393,22 @@ window.Webflow.push(async function () {
     }
 
     els.btnSave.addEventListener("click", () => runSaveFlow(STATUS_DRAFT, els.btnSave, "Enregistrement..."));
-    els.btnValidate.addEventListener("click", () => runSaveFlow(STATUS_VALIDATED, els.btnValidate, "Validation..."));
+    els.btnValidate.addEventListener("click", () => runSaveFlow(STATUS_VALIDATED, els.btnValidate, "Emission..."));
 
     els.client.addEventListener("input", onHeaderInput);
     els.contact.addEventListener("input", onHeaderInput);
     els.email.addEventListener("input", onHeaderInput);
     els.phone.addEventListener("input", onHeaderInput);
     els.address.addEventListener("input", onHeaderInput);
-    els.ref.addEventListener("input", onHeaderInput);
-    els.validity.addEventListener("input", onHeaderInput);
+    els.issueDate.addEventListener("input", () => {
+      // Keep due date in sync when user edits invoice date and due date is empty.
+      if (!String(els.dueDate.value || "").trim()) {
+        els.dueDate.value = addDaysISO(els.issueDate.value, resolvePaymentTermsDays());
+      }
+      onHeaderInput();
+    });
+    els.serviceDate.addEventListener("input", onHeaderInput);
+    els.dueDate.addEventListener("input", onHeaderInput);
     els.notes.addEventListener("input", onHeaderInput);
     els.terms.addEventListener("input", onHeaderInput);
     els.discountType.addEventListener("change", onHeaderInput);
@@ -1417,8 +1430,9 @@ window.Webflow.push(async function () {
     state.draft.client_email = els.email.value;
     state.draft.client_phone = els.phone.value;
     state.draft.client_address = els.address.value;
-    state.draft.reference = els.ref.value;
-    state.draft.valid_until = els.validity.value;
+    state.draft.issue_date = els.issueDate.value;
+    state.draft.service_date = els.serviceDate.value;
+    state.draft.due_date = els.dueDate.value;
     state.draft.notes = els.notes.value;
     state.draft.terms = els.terms.value;
     state.draft.discount_type = els.discountType.value;
@@ -1561,6 +1575,8 @@ window.Webflow.push(async function () {
   }
 
   function defaultDraft() {
+    const issue = todayISODate();
+    const due = addDaysISO(issue, Math.max(0, Number(CONFIG.PAYMENT_TERMS_DAYS || 30)));
     return {
       client_name: "",
       contact_name: "",
@@ -1568,20 +1584,22 @@ window.Webflow.push(async function () {
       client_phone: "",
       client_address: "",
       reference: "",
-      valid_until: defaultValidityDate(),
+      issue_date: issue,
+      service_date: issue,
+      due_date: due,
       notes: "",
       terms: "",
       items: [createItem()],
       discount_type: "none",
       discount_value: 0,
       vat_rate: sanitizeVatRate(CONFIG.VAT_RATE),
-      quote_status: STATUS_DRAFT,
+      status: STATUS_DRAFT,
     };
   }
 
   function persistDraft() {
     // Intentionally no cross-page persistence:
-    // each new quote page starts clean except business context prefill.
+    // each new invoice page starts clean except business context prefill.
   }
 
   function loadDraft() {
@@ -1592,9 +1610,82 @@ window.Webflow.push(async function () {
     return new Date().toLocaleDateString("fr-FR");
   }
 
+  function todayISODate() {
+    return toISODateLocal(new Date());
+  }
+
+  function toISODateLocal(date) {
+    const d = date instanceof Date ? date : new Date(date);
+    if (Number.isNaN(d.getTime())) return "";
+    const yy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yy}-${mm}-${dd}`;
+  }
+
+  function addDaysISO(isoDate, days) {
+    const base = String(isoDate || "").trim();
+    const d = new Date(base ? `${base}T00:00:00` : Date.now());
+    if (Number.isNaN(d.getTime())) return "";
+    d.setDate(d.getDate() + Math.round(Number(days || 0)));
+    return toISODateLocal(d);
+  }
+
+  function resolvePaymentTermsDays() {
+    const org = Number(state.orgProfile?.payment_terms_days);
+    if (Number.isFinite(org) && org >= 0) return Math.round(org);
+    const cfg = Number(CONFIG.PAYMENT_TERMS_DAYS);
+    if (Number.isFinite(cfg) && cfg >= 0) return Math.round(cfg);
+    return 30;
+  }
+
+  function resolveLateFeeRate() {
+    const org = Number(state.orgProfile?.late_fee_rate);
+    if (Number.isFinite(org) && org >= 0) return org;
+    return 10.0;
+  }
+
+  function resolveRecoveryFeeCents() {
+    const org = Number(state.orgProfile?.recovery_fee_cents);
+    if (Number.isFinite(org) && org >= 0) return Math.round(org);
+    return 4000;
+  }
+
+  function resolveVatExemptionText() {
+    const txt = String(state.orgProfile?.vat_exemption_text || "").trim();
+    return txt;
+  }
+
+  function formatPercentFR(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return "";
+    const rounded = Math.round(n * 100) / 100;
+    const raw = String(rounded);
+    return raw.replace(".", ",");
+  }
+
+  function renderLateFeeLine() {
+    const rate = resolveLateFeeRate();
+    if (!Number.isFinite(rate)) return "";
+    return `<div>Penalites de retard: taux annuel ${escapeHTML(formatPercentFR(rate))}%.</div>`;
+  }
+
+  function renderRecoveryFeeLine() {
+    const cents = resolveRecoveryFeeCents();
+    if (!Number.isFinite(cents) || cents <= 0) return "";
+    return `<div>Indemnite forfaitaire pour frais de recouvrement: ${escapeHTML(formatMoney(cents, CONFIG.CURRENCY))}.</div>`;
+  }
+
+  function renderVatExemptionLine() {
+    const txt = resolveVatExemptionText();
+    if (!txt) return "";
+    if (Number(state.draft.vat_cents || 0) !== 0) return "";
+    return `<div>${escapeHTML(txt)}</div>`;
+  }
+
   function defaultValidityDate() {
     const d = new Date();
-    d.setDate(d.getDate() + CONFIG.VALIDITY_DAYS);
+    d.setDate(d.getDate() + CONFIG.PAYMENT_TERMS_DAYS);
     return d.toISOString().slice(0, 10);
   }
 
@@ -1641,7 +1732,7 @@ window.Webflow.push(async function () {
     const res = await supabase
       .from("organization_profiles")
       .select(
-        "organization_id,legal_name,trade_name,legal_form,share_capital_cents,siret,vat_number,rcs_city,rcs_number,naf_code,address,postal_code,city,country,email,phone,quote_prefix,quote_padding"
+        "organization_id,legal_name,trade_name,legal_form,share_capital_cents,siret,vat_number,rcs_city,rcs_number,naf_code,address,postal_code,city,country,email,phone,invoice_prefix,invoice_padding,payment_terms_days,late_fee_rate,recovery_fee_cents,vat_exemption_text,footer_notes"
       )
       .eq("organization_id", state.organizationId)
       .maybeSingle();
@@ -1649,8 +1740,6 @@ window.Webflow.push(async function () {
 
     const p = res.data;
     state.orgProfile = p;
-    state.quotePrefix = String(p.quote_prefix || state.quotePrefix || "DV").trim() || "DV";
-    state.quotePadding = Math.max(1, Number(p.quote_padding || state.quotePadding || 4));
 
     if (!String(COMPANY.name || "").trim()) COMPANY.name = String(p.trade_name || p.legal_name || "").trim();
     if (!String(COMPANY.address || "").trim()) COMPANY.address = String(p.address || "").trim();
@@ -1762,7 +1851,7 @@ window.Webflow.push(async function () {
 
   function buildElectronicDocumentId() {
     const ref = String(state.draft.reference || "").trim();
-    const seed = ref || `DV-${todayCompact()}`;
+    const seed = ref || `FA-${todayCompact()}`;
     const suffix = randomId().slice(0, 8).toUpperCase();
     return `${seed}-${suffix}`;
   }
@@ -1828,6 +1917,19 @@ window.Webflow.push(async function () {
     return Math.random().toString(36).slice(2, 10);
   }
 
+  function parseJsonArray(value) {
+    if (Array.isArray(value)) return value;
+    if (typeof value === "string") {
+      try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (_) {
+        return [];
+      }
+    }
+    return [];
+  }
+
   function renderShell(rootEl, copy) {
     rootEl.innerHTML = `
       <datalist id="dv-products"></datalist>
@@ -1875,9 +1977,11 @@ window.Webflow.push(async function () {
             </div>
 
             <div class="dv-card">
-              <div class="dv-card-title">Devis</div>
-              <div class="dv-field"><label>${copy.labelRef}</label><input class="dv-input" data-ref /></div>
-              <div class="dv-field"><label>${copy.labelValidity}</label><input class="dv-input" type="date" data-validity /></div>
+              <div class="dv-card-title">Facture</div>
+              <div class="dv-field"><label>${copy.labelRef}</label><input class="dv-input" data-ref readonly /></div>
+              <div class="dv-field"><label>${copy.labelIssueDate}</label><input class="dv-input" type="date" data-issue-date /></div>
+              <div class="dv-field"><label>${copy.labelServiceDate}</label><input class="dv-input" type="date" data-service-date /></div>
+              <div class="dv-field"><label>${copy.labelValidity}</label><input class="dv-input" type="date" data-due-date /></div>
               <div class="dv-field"><label>${copy.labelNotes}</label><textarea class="dv-textarea" data-notes rows="3"></textarea></div>
               <div class="dv-field"><label>${copy.labelTerms}</label><textarea class="dv-textarea" data-terms rows="3"></textarea></div>
             </div>
@@ -1926,7 +2030,9 @@ window.Webflow.push(async function () {
       phone: rootEl.querySelector("[data-phone]"),
       address: rootEl.querySelector("[data-address]"),
       ref: rootEl.querySelector("[data-ref]"),
-      validity: rootEl.querySelector("[data-validity]"),
+      issueDate: rootEl.querySelector("[data-issue-date]"),
+      serviceDate: rootEl.querySelector("[data-service-date]"),
+      dueDate: rootEl.querySelector("[data-due-date]"),
       notes: rootEl.querySelector("[data-notes]"),
       terms: rootEl.querySelector("[data-terms]"),
       items: rootEl.querySelector("[data-items]"),
@@ -2508,9 +2614,9 @@ window.Webflow.push(async function () {
 
   function findRoot() {
     return (
-      document.querySelector("[data-devis]") ||
-      document.querySelector("#devis-root") ||
-      document.querySelector(".devis-root")
+      document.querySelector("[data-facture]") ||
+      document.querySelector("#facture-root") ||
+      document.querySelector(".facture-root")
     );
   }
 });

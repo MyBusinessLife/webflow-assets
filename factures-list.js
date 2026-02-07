@@ -1,13 +1,13 @@
-document.documentElement.setAttribute("data-page", "devis-list");
+document.documentElement.setAttribute("data-page", "factures-list");
 
 window.Webflow ||= [];
 window.Webflow.push(async function () {
-  if (window.__mblDevisListLoaded) return;
-  window.__mblDevisListLoaded = true;
+  if (window.__mblFacturesListLoaded) return;
+  window.__mblFacturesListLoaded = true;
 
   const root = findRoot();
   if (!root) {
-    console.error("[DEVIS-LIST] Root introuvable.");
+    console.error("[FACTURES-LIST] Root introuvable.");
     return;
   }
 
@@ -17,9 +17,7 @@ window.Webflow.push(async function () {
     SUPABASE_ANON_KEY:
       GLOBAL_CFG.SUPABASE_ANON_KEY ||
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJqcmpkaGRlY2hjZGx5Z3BnYW9lcyIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzY3Nzc3MzM0LCJleHAiOjIwODMzNTMzMzR9.E13XKKpIjB1auVtTmgBgV7jxmvS-EOv52t0mT1neKXE",
-    // Quotes must not inherit the global bucket (used by other modules like interventions).
-    BUCKET: root.dataset.bucket || "devis-files",
-    QUOTES_TABLE: root.dataset.quotesTable || "devis",
+    BUCKET: root.dataset.bucket || "factures-files",
     INVOICES_TABLE: root.dataset.invoicesTable || root.dataset.facturesTable || "factures",
     ORGANIZATION_ID:
       root.dataset.organizationId ||
@@ -27,54 +25,60 @@ window.Webflow.push(async function () {
       window.__MBL_ORG_ID__ ||
       "",
     CURRENCY: root.dataset.currency || "EUR",
-    ADD_URL: root.dataset.addUrl || "/extranet/facturation/devis-add",
-    INVOICE_URL: root.dataset.invoiceUrl || root.dataset.factureUrl || "/extranet/facturation/facture",
+    ADD_URL: root.dataset.addUrl || root.dataset.editUrl || "/extranet/facturation/facture",
+    EDIT_URL: root.dataset.editUrl || root.dataset.invoiceUrl || root.dataset.factureUrl || "/extranet/facturation/facture",
     PDF_SIGNED_URL_TTL: Number(root.dataset.pdfSignedUrlTtl || 300),
     MAX_ROWS: Number(root.dataset.maxRows || 300),
   };
 
   const STR = {
-    title: "Liste des devis",
-    subtitle: "Suivi commercial et previsualisation rapide",
-    searchPlaceholder: "Rechercher ref, client, email...",
+    title: "Liste des factures",
+    subtitle: "Emission, suivi et previsualisation PDF",
+    searchPlaceholder: "Rechercher numero, client, email...",
+
     statusAll: "Tous",
     statusDraft: "Brouillons",
-    statusSent: "Envoyes",
-    statusAccepted: "Acceptes",
-    statusRejected: "Refuses",
-    statusCanceled: "Annules",
-    statusExpired: "Expires",
-    emptyTitle: "Aucun devis",
-    emptyBody: "Aucun devis ne correspond aux filtres actuels.",
+    statusIssued: "Emises",
+    statusSent: "Envoyees",
+    statusPartiallyPaid: "Paiement partiel",
+    statusPaid: "Payees",
+    statusVoided: "Void",
+    statusCanceled: "Annulees",
+
+    emptyTitle: "Aucune facture",
+    emptyBody: "Aucune facture ne correspond aux filtres actuels.",
     errorTitle: "Erreur de chargement",
-    errorBody: "Impossible de recuperer les devis.",
-    loading: "Chargement des devis...",
+    errorBody: "Impossible de recuperer les factures.",
+    loading: "Chargement des factures...",
     orgMissing: "Organisation introuvable (RLS). Ajoute data-organization-id ou verifie organization_members.",
-    quote: "Devis",
-    validUntil: "Validite",
+
+    invoice: "Facture",
+    issueDate: "Date facture",
+    dueDate: "Echeance",
     createdAt: "Cree le",
     updatedAt: "Maj",
     client: "Client",
     total: "Total",
-    newQuote: "Nouveau devis",
+    newInvoice: "Nouvelle facture",
+
     preview: "Previsualiser",
     openPdf: "Ouvrir PDF",
     downloadPdf: "Telecharger PDF",
-    convertInvoice: "Transformer en facture",
-    openInvoice: "Ouvrir facture",
-    convertOk: "Facture creee depuis le devis.",
-    convertErr: "Impossible de transformer ce devis en facture.",
-    convertMissing: "Module factures non installe (table manquante).",
+    openInvoice: "Ouvrir",
     saveStatus: "Mettre a jour",
-    deleteQuote: "Supprimer",
+    deleteInvoice: "Supprimer",
     close: "Fermer",
-    noPdf: "Aucun PDF enregistre pour ce devis.",
+
+    overdue: "En retard",
+
+    noPdf: "Aucun PDF enregistre pour cette facture.",
     noItems: "Aucune ligne",
-    statusUpdated: "Etat du devis mis a jour.",
+
+    statusUpdated: "Etat de la facture mis a jour.",
     statusUpdateError: "Impossible de mettre a jour l'etat.",
-    deleteConfirm: "Supprimer ce devis ?",
-    deleteSuccess: "Devis supprime.",
-    deleteError: "Impossible de supprimer le devis.",
+    deleteConfirm: "Supprimer cette facture ?",
+    deleteSuccess: "Facture supprimee.",
+    deleteError: "Impossible de supprimer la facture.",
   };
 
   const supabase = resolveSupabaseClient(CONFIG);
@@ -92,7 +96,7 @@ window.Webflow.push(async function () {
     statusField: "",
     filter: "all",
     search: "",
-    quotes: [],
+    invoices: [],
     selected: null,
   };
 
@@ -107,9 +111,8 @@ window.Webflow.push(async function () {
         setStatus(STR.orgMissing);
       }
       state.statusField = await detectStatusField();
-      await loadQuotes();
+      await loadInvoices();
       render();
-      if (state.selected) openPreview(state.selected.id);
       if (state.organizationId) setStatus("");
     } catch (e) {
       console.error(e);
@@ -119,8 +122,8 @@ window.Webflow.push(async function () {
   }
 
   function wireUI() {
-    els.btnNewQuote.addEventListener("click", () => {
-      const target = String(CONFIG.ADD_URL || "").trim();
+    els.btnNewInvoice.addEventListener("click", () => {
+      const target = String(CONFIG.ADD_URL || "").trim() || String(CONFIG.EDIT_URL || "").trim();
       if (!target) return;
       window.location.href = target;
     });
@@ -183,18 +186,18 @@ window.Webflow.push(async function () {
   }
 
   async function detectStatusField() {
-    const tests = ["status", "quote_status", "state"];
+    const tests = ["status", "invoice_status", "state"];
     for (const field of tests) {
-      const res = await supabase.from(CONFIG.QUOTES_TABLE).select(`id,${field}`).limit(1);
+      const res = await supabase.from(CONFIG.INVOICES_TABLE).select(`id,${field}`).limit(1);
       if (!res.error) return field;
       if (!isMissingColumnError(res.error)) break;
     }
     return "";
   }
 
-  async function loadQuotes() {
+  async function loadInvoices() {
     let query = supabase
-      .from(CONFIG.QUOTES_TABLE)
+      .from(CONFIG.INVOICES_TABLE)
       .select("*")
       .order("created_at", { ascending: false })
       .limit(CONFIG.MAX_ROWS);
@@ -205,7 +208,7 @@ window.Webflow.push(async function () {
 
     if (res.error && isMissingColumnError(res.error)) {
       res = await supabase
-        .from(CONFIG.QUOTES_TABLE)
+        .from(CONFIG.INVOICES_TABLE)
         .select("*")
         .order("created_at", { ascending: false })
         .limit(CONFIG.MAX_ROWS);
@@ -213,17 +216,19 @@ window.Webflow.push(async function () {
 
     if (res.error) throw res.error;
 
-    state.quotes = (res.data || []).map((q) => enrichQuote(q));
+    state.invoices = (res.data || []).map((inv) => enrichInvoice(inv));
   }
 
   function render() {
-    const rows = filterQuotes(state.quotes);
+    const rows = filterInvoices(state.invoices);
     els.count.textContent = String(rows.length);
-    const totalAmount = rows.reduce((acc, q) => acc + Number(q.total_cents || 0), 0);
-    const acceptedCount = rows.filter((q) => q.status.key === "accepted").length;
+
+    const totalAmount = rows.reduce((acc, inv) => acc + Number(inv.total_cents || 0), 0);
+    const overdueCount = rows.filter((inv) => !!inv.isOverdue).length;
+
     els.kpiCount.textContent = String(rows.length);
     els.kpiTotal.textContent = formatMoney(totalAmount, CONFIG.CURRENCY);
-    els.kpiAccepted.textContent = String(acceptedCount);
+    els.kpiOverdue.textContent = String(overdueCount);
 
     if (!rows.length) {
       els.list.innerHTML = `
@@ -236,57 +241,69 @@ window.Webflow.push(async function () {
     }
 
     els.list.innerHTML = "";
-    rows.forEach((quote) => {
+    rows.forEach((invoice) => {
       const card = document.createElement("article");
       card.className = "dl-card";
+
+      const clientLabel = resolveClientLabel(invoice) || "Client non renseigne";
+      const refLabel = invoice.reference || "Brouillon";
+
       card.innerHTML = `
         <div class="dl-card-top">
           <div>
-            <div class="dl-ref">${escapeHTML(quote.reference || "Sans reference")}</div>
-            <div class="dl-client">${escapeHTML(quote.client_name || "Client non renseigne")}</div>
+            <div class="dl-ref">${escapeHTML(refLabel)}</div>
+            <div class="dl-client">${escapeHTML(clientLabel)}</div>
           </div>
-          <span class="dl-badge dl-badge--${quote.status.tone}">${quote.status.label}</span>
+          <div class="dl-badges">
+            <span class="dl-badge dl-badge--${invoice.status.tone}">${invoice.status.label}</span>
+            ${invoice.isOverdue ? `<span class="dl-badge dl-badge--danger">${STR.overdue}</span>` : ""}
+          </div>
         </div>
 
         <div class="dl-meta">
-          <span>${STR.createdAt}: ${escapeHTML(formatDateTimeFR(quote.created_at) || "—")}</span>
-          <span>${STR.validUntil}: ${escapeHTML(formatDateFR(quote.validity_until) || "—")}</span>
-          <span>${STR.updatedAt}: ${escapeHTML(formatDateTimeFR(quote.updated_at) || "—")}</span>
+          <span>${STR.issueDate}: ${escapeHTML(formatDateFR(invoice.issue_date) || "—")}</span>
+          <span>${STR.dueDate}: ${escapeHTML(formatDateFR(invoice.due_date) || "—")}</span>
+          <span>${STR.createdAt}: ${escapeHTML(formatDateTimeFR(invoice.created_at) || "—")}</span>
+          <span>${STR.updatedAt}: ${escapeHTML(formatDateTimeFR(invoice.updated_at) || "—")}</span>
         </div>
 
-        <div class="dl-total">${STR.total}: <strong>${formatMoney(Number(quote.total_cents || 0), CONFIG.CURRENCY)}</strong></div>
+        <div class="dl-total">${STR.total}: <strong>${formatMoney(Number(invoice.total_cents || 0), CONFIG.CURRENCY)}</strong></div>
 
         <div class="dl-actions">
           <button type="button" class="dl-btn dl-btn--primary" data-action="preview">${STR.preview}</button>
-          ${quote.pdfAvailable ? `<button type="button" class="dl-btn dl-btn--ghost" data-action="open-pdf">${STR.openPdf}</button>` : ""}
+          ${invoice.pdfAvailable ? `<button type="button" class="dl-btn dl-btn--ghost" data-action="open-pdf">${STR.openPdf}</button>` : ""}
+          <button type="button" class="dl-btn dl-btn--ghost" data-action="open">${STR.openInvoice}</button>
           <select class="dl-status-select" data-action="status-select">
-            ${renderStatusOptions(quote.status.key)}
+            ${renderStatusOptions(invoice.status.key)}
           </select>
           <button type="button" class="dl-btn dl-btn--ghost" data-action="save-status">${STR.saveStatus}</button>
-          <button type="button" class="dl-btn dl-btn--danger" data-action="delete">${STR.deleteQuote}</button>
+          <button type="button" class="dl-btn dl-btn--danger" data-action="delete">${STR.deleteInvoice}</button>
         </div>
       `;
 
       card.querySelector('[data-action="preview"]').addEventListener("click", () => {
-        openPreview(quote.id);
+        openPreview(invoice.id);
       });
 
       const openPdfBtn = card.querySelector('[data-action="open-pdf"]');
       if (openPdfBtn) {
         openPdfBtn.addEventListener("click", async () => {
-          const url = await resolveQuotePdfUrl(quote);
+          const url = await resolveInvoicePdfUrl(invoice);
           if (url) window.open(url, "_blank", "noopener");
         });
       }
+
+      const openBtn = card.querySelector('[data-action="open"]');
+      openBtn.addEventListener("click", () => openInvoice(invoice.id));
 
       const saveStatusBtn = card.querySelector('[data-action="save-status"]');
       const statusSelect = card.querySelector('[data-action="status-select"]');
       if (saveStatusBtn && statusSelect) {
         saveStatusBtn.addEventListener("click", async () => {
           const nextStatus = statusSelect.value;
-          const ok = await updateQuoteStatus(quote.id, nextStatus);
+          const ok = await updateInvoiceStatus(invoice.id, nextStatus);
           if (!ok) return;
-          await loadQuotes();
+          await loadInvoices();
           render();
           showToast("success", STR.statusUpdated);
         });
@@ -296,9 +313,9 @@ window.Webflow.push(async function () {
       if (deleteBtn) {
         deleteBtn.addEventListener("click", async () => {
           if (!window.confirm(STR.deleteConfirm)) return;
-          const ok = await deleteQuote(quote);
+          const ok = await deleteInvoice(invoice);
           if (!ok) return;
-          await loadQuotes();
+          await loadInvoices();
           render();
           showToast("success", STR.deleteSuccess);
         });
@@ -317,34 +334,36 @@ window.Webflow.push(async function () {
     `;
   }
 
-  function filterQuotes(items) {
-    return (items || []).filter((q) => {
-      if (state.filter !== "all" && q.status.key !== state.filter) return false;
+  function filterInvoices(items) {
+    return (items || []).filter((inv) => {
+      if (state.filter !== "all" && inv.status.key !== state.filter) return false;
       if (!state.search) return true;
-      const hay = [q.reference, q.client_name, q.client_email, q.client_phone].join(" ").toLowerCase();
+      const hay = [inv.reference, inv.client_name, inv.client_email, inv.client_phone]
+        .concat(inv.buyer?.name || "", inv.buyer?.email || "")
+        .join(" ")
+        .toLowerCase();
       return hay.includes(state.search);
     });
   }
 
   async function openPreview(id) {
-    const quote = state.quotes.find((x) => String(x.id) === String(id));
-    if (!quote) return;
+    const invoice = state.invoices.find((x) => String(x.id) === String(id));
+    if (!invoice) return;
 
-    state.selected = quote;
+    state.selected = invoice;
     els.modal.hidden = false;
     document.body.classList.add("dl-modal-open");
 
-    els.modalTitle.textContent = `${STR.quote} • ${quote.reference || "Sans reference"}`;
-    els.modalMeta.textContent = `${quote.client_name || "Client"} • ${formatMoney(Number(quote.total_cents || 0), CONFIG.CURRENCY)}`;
+    els.modalTitle.textContent = `${STR.invoice} • ${invoice.reference || "Brouillon"}`;
+    els.modalMeta.textContent = `${resolveClientLabel(invoice) || STR.client} • ${formatMoney(
+      Number(invoice.total_cents || 0),
+      CONFIG.CURRENCY
+    )}`;
 
-    const linkedInvoiceId = String(quote.converted_facture_id || "").trim();
-    const canConvert = quote.status?.key === "accepted" && !linkedInvoiceId;
-    els.modalConvertInvoice.hidden = !canConvert;
-    els.modalOpenInvoice.hidden = !linkedInvoiceId;
-    els.modalConvertInvoice.onclick = canConvert ? () => convertQuoteToInvoice(quote) : null;
-    els.modalOpenInvoice.onclick = linkedInvoiceId ? () => openInvoice(linkedInvoiceId) : null;
+    els.modalOpenInvoice.hidden = false;
+    els.modalOpenInvoice.onclick = () => openInvoice(invoice.id);
 
-    const pdfUrl = await resolveQuotePdfUrl(quote);
+    const pdfUrl = await resolveInvoicePdfUrl(invoice);
 
     if (pdfUrl) {
       els.modalPdfWrap.hidden = false;
@@ -354,7 +373,7 @@ window.Webflow.push(async function () {
       els.modalDownloadPdf.onclick = () => {
         const a = document.createElement("a");
         a.href = pdfUrl;
-        a.download = `${quote.reference || "devis"}.pdf`;
+        a.download = `${invoice.reference || "facture"}.pdf`;
         a.click();
       };
     } else {
@@ -363,7 +382,7 @@ window.Webflow.push(async function () {
       els.modalNoPdf.hidden = false;
       els.modalNoPdf.innerHTML = `
         <div class="dl-no-pdf">${STR.noPdf}</div>
-        ${renderFallbackPreview(quote)}
+        ${renderFallbackPreview(invoice)}
       `;
       els.modalOpenPdf.onclick = null;
       els.modalDownloadPdf.onclick = null;
@@ -374,20 +393,17 @@ window.Webflow.push(async function () {
     els.modal.hidden = true;
     document.body.classList.remove("dl-modal-open");
     els.modalPdf.removeAttribute("src");
-    if (els.modalConvertInvoice) {
-      els.modalConvertInvoice.hidden = true;
-      els.modalConvertInvoice.onclick = null;
-    }
+
     if (els.modalOpenInvoice) {
       els.modalOpenInvoice.hidden = true;
       els.modalOpenInvoice.onclick = null;
     }
   }
 
-  async function resolveQuotePdfUrl(quote) {
-    if (!quote) return "";
+  async function resolveInvoicePdfUrl(invoice) {
+    if (!invoice) return "";
 
-    const path = String(quote.pdf_path || "").trim();
+    const path = String(invoice.pdf_path || "").trim();
     if (path) {
       const signed = await supabase.storage.from(CONFIG.BUCKET).createSignedUrl(path, CONFIG.PDF_SIGNED_URL_TTL);
       if (!signed.error && signed.data?.signedUrl) return signed.data.signedUrl;
@@ -397,122 +413,46 @@ window.Webflow.push(async function () {
       if (pubUrl) return pubUrl;
     }
 
-    if (quote.pdf_url && /^https?:\/\//i.test(quote.pdf_url)) {
-      return quote.pdf_url;
+    if (invoice.pdf_url && /^https?:\/\//i.test(invoice.pdf_url)) {
+      return invoice.pdf_url;
     }
     return "";
   }
 
   function openInvoice(invoiceId) {
-    const base = String(CONFIG.INVOICE_URL || "").trim() || "/extranet/facturation/facture";
+    const base = String(CONFIG.EDIT_URL || "").trim() || "/extranet/facturation/facture";
     const sep = base.includes("?") ? "&" : "?";
     window.location.href = `${base}${sep}id=${encodeURIComponent(String(invoiceId || "").trim())}`;
-  }
-
-  async function convertQuoteToInvoice(quote) {
-    if (!quote?.id) return;
-
-    const existing = String(quote.converted_facture_id || "").trim();
-    if (existing) {
-      openInvoice(existing);
-      return;
-    }
-
-    const orgId = String(quote.organization_id || state.organizationId || "").trim();
-    if (!orgId) {
-      showToast("error", STR.orgMissing);
-      return;
-    }
-
-    const payload = {
-      organization_id: orgId,
-      devis_id: quote.id,
-      status: "draft",
-      client_id: quote.client_id || null,
-      site_id: quote.site_id || null,
-      intervention_id: quote.intervention_id || null,
-      client_name: quote.client_name || null,
-      client_email: quote.client_email || null,
-      client_phone: quote.client_phone || null,
-      client_address: quote.client_address || null,
-      items: quote.items || [],
-      subtotal_cents: Number(quote.subtotal_cents || 0),
-      discount_cents: Number(quote.discount_cents || 0),
-      vat_cents: Number(quote.vat_cents || 0),
-      total_cents: Number(quote.total_cents || 0),
-      currency: quote.currency || CONFIG.CURRENCY,
-      created_by: state.currentUserId || null,
-      created_at: new Date().toISOString(),
-    };
-
-    try {
-      const ins = await supabase.from(CONFIG.INVOICES_TABLE).insert(payload).select("id").maybeSingle();
-      if (ins.error) {
-        if (isTableMissing(ins.error)) {
-          showToast("error", STR.convertMissing);
-          return;
-        }
-        if (isPermissionDenied(ins.error)) {
-          showToast("error", STR.convertErr);
-          return;
-        }
-        console.warn("[DEVIS-LIST] convert invoice error:", ins.error);
-        showToast("error", STR.convertErr);
-        return;
-      }
-
-      const invoiceId = ins.data?.id || "";
-      if (!invoiceId) {
-        showToast("error", STR.convertErr);
-        return;
-      }
-
-      // Best-effort link back to the quote (ignore if column missing).
-      const upd = await supabase.from(CONFIG.QUOTES_TABLE).update({ converted_facture_id: invoiceId }).eq("id", quote.id);
-      if (upd.error && !isMissingColumnError(upd.error)) {
-        console.warn("[DEVIS-LIST] quote link update warning:", upd.error);
-      }
-
-      // Update local state for UX.
-      quote.converted_facture_id = invoiceId;
-      showToast("success", STR.convertOk);
-      openInvoice(invoiceId);
-    } catch (e) {
-      console.error(e);
-      showToast("error", STR.convertErr);
-    }
   }
 
   function renderStatusOptions(currentKey) {
     const current = normalizeStatusKey(currentKey);
     const options = [
       { value: "draft", label: "Brouillon" },
-      { value: "sent", label: "Envoye" },
-      { value: "accepted", label: "Accepte" },
-      { value: "rejected", label: "Refuse" },
-      { value: "canceled", label: "Annule" },
-      { value: "expired", label: "Expire" },
+      { value: "issued", label: "Emise" },
+      { value: "sent", label: "Envoyee" },
+      { value: "partially_paid", label: "Paiement partiel" },
+      { value: "paid", label: "Payee" },
+      { value: "void", label: "Void" },
+      { value: "canceled", label: "Annulee" },
     ];
     return options
       .map((opt) => `<option value="${opt.value}" ${opt.value === current ? "selected" : ""}>${opt.label}</option>`)
       .join("");
   }
 
-  async function updateQuoteStatus(quoteId, nextStatus) {
+  async function updateInvoiceStatus(invoiceId, nextStatus) {
     const status = normalizeStatusKey(nextStatus);
     const candidates = state.statusField
       ? [{ [state.statusField]: status }]
-      : [{ status }, { quote_status: status }, { state: status }];
+      : [{ status }, { invoice_status: status }, { state: status }];
 
     let lastError = null;
     for (const payload of candidates) {
-      const res = await supabase
-        .from(CONFIG.QUOTES_TABLE)
-        .update(payload)
-        .eq("id", quoteId);
+      const res = await supabase.from(CONFIG.INVOICES_TABLE).update(payload).eq("id", invoiceId);
       if (!res.error) {
         if (payload.status !== undefined) state.statusField = "status";
-        if (payload.quote_status !== undefined) state.statusField = "quote_status";
+        if (payload.invoice_status !== undefined) state.statusField = "invoice_status";
         if (payload.state !== undefined) state.statusField = "state";
         return true;
       }
@@ -526,30 +466,27 @@ window.Webflow.push(async function () {
     return false;
   }
 
-  async function deleteQuote(quote) {
-    const del = await supabase
-      .from(CONFIG.QUOTES_TABLE)
-      .delete()
-      .eq("id", quote.id);
+  async function deleteInvoice(invoice) {
+    const del = await supabase.from(CONFIG.INVOICES_TABLE).delete().eq("id", invoice.id);
     if (del.error) {
       console.error(del.error);
       showToast("error", STR.deleteError);
       return false;
     }
 
-    if (quote?.pdf_path) {
-      await supabase.storage.from(CONFIG.BUCKET).remove([quote.pdf_path]);
+    if (invoice?.pdf_path) {
+      await supabase.storage.from(CONFIG.BUCKET).remove([invoice.pdf_path]);
     }
     return true;
   }
 
-  function renderFallbackPreview(quote) {
-    const items = parseItems(quote.items);
+  function renderFallbackPreview(invoice) {
+    const items = parseItems(invoice.items);
     const lines = items.length
       ? items
           .map((it) => {
             const qty = Number(it.qty || 1);
-            const cents = Number(it.unit_cents || 0);
+            const cents = Number(it.unit_cents || it.unit_price_cents || 0);
             const total = Math.round(qty * cents);
             return `
               <tr>
@@ -566,8 +503,8 @@ window.Webflow.push(async function () {
     return `
       <div class="dl-fallback">
         <div class="dl-fb-head">
-          <div><strong>${escapeHTML(quote.reference || "Devis")}</strong></div>
-          <div>${formatDateFR(quote.created_at) || ""}</div>
+          <div><strong>${escapeHTML(invoice.reference || STR.invoice)}</strong></div>
+          <div>${escapeHTML(formatDateFR(invoice.issue_date) || formatDateFR(invoice.created_at) || "")}</div>
         </div>
         <table class="dl-fb-table">
           <thead>
@@ -580,52 +517,76 @@ window.Webflow.push(async function () {
           </thead>
           <tbody>${lines}</tbody>
         </table>
-        <div class="dl-fb-total">Total: <strong>${formatMoney(Number(quote.total_cents || 0), CONFIG.CURRENCY)}</strong></div>
+        <div class="dl-fb-total">Total: <strong>${formatMoney(Number(invoice.total_cents || 0), CONFIG.CURRENCY)}</strong></div>
       </div>
     `;
   }
 
-  function enrichQuote(q) {
-    const status = inferStatus(q);
-    const pdfAvailable = !!(q.pdf_url || q.pdf_path);
-    return { ...q, status, pdfAvailable };
+  function enrichInvoice(inv) {
+    const status = inferStatus(inv);
+    const pdfAvailable = !!(inv.pdf_url || inv.pdf_path);
+    const isOverdue = computeIsOverdue(inv, status.key);
+    return { ...inv, status, pdfAvailable, isOverdue };
+  }
+
+  function computeIsOverdue(row, statusKey) {
+    const key = normalizeStatusKey(statusKey || row.status || row.invoice_status || row.state || "");
+    if (["draft", "paid", "canceled", "void"].includes(key)) return false;
+
+    const d = parseISODate(row.due_date);
+    if (!d) return false;
+
+    return d < startOfToday();
   }
 
   function inferStatus(row) {
-    const raw = normalize(row.status || row.quote_status || row.state || "");
+    const raw = normalize(row.status || row.invoice_status || row.state || "");
 
-    if (["accepted", "accepte", "acceptee", "signed", "valide", "validated", "validee"].includes(raw)) {
-      return { key: "accepted", label: "Accepte", tone: "success" };
+    if (["paid", "payee", "payee_integral", "reglee", "reglee_integral"].includes(raw)) {
+      return { key: "paid", label: "Payee", tone: "success" };
     }
-    if (["rejected", "refuse", "refusee", "declined"].includes(raw)) {
-      return { key: "rejected", label: "Refuse", tone: "danger" };
+    if (["partially_paid", "partial", "partiel", "paiement_partiel"].includes(raw)) {
+      return { key: "partially_paid", label: "Paiement partiel", tone: "info" };
     }
     if (["canceled", "cancelled", "annule", "annulee"].includes(raw)) {
-      return { key: "canceled", label: "Annule", tone: "danger" };
+      return { key: "canceled", label: "Annulee", tone: "danger" };
     }
-    if (["sent", "envoye", "envoyee", "issued", "finalized", "finalise"].includes(raw)) {
-      return { key: "sent", label: "Envoye", tone: "info" };
+    if (["void", "avoir", "credit_note"].includes(raw)) {
+      return { key: "void", label: "Void", tone: "neutral" };
+    }
+    if (["sent", "envoye", "envoyee"].includes(raw)) {
+      return { key: "sent", label: "Envoyee", tone: "info" };
+    }
+    if (["issued", "emise", "emitted", "finalized", "finalise", "finalisee"].includes(raw)) {
+      return { key: "issued", label: "Emise", tone: "info" };
     }
     if (["draft", "brouillon", "pending"].includes(raw)) {
       return { key: "draft", label: "Brouillon", tone: "neutral" };
     }
 
-    const validity = row.validity_until ? new Date(row.validity_until) : null;
-    const isExpired = validity && validity < startOfToday();
-    if (isExpired) return { key: "expired", label: "Expire", tone: "danger" };
-
-    if (row.pdf_url || row.pdf_path) return { key: "sent", label: "Pret", tone: "info" };
+    if (row.reference) return { key: "issued", label: "Emise", tone: "info" };
     return { key: "draft", label: "Brouillon", tone: "neutral" };
   }
 
   function normalizeStatusKey(value) {
     const raw = normalize(value);
-    if (["accepted", "accepte", "acceptee", "signed", "valide", "validated", "validee"].includes(raw)) return "accepted";
-    if (["rejected", "refuse", "refusee", "declined"].includes(raw)) return "rejected";
+    if (["paid", "payee", "reglee"].includes(raw)) return "paid";
+    if (["partially_paid", "partial", "partiel", "paiement_partiel"].includes(raw)) return "partially_paid";
     if (["canceled", "cancelled", "annule", "annulee"].includes(raw)) return "canceled";
-    if (["expired", "expire"].includes(raw)) return "expired";
-    if (["sent", "envoye", "envoyee", "issued", "finalized", "finalise"].includes(raw)) return "sent";
+    if (["void", "avoir", "credit_note"].includes(raw)) return "void";
+    if (["sent", "envoye", "envoyee"].includes(raw)) return "sent";
+    if (["issued", "emise", "emitted", "finalized", "finalise", "finalisee"].includes(raw)) return "issued";
     return "draft";
+  }
+
+  function resolveClientLabel(invoice) {
+    const name = String(invoice.client_name || "").trim();
+    if (name) return name;
+    const buyerName = String(invoice?.buyer?.name || "").trim();
+    if (buyerName) return buyerName;
+    const email = String(invoice.client_email || invoice?.buyer?.email || "").trim();
+    if (email) return email;
+    return "";
   }
 
   function parseItems(value) {
@@ -639,6 +600,17 @@ window.Webflow.push(async function () {
       }
     }
     return [];
+  }
+
+  function parseISODate(value) {
+    if (!value) return null;
+    const s = String(value || "").trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+      const d = new Date(`${s}T00:00:00`);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
   }
 
   function startOfToday() {
@@ -656,7 +628,7 @@ window.Webflow.push(async function () {
     el.className = `dl-toast dl-toast--${type}`;
     el.textContent = message;
     els.toasts.appendChild(el);
-    setTimeout(() => el.remove(), 3000);
+    setTimeout(() => el.remove(), 3200);
   }
 
   function formatMoney(cents, currency) {
@@ -666,7 +638,7 @@ window.Webflow.push(async function () {
 
   function formatDateFR(value) {
     if (!value) return "";
-    const d = new Date(value);
+    const d = parseISODate(value) || new Date(value);
     if (Number.isNaN(d.getTime())) return "";
     return d.toLocaleDateString("fr-FR");
   }
@@ -710,18 +682,6 @@ window.Webflow.push(async function () {
     return code === "23514" || msg.includes("violates check constraint");
   }
 
-  function isTableMissing(error) {
-    const code = String(error?.code || "");
-    const msg = String(error?.message || "").toLowerCase();
-    return code === "PGRST205" || msg.includes("could not find the table") || msg.includes("does not exist");
-  }
-
-  function isPermissionDenied(error) {
-    const code = String(error?.code || "");
-    const msg = String(error?.message || "").toLowerCase();
-    return code === "42501" || msg.includes("row-level security") || msg.includes("permission denied");
-  }
-
   function escapeHTML(str) {
     return String(str || "")
       .replace(/&/g, "&amp;")
@@ -759,7 +719,7 @@ window.Webflow.push(async function () {
             <div class="dl-title">${copy.title}</div>
           </div>
           <div class="dl-header-actions">
-            <button class="dl-btn dl-btn--primary dl-btn--new" data-new-quote>${copy.newQuote}</button>
+            <button class="dl-btn dl-btn--primary dl-btn--new" data-new-invoice>${copy.newInvoice}</button>
             <div class="dl-count" data-count>0</div>
           </div>
         </header>
@@ -770,11 +730,12 @@ window.Webflow.push(async function () {
           <div class="dl-filters">
             <button class="dl-chip is-active" data-filter="all">${copy.statusAll}</button>
             <button class="dl-chip" data-filter="draft">${copy.statusDraft}</button>
+            <button class="dl-chip" data-filter="issued">${copy.statusIssued}</button>
             <button class="dl-chip" data-filter="sent">${copy.statusSent}</button>
-            <button class="dl-chip" data-filter="accepted">${copy.statusAccepted}</button>
-            <button class="dl-chip" data-filter="rejected">${copy.statusRejected}</button>
+            <button class="dl-chip" data-filter="partially_paid">${copy.statusPartiallyPaid}</button>
+            <button class="dl-chip" data-filter="paid">${copy.statusPaid}</button>
+            <button class="dl-chip" data-filter="void">${copy.statusVoided}</button>
             <button class="dl-chip" data-filter="canceled">${copy.statusCanceled}</button>
-            <button class="dl-chip" data-filter="expired">${copy.statusExpired}</button>
           </div>
           <input class="dl-search" type="search" placeholder="${copy.searchPlaceholder}" data-search />
         </div>
@@ -789,8 +750,8 @@ window.Webflow.push(async function () {
             <div class="dl-kpi-value" data-kpi-total>0,00 €</div>
           </div>
           <div class="dl-kpi">
-            <div class="dl-kpi-label">Acceptes</div>
-            <div class="dl-kpi-value" data-kpi-accepted>0</div>
+            <div class="dl-kpi-label">${copy.overdue}</div>
+            <div class="dl-kpi-value" data-kpi-overdue>0</div>
           </div>
         </div>
 
@@ -803,7 +764,7 @@ window.Webflow.push(async function () {
           <div class="dl-modal-panel">
             <div class="dl-modal-head">
               <div>
-                <div class="dl-modal-title" data-modal-title>Devis</div>
+                <div class="dl-modal-title" data-modal-title>${copy.invoice}</div>
                 <div class="dl-modal-meta" data-modal-meta></div>
               </div>
               <button class="dl-btn dl-btn--ghost" data-modal-close>${copy.close}</button>
@@ -812,13 +773,12 @@ window.Webflow.push(async function () {
             <div class="dl-modal-actions">
               <button class="dl-btn dl-btn--ghost" data-open-pdf>${copy.openPdf}</button>
               <button class="dl-btn dl-btn--primary" data-download-pdf>${copy.downloadPdf}</button>
-              <button class="dl-btn dl-btn--primary" data-convert-invoice hidden>${copy.convertInvoice}</button>
               <button class="dl-btn dl-btn--ghost" data-open-invoice hidden>${copy.openInvoice}</button>
             </div>
 
             <div class="dl-modal-body">
               <div class="dl-pdf-wrap" data-pdf-wrap>
-                <iframe class="dl-pdf" data-pdf title="PDF devis"></iframe>
+                <iframe class="dl-pdf" data-pdf title="PDF facture"></iframe>
               </div>
               <div class="dl-no-pdf-wrap" data-no-pdf hidden></div>
             </div>
@@ -833,8 +793,8 @@ window.Webflow.push(async function () {
       count: rootEl.querySelector("[data-count]"),
       kpiCount: rootEl.querySelector("[data-kpi-count]"),
       kpiTotal: rootEl.querySelector("[data-kpi-total]"),
-      kpiAccepted: rootEl.querySelector("[data-kpi-accepted]"),
-      btnNewQuote: rootEl.querySelector("[data-new-quote]"),
+      kpiOverdue: rootEl.querySelector("[data-kpi-overdue]"),
+      btnNewInvoice: rootEl.querySelector("[data-new-invoice]"),
       search: rootEl.querySelector("[data-search]"),
       filters: Array.from(rootEl.querySelectorAll("[data-filter]")),
       toasts: rootEl.querySelector("[data-toasts]"),
@@ -845,7 +805,6 @@ window.Webflow.push(async function () {
       modalMeta: rootEl.querySelector("[data-modal-meta]"),
       modalOpenPdf: rootEl.querySelector("[data-open-pdf]"),
       modalDownloadPdf: rootEl.querySelector("[data-download-pdf]"),
-      modalConvertInvoice: rootEl.querySelector("[data-convert-invoice]"),
       modalOpenInvoice: rootEl.querySelector("[data-open-invoice]"),
       modalPdfWrap: rootEl.querySelector("[data-pdf-wrap]"),
       modalPdf: rootEl.querySelector("[data-pdf]"),
@@ -923,27 +882,25 @@ window.Webflow.push(async function () {
       .dl-kpis {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 10px;
+        gap: 12px;
         margin-bottom: 14px;
       }
       .dl-kpi {
-        background: #ffffff;
-        border: 1px solid #dbe7fd;
-        border-radius: 12px;
-        padding: 10px 12px;
-        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+        background: rgba(255, 255, 255, 0.75);
+        border: 1px solid #d9e7ff;
+        border-radius: 16px;
+        padding: 12px;
+        backdrop-filter: blur(10px);
       }
       .dl-kpi-label {
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        color: #64748b;
+        font-size: 12px;
+        color: var(--dl-soft);
         margin-bottom: 4px;
       }
       .dl-kpi-value {
-        font-weight: 800;
-        font-size: 18px;
-        color: #0f172a;
+        font-family: "Space Grotesk", sans-serif;
+        font-size: 22px;
+        font-weight: 700;
       }
       .dl-filters {
         display: flex;
@@ -951,280 +908,300 @@ window.Webflow.push(async function () {
         gap: 8px;
       }
       .dl-chip {
-        border: 1px solid #bfd3f8;
-        background: #f6f9ff;
-        color: #1e293b;
+        border: 1px solid #cfe0ff;
+        background: rgba(255, 255, 255, 0.65);
+        color: #0f172a;
         border-radius: 999px;
-        padding: 7px 12px;
+        padding: 8px 12px;
         font-size: 13px;
         cursor: pointer;
+        transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
+      }
+      .dl-chip:hover {
+        transform: translateY(-1px);
+        background: #fff;
       }
       .dl-chip.is-active {
-        background: var(--dl-primary);
+        background: #0f172a;
+        border-color: #0f172a;
         color: #fff;
-        border-color: var(--dl-primary);
       }
       .dl-search {
         width: 100%;
-        border: 1px solid #bfd3f8;
-        border-radius: 12px;
+        border: 1px solid #cfe0ff;
+        background: rgba(255, 255, 255, 0.75);
+        border-radius: 14px;
         padding: 10px 12px;
-        background: #fff;
         font-size: 14px;
+        outline: none;
+      }
+      .dl-search:focus {
+        box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.14);
+        border-color: rgba(14, 165, 233, 0.55);
       }
       .dl-list {
         display: grid;
         gap: 12px;
       }
       .dl-card {
-        background: #fff;
-        border: 1px solid var(--dl-border);
-        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.78);
+        border: 1px solid #d9e7ff;
+        border-radius: 18px;
         padding: 14px;
-        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
-        display: grid;
-        gap: 10px;
+        box-shadow: 0 14px 30px rgba(15, 23, 42, 0.06);
       }
       .dl-card-top {
         display: flex;
         justify-content: space-between;
+        align-items: flex-start;
         gap: 10px;
       }
       .dl-ref {
-        font-size: 14px;
+        font-family: "Space Grotesk", sans-serif;
         font-weight: 700;
-        letter-spacing: 0.01em;
+        font-size: 18px;
       }
       .dl-client {
-        font-size: 13px;
         color: var(--dl-soft);
+        font-size: 14px;
         margin-top: 2px;
       }
-      .dl-meta {
-        display: grid;
-        gap: 4px;
-        font-size: 12px;
-        color: #64748b;
-        border-top: 1px dashed #dbe5f5;
-        border-bottom: 1px dashed #dbe5f5;
-        padding: 8px 0;
-      }
-      .dl-total {
-        font-size: 14px;
-      }
-      .dl-actions {
+      .dl-badges {
         display: flex;
-        flex-wrap: wrap;
         gap: 8px;
-      }
-      .dl-status-select {
-        border: 1px solid #bfd3f8;
-        background: #f8fbff;
-        color: #0f172a;
-        border-radius: 10px;
-        padding: 8px 10px;
-        font-size: 13px;
-        min-height: 36px;
-      }
-      .dl-btn {
-        border: none;
-        border-radius: 10px;
-        padding: 8px 12px;
-        font-size: 13px;
-        cursor: pointer;
-      }
-      .dl-btn--primary {
-        background: var(--dl-primary);
-        color: #fff;
-      }
-      .dl-btn--new {
-        font-weight: 700;
-        box-shadow: 0 8px 20px rgba(14, 165, 233, 0.25);
-      }
-      .dl-btn--ghost {
-        background: #e9f0fb;
-        color: #0f172a;
-      }
-      .dl-btn--danger {
-        background: #fee2e2;
-        color: #991b1b;
+        align-items: center;
+        flex-wrap: wrap;
+        justify-content: flex-end;
       }
       .dl-badge {
-        border-radius: 999px;
-        padding: 5px 9px;
-        font-size: 11px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
         font-weight: 700;
+        padding: 6px 10px;
+        border-radius: 999px;
         white-space: nowrap;
       }
       .dl-badge--success { background: #dcfce7; color: #166534; }
       .dl-badge--info { background: #e0f2fe; color: #075985; }
       .dl-badge--danger { background: #fee2e2; color: #991b1b; }
       .dl-badge--neutral { background: #e2e8f0; color: #334155; }
-      .dl-empty {
-        background: #fff;
-        border: 1px dashed #cbd5e1;
+
+      .dl-meta {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-top: 10px;
+        font-size: 12px;
+        color: var(--dl-soft);
+      }
+      .dl-total {
+        margin-top: 10px;
+        font-size: 14px;
+      }
+      .dl-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 12px;
+        align-items: center;
+      }
+      .dl-btn {
+        border: 1px solid #cfe0ff;
+        background: rgba(255, 255, 255, 0.9);
+        color: #0f172a;
+        padding: 9px 12px;
         border-radius: 14px;
-        padding: 24px;
-        text-align: center;
+        font-size: 13px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: transform 160ms ease, box-shadow 160ms ease;
+      }
+      .dl-btn:hover { transform: translateY(-1px); box-shadow: 0 10px 18px rgba(15, 23, 42, 0.08); }
+      .dl-btn--primary {
+        background: linear-gradient(135deg, #0ea5e9, #2563eb);
+        border-color: transparent;
+        color: #fff;
+      }
+      .dl-btn--danger {
+        background: #fee2e2;
+        border-color: #fecaca;
+        color: #991b1b;
+      }
+      .dl-btn--ghost {
+        background: rgba(255, 255, 255, 0.55);
+      }
+      .dl-status-select {
+        border: 1px solid #cfe0ff;
+        background: rgba(255, 255, 255, 0.85);
+        border-radius: 14px;
+        padding: 9px 10px;
+        font-weight: 700;
+        font-size: 13px;
+      }
+
+      .dl-empty {
+        border: 1px dashed #cfe0ff;
+        border-radius: 16px;
+        padding: 18px;
+        background: rgba(255, 255, 255, 0.6);
       }
       .dl-empty-title {
+        font-family: "Space Grotesk", sans-serif;
         font-weight: 700;
-        margin-bottom: 6px;
+        font-size: 16px;
       }
       .dl-empty-body {
-        color: #64748b;
+        color: var(--dl-soft);
+        margin-top: 6px;
+        font-size: 13px;
       }
+
       .dl-toasts {
+        position: fixed;
+        right: 16px;
+        bottom: 16px;
         display: grid;
-        gap: 8px;
-        margin-top: 12px;
+        gap: 10px;
+        z-index: 9999;
       }
       .dl-toast {
-        border-radius: 10px;
-        padding: 9px 11px;
-        font-size: 12px;
-        color: #fff;
-        background: #0f172a;
-        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.2);
+        border-radius: 14px;
+        padding: 12px 14px;
+        font-weight: 700;
+        font-size: 13px;
+        box-shadow: 0 14px 30px rgba(15, 23, 42, 0.14);
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        background: rgba(255, 255, 255, 0.9);
       }
-      .dl-toast--success { background: #16a34a; }
-      .dl-toast--error { background: #dc2626; }
+      .dl-toast--success { border-color: rgba(22, 163, 74, 0.22); }
+      .dl-toast--error { border-color: rgba(220, 38, 38, 0.22); }
+      .dl-toast--warning { border-color: rgba(234, 179, 8, 0.22); }
 
       .dl-modal {
         position: fixed;
         inset: 0;
-        z-index: 9999;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        z-index: 9998;
       }
-      .dl-modal[hidden] { display: none; }
       .dl-modal-backdrop {
         position: absolute;
         inset: 0;
-        background: rgba(15, 23, 42, 0.56);
+        background: rgba(15, 23, 42, 0.46);
+        backdrop-filter: blur(6px);
       }
       .dl-modal-panel {
         position: relative;
-        width: min(1100px, 94vw);
-        max-height: 92vh;
-        background: #f5f9ff;
-        border-radius: 16px;
-        border: 1px solid #cfe0ff;
-        padding: 14px;
+        width: min(980px, calc(100% - 24px));
+        max-height: calc(100% - 24px);
+        margin: 12px auto;
+        background: rgba(255, 255, 255, 0.94);
+        border: 1px solid rgba(15, 23, 42, 0.12);
+        border-radius: 22px;
+        overflow: hidden;
         display: grid;
-        gap: 10px;
-        box-shadow: 0 20px 70px rgba(15, 23, 42, 0.35);
+        grid-template-rows: auto auto 1fr;
       }
       .dl-modal-head {
         display: flex;
-        justify-content: space-between;
         align-items: flex-start;
+        justify-content: space-between;
         gap: 10px;
+        padding: 14px 14px 10px;
       }
       .dl-modal-title {
-        font-size: 18px;
+        font-family: "Space Grotesk", sans-serif;
         font-weight: 700;
+        font-size: 18px;
       }
       .dl-modal-meta {
+        color: var(--dl-soft);
         font-size: 13px;
-        color: #64748b;
+        margin-top: 2px;
       }
       .dl-modal-actions {
         display: flex;
+        gap: 10px;
         flex-wrap: wrap;
-        gap: 8px;
+        padding: 0 14px 12px;
       }
       .dl-modal-body {
-        min-height: min(72vh, 760px);
-        background: #fff;
-        border-radius: 12px;
-        border: 1px solid #dce8ff;
-        overflow: hidden;
+        padding: 0 14px 14px;
       }
       .dl-pdf-wrap {
-        width: 100%;
-        height: 100%;
+        border: 1px solid rgba(15, 23, 42, 0.12);
+        border-radius: 16px;
+        overflow: hidden;
+        background: #fff;
+        height: min(72vh, 720px);
       }
       .dl-pdf {
         width: 100%;
-        min-height: min(72vh, 760px);
-        border: none;
-        background: #f8fafc;
+        height: 100%;
+        border: 0;
       }
       .dl-no-pdf-wrap {
-        padding: 14px;
-        height: 100%;
-        overflow: auto;
+        border: 1px dashed rgba(15, 23, 42, 0.18);
+        border-radius: 16px;
+        padding: 16px;
+        background: rgba(248, 250, 252, 0.8);
       }
       .dl-no-pdf {
-        padding: 10px 12px;
-        border-radius: 10px;
-        border: 1px solid #fed7aa;
-        background: #fff7ed;
-        color: #9a3412;
+        font-weight: 800;
         margin-bottom: 10px;
-        font-size: 13px;
       }
+
       .dl-fallback {
-        border: 1px solid #d8e3f9;
-        border-radius: 12px;
+        border-radius: 14px;
+        overflow: hidden;
+        border: 1px solid rgba(15, 23, 42, 0.12);
         background: #fff;
-        padding: 12px;
       }
       .dl-fb-head {
         display: flex;
         justify-content: space-between;
-        gap: 8px;
-        margin-bottom: 8px;
-        font-size: 12px;
-        color: #475569;
+        gap: 10px;
+        padding: 10px 12px;
+        background: rgba(241, 245, 249, 0.9);
+        font-size: 13px;
       }
       .dl-fb-table {
         width: 100%;
         border-collapse: collapse;
-        font-size: 12px;
+        font-size: 13px;
       }
       .dl-fb-table th,
       .dl-fb-table td {
-        border-bottom: 1px solid #e2e8f0;
-        padding: 6px 4px;
-        text-align: left;
+        padding: 10px 12px;
+        border-top: 1px solid rgba(15, 23, 42, 0.08);
       }
-      .dl-fb-table .dl-num {
-        text-align: right;
-      }
+      .dl-num { text-align: right; }
       .dl-fb-total {
-        margin-top: 10px;
+        padding: 10px 12px;
+        border-top: 1px solid rgba(15, 23, 42, 0.08);
         text-align: right;
-        font-size: 13px;
+        font-size: 14px;
       }
 
       body.dl-modal-open { overflow: hidden; }
 
-      @media (max-width: 760px) {
-        .dl-title { font-size: 24px; }
+      @media (max-width: 720px) {
+        .dl-title { font-size: 22px; }
         .dl-kpis { grid-template-columns: 1fr; }
-        .dl-header-actions { width: 100%; justify-content: space-between; }
-        .dl-btn--new { padding: 8px 10px; font-size: 12px; }
-        .dl-modal-panel {
-          width: 96vw;
-          max-height: 95vh;
-          padding: 10px;
-        }
-        .dl-modal-body,
-        .dl-pdf { min-height: 66vh; }
+        .dl-count { height: 44px; min-width: 44px; }
+        .dl-actions { gap: 6px; }
+        .dl-btn { width: 100%; }
+        .dl-status-select { width: 100%; }
       }
     `;
-
     document.head.appendChild(style);
   }
 
   function findRoot() {
     return (
-      document.querySelector("[data-devis-list]") ||
-      document.querySelector("#devis-list-root") ||
-      document.querySelector(".devis-list-root")
+      document.querySelector("[data-factures-list]") ||
+      document.querySelector("#factures-list-root") ||
+      document.querySelector(".factures-list-root")
     );
   }
 });

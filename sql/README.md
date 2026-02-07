@@ -10,6 +10,11 @@ Order to run in Supabase SQL Editor:
 6. `006_devis_status_and_storage_rls.sql`
 7. `007_devis_rls_hardening.sql`
 8. `008_devis_storage_bucket_devis_files.sql`
+9. `009_organization_profiles.sql`
+10. `010_clients_billing_fields.sql`
+11. `011_devis_facture_bridge.sql`
+12. `012_factures_tables_and_rls.sql`
+13. `013_factures_storage_rls.sql`
 
 ## Important
 - Run each file in full, then validate before the next file.
