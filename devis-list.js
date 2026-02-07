@@ -25,6 +25,7 @@ window.Webflow.push(async function () {
       window.__MBL_ORG_ID__ ||
       "",
     CURRENCY: root.dataset.currency || "EUR",
+    ADD_URL: root.dataset.addUrl || "/extranet/facturation/devis-add",
     PDF_SIGNED_URL_TTL: Number(root.dataset.pdfSignedUrlTtl || 300),
     MAX_ROWS: Number(root.dataset.maxRows || 300),
   };
@@ -50,6 +51,7 @@ window.Webflow.push(async function () {
     updatedAt: "Maj",
     client: "Client",
     total: "Total",
+    newQuote: "Nouveau devis",
     preview: "Previsualiser",
     openPdf: "Ouvrir PDF",
     downloadPdf: "Telecharger PDF",
@@ -98,6 +100,12 @@ window.Webflow.push(async function () {
   }
 
   function wireUI() {
+    els.btnNewQuote.addEventListener("click", () => {
+      const target = String(CONFIG.ADD_URL || "").trim();
+      if (!target) return;
+      window.location.href = target;
+    });
+
     els.search.addEventListener("input", () => {
       state.search = String(els.search.value || "").trim().toLowerCase();
       render();
@@ -485,7 +493,10 @@ window.Webflow.push(async function () {
             <div class="dl-eyebrow">${copy.subtitle}</div>
             <div class="dl-title">${copy.title}</div>
           </div>
-          <div class="dl-count" data-count>0</div>
+          <div class="dl-header-actions">
+            <button class="dl-btn dl-btn--primary dl-btn--new" data-new-quote>${copy.newQuote}</button>
+            <div class="dl-count" data-count>0</div>
+          </div>
         </header>
 
         <div class="dl-status" data-status></div>
@@ -534,6 +545,7 @@ window.Webflow.push(async function () {
       list: rootEl.querySelector("[data-list]"),
       status: rootEl.querySelector("[data-status]"),
       count: rootEl.querySelector("[data-count]"),
+      btnNewQuote: rootEl.querySelector("[data-new-quote]"),
       search: rootEl.querySelector("[data-search]"),
       filters: Array.from(rootEl.querySelectorAll("[data-filter]")),
       modal: rootEl.querySelector("[data-modal]"),
@@ -577,6 +589,11 @@ window.Webflow.push(async function () {
         align-items: flex-end;
         gap: 12px;
         margin-bottom: 10px;
+      }
+      .dl-header-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
       }
       .dl-eyebrow {
         font-size: 11px;
@@ -689,6 +706,10 @@ window.Webflow.push(async function () {
       .dl-btn--primary {
         background: var(--dl-primary);
         color: #fff;
+      }
+      .dl-btn--new {
+        font-weight: 700;
+        box-shadow: 0 8px 20px rgba(14, 165, 233, 0.25);
       }
       .dl-btn--ghost {
         background: #e9f0fb;
@@ -834,6 +855,8 @@ window.Webflow.push(async function () {
 
       @media (max-width: 760px) {
         .dl-title { font-size: 24px; }
+        .dl-header-actions { width: 100%; justify-content: space-between; }
+        .dl-btn--new { padding: 8px 10px; font-size: 12px; }
         .dl-modal-panel {
           width: 96vw;
           max-height: 95vh;
