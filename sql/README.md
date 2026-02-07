@@ -9,6 +9,7 @@ Order to run in Supabase SQL Editor:
 5. `005_devis_table_and_rls.sql`
 6. `006_devis_status_and_storage_rls.sql`
 7. `007_devis_rls_hardening.sql`
+8. `008_devis_storage_bucket_devis_files.sql`
 
 ## Important
 - Run each file in full, then validate before the next file.

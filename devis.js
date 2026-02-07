@@ -15,7 +15,8 @@ window.Webflow.push(async function () {
     SUPABASE_ANON_KEY:
       GLOBAL_CFG.SUPABASE_ANON_KEY ||
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJqcmpkaGRlY2hjZGx5Z3BnYW9lcyIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzY3Nzc3MzM0LCJleHAiOjIwODMzNTMzMzR9.E13XKKpIjB1auVtTmgBgV7jxmvS-EOv52t0mT1neKXE",
-    BUCKET: GLOBAL_CFG.BUCKET || root.dataset.bucket || "interventions-files",
+    // Root attribute must override global config because different pages can use different buckets.
+    BUCKET: root.dataset.bucket || GLOBAL_CFG.BUCKET || "devis-files",
     QUOTES_TABLE: root.dataset.quotesTable || "devis",
     PRODUCTS_TABLE: root.dataset.productsTable || GLOBAL_CFG.PRODUCTS_TABLE || "products",
     CLIENTS_TABLE: root.dataset.clientsTable || "clients",
@@ -282,14 +283,44 @@ window.Webflow.push(async function () {
   }
 
   async function loadInterventions() {
-    const res = await readTable(
-      CONFIG.INTERVENTIONS_TABLE,
-      "id,title,client_name,client_ref,client_email,client_phone,address,start_at,organization_id",
-      { order: "start_at", desc: true, limit: 200 }
-    );
-    if (res.error) return;
-    state.interventions = res.data || [];
-    renderInterventionOptions();
+    const selects = [
+      // Try best-effort (may fail if legacy columns missing).
+      "id,title,client_name,client_ref,client_email,client_phone,support_phone,address,start_at,organization_id",
+      // Common minimal set in your interventions table.
+      "id,title,client_name,support_phone,address,start_at,organization_id",
+      "id,title,client_name,address,start_at,organization_id",
+      "id,title,client_name,address,start_at",
+      "id,title,start_at",
+    ];
+
+    let lastErr = null;
+    for (const sel of selects) {
+      let q = supabase
+        .from(CONFIG.INTERVENTIONS_TABLE)
+        .select(sel)
+        .order("start_at", { ascending: false })
+        .limit(200);
+      if (state.organizationId) q = q.eq("organization_id", state.organizationId);
+      let res = await q;
+
+      if (res.error && isOrderParseError(res.error)) {
+        let q2 = supabase.from(CONFIG.INTERVENTIONS_TABLE).select(sel).limit(200);
+        if (state.organizationId) q2 = q2.eq("organization_id", state.organizationId);
+        res = await q2;
+      }
+
+      if (!res.error) {
+        state.interventions = res.data || [];
+        renderInterventionOptions();
+        return;
+      }
+
+      lastErr = res.error;
+      if (isMissingColumnError(res.error)) continue;
+      break;
+    }
+
+    if (lastErr) console.warn("[DEVIS] loadInterventions failed:", lastErr);
   }
 
   async function loadProducts() {
@@ -865,9 +896,8 @@ window.Webflow.push(async function () {
     if (!found) return;
     els.client.value = found.client_name || "";
     els.address.value = found.address || "";
-    els.ref.value = found.client_ref || "";
     els.email.value = found.client_email || "";
-    els.phone.value = found.client_phone || "";
+    els.phone.value = found.client_phone || found.support_phone || "";
     onHeaderInput();
   }
 

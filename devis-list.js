@@ -17,7 +17,7 @@ window.Webflow.push(async function () {
     SUPABASE_ANON_KEY:
       GLOBAL_CFG.SUPABASE_ANON_KEY ||
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJqcmpkaGRlY2hjZGx5Z3BnYW9lcyIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzY3Nzc3MzM0LCJleHAiOjIwODMzNTMzMzR9.E13XKKpIjB1auVtTmgBgV7jxmvS-EOv52t0mT1neKXE",
-    BUCKET: root.dataset.bucket || GLOBAL_CFG.BUCKET || "interventions-files",
+    BUCKET: root.dataset.bucket || GLOBAL_CFG.BUCKET || "devis-files",
     QUOTES_TABLE: root.dataset.quotesTable || "devis",
     ORGANIZATION_ID:
       root.dataset.organizationId ||
