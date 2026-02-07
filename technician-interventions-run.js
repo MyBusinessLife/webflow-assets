@@ -162,6 +162,8 @@
     catalog: [],
     catalogByName: new Map(),
     catalogById: new Map(),
+    catalogSource: "",
+    catalogError: "",
     saving: false,
   };
 
@@ -354,47 +356,77 @@
 
   async function loadCatalog() {
     try {
-      const activeRes = await supabase
-        .from(CONFIG.PRODUCTS_TABLE)
-        .select("id, name, price_cents, is_active")
-        .eq("is_active", true)
-        .order("name", { ascending: true })
-        .limit(1000);
+      const candidates = Array.from(
+        new Set(
+          [
+            String(CONFIG.PRODUCTS_TABLE || "").trim(),
+            "products",
+            "public.products",
+          ].filter(Boolean)
+        )
+      );
 
-      if (!activeRes.error && (activeRes.data || []).length) {
-        return activeRes.data || [];
+      state.catalogError = "";
+      state.catalogSource = "";
+
+      let lastError = "";
+
+      for (const tableName of candidates) {
+        const activeRes = await supabase
+          .from(tableName)
+          .select("id, name, price_cents, is_active")
+          .eq("is_active", true)
+          .order("name", { ascending: true })
+          .limit(1000);
+
+        if (!activeRes.error && (activeRes.data || []).length) {
+          state.catalogSource = tableName;
+          return activeRes.data || [];
+        }
+
+        if (activeRes.error) {
+          lastError = activeRes.error.message || lastError;
+          console.warn(`[TECH RUN] catalog(active:${tableName}) warning:`, activeRes.error.message);
+        }
+
+        const relaxedRes = await supabase
+          .from(tableName)
+          .select("id, name, price_cents, is_active")
+          .order("name", { ascending: true })
+          .limit(1000);
+
+        if (!relaxedRes.error && (relaxedRes.data || []).length) {
+          state.catalogSource = tableName;
+          return (relaxedRes.data || []).filter((row) => String(row?.name || "").trim());
+        }
+
+        if (relaxedRes.error) {
+          lastError = relaxedRes.error.message || lastError;
+          console.warn(`[TECH RUN] catalog(relaxed:${tableName}) warning:`, relaxedRes.error.message);
+        }
+
+        const minimalRes = await supabase
+          .from(tableName)
+          .select("id, name, price_cents")
+          .order("name", { ascending: true })
+          .limit(1000);
+
+        if (!minimalRes.error && (minimalRes.data || []).length) {
+          state.catalogSource = tableName;
+          return (minimalRes.data || []).filter((row) => String(row?.name || "").trim());
+        }
+
+        if (minimalRes.error) {
+          lastError = minimalRes.error.message || lastError;
+          console.warn(`[TECH RUN] catalog(minimal:${tableName}) warning:`, minimalRes.error.message);
+        }
       }
 
-      if (activeRes.error) {
-        console.warn("[TECH RUN] catalog(active) warning:", activeRes.error.message);
-      }
-
-      const relaxedRes = await supabase
-        .from(CONFIG.PRODUCTS_TABLE)
-        .select("id, name, price_cents, is_active")
-        .order("name", { ascending: true })
-        .limit(1000);
-
-      if (!relaxedRes.error) {
-        return (relaxedRes.data || []).filter((row) => String(row?.name || "").trim());
-      }
-
-      console.warn("[TECH RUN] catalog(relaxed) warning:", relaxedRes.error.message);
-
-      const minimalRes = await supabase
-        .from(CONFIG.PRODUCTS_TABLE)
-        .select("id, name, price_cents")
-        .order("name", { ascending: true })
-        .limit(1000);
-
-      if (minimalRes.error) {
-        console.warn("[TECH RUN] catalog(minimal) warning:", minimalRes.error.message);
-        return [];
-      }
-
-      return (minimalRes.data || []).filter((row) => String(row?.name || "").trim());
+      state.catalogError = lastError || "Aucun produit lisible pour ce compte.";
+      return [];
     } catch (error) {
       console.warn("[TECH RUN] catalog runtime warning:", error?.message || error);
+      state.catalogError = error?.message || "Erreur inconnue catalogue produits.";
       return [];
     }
   }
@@ -842,10 +874,16 @@
   }
 
   function renderStepProducts() {
+    const catalogStatus =
+      state.catalog.length > 0
+        ? `<div class="tr-inline-note">Catalogue charge: ${state.catalog.length} produit(s).</div>`
+        : `<div class="tr-inline-note tr-inline-note--warn">Catalogue indisponible (${escapeHTML(state.catalogError || "aucun produit visible")}). Contacte l'admin pour verifier les droits produits.</div>`;
+
     els.content.innerHTML = `
       <section class="tr-section is-active">
         <h3 class="tr-title">${STR.stepProducts}</h3>
         <p class="tr-hint">${STR.hintProducts}</p>
+        ${catalogStatus}
 
         <div class="tr-products" data-products></div>
 
@@ -914,11 +952,8 @@
 
         input.addEventListener(eventName, () => {
           onProductFieldChange(index, field, input);
-          if (field !== "note") {
-            renderProductRows();
-          } else {
-            updateProductsSummary();
-          }
+          syncProductLineUI(line, index, field);
+          updateProductsSummary();
           refreshSummaryFooter();
         });
 
@@ -942,6 +977,48 @@
     });
 
     updateProductsSummary();
+  }
+
+  function syncProductLineUI(line, index, changedField) {
+    const row = state.draft.products[index];
+    if (!row || !line) return;
+
+    const nameInput = line.querySelector('[data-field="name"]');
+    const qtyInput = line.querySelector('[data-field="qty"]');
+    const unitInput = line.querySelector('[data-field="unit"]');
+    const catalogInput = line.querySelector('[data-field="catalog"]');
+    const paidInput = line.querySelector('[data-field="paidByTech"]');
+    const noteInput = line.querySelector('[data-field="note"]');
+    const totalEl = line.querySelector(".tr-product-total");
+
+    if (catalogInput) {
+      const selectedCatalogId = row.productId && state.catalogById.has(String(row.productId)) ? String(row.productId) : "";
+      if (catalogInput.value !== selectedCatalogId) catalogInput.value = selectedCatalogId;
+    }
+
+    if (nameInput && changedField !== "name") {
+      nameInput.value = row.name || "";
+    }
+
+    if (qtyInput && changedField !== "qty") {
+      qtyInput.value = String(Math.max(1, parseInt(row.qty || 1, 10) || 1));
+    }
+
+    if (unitInput && changedField !== "unit") {
+      unitInput.value = centsToEuroInput(row.unitCents);
+    }
+
+    if (paidInput) {
+      paidInput.checked = Boolean(row.paidByTech);
+    }
+
+    if (noteInput && changedField !== "note") {
+      noteInput.value = row.note || "";
+    }
+
+    if (totalEl) {
+      totalEl.textContent = formatCents(computeLineTotalCents(row));
+    }
   }
 
   function buildCatalogOptionsHtml(selectedId) {
@@ -2173,17 +2250,18 @@
 
   function applyConfigOverrides(rootEl) {
     const d = rootEl.dataset || {};
-    if (d.storageBucket) CONFIG.STORAGE_BUCKET = d.storageBucket;
-    if (d.reportsTable) CONFIG.REPORTS_TABLE = d.reportsTable;
-    if (d.expensesTable) CONFIG.EXPENSES_TABLE = d.expensesTable;
-    if (d.productsTable) CONFIG.PRODUCTS_TABLE = d.productsTable;
-    if (d.filesTable) CONFIG.FILES_TABLE = d.filesTable;
-    if (d.pvTable) CONFIG.PV_TABLE = d.pvTable;
+    const pick = (value) => String(value || "").trim();
+    if (d.storageBucket) CONFIG.STORAGE_BUCKET = pick(d.storageBucket);
+    if (d.reportsTable) CONFIG.REPORTS_TABLE = pick(d.reportsTable);
+    if (d.expensesTable) CONFIG.EXPENSES_TABLE = pick(d.expensesTable);
+    if (d.productsTable) CONFIG.PRODUCTS_TABLE = pick(d.productsTable);
+    if (d.filesTable) CONFIG.FILES_TABLE = pick(d.filesTable);
+    if (d.pvTable) CONFIG.PV_TABLE = pick(d.pvTable);
     if (d.requireChecklist) CONFIG.REQUIRE_CHECKLIST_DEFAULT = d.requireChecklist === "true";
     if (d.requirePhotos) CONFIG.REQUIRE_PHOTOS_DEFAULT = d.requirePhotos === "true";
     if (d.requireSignature) CONFIG.REQUIRE_SIGNATURE_DEFAULT = d.requireSignature === "true";
-    if (d.listPath) CONFIG.LIST_PAGE_PATH = d.listPath;
-    if (d.currency) CONFIG.CURRENCY = d.currency;
+    if (d.listPath) CONFIG.LIST_PAGE_PATH = pick(d.listPath);
+    if (d.currency) CONFIG.CURRENCY = pick(d.currency);
   }
 
   function renderShell(rootEl) {
@@ -2784,6 +2862,11 @@
       .tr-inline-note {
         color: #6d86a0;
         font-size: 12px;
+      }
+
+      .tr-inline-note--warn {
+        color: #92400e;
+        font-weight: 700;
       }
 
       .tr-photo-actions,
