@@ -9,7 +9,8 @@
 
     ASSIGNEES_TABLE: "intervention_assignees",
     INTERVENTIONS_TABLE: "interventions",
-    REPORTS_TABLE: "intervention_reports",
+    REPORTS_TABLE: "",
+    PV_TABLE: "intervention_pv",
     EXPENSES_TABLE: "intervention_expenses",
     FILES_TABLE: "intervention_files",
     COMPENSATIONS_TABLE: "intervention_compensations",
@@ -20,7 +21,7 @@
     LIST_PAGE_PATH: "/extranet/technician/interventions",
     ACTIVE_STORAGE_KEY: "mbl-active-intervention",
 
-    REQUIRE_CHECKLIST_DEFAULT: true,
+    REQUIRE_CHECKLIST_DEFAULT: false,
     REQUIRE_PHOTOS_DEFAULT: false,
     REQUIRE_SIGNATURE_DEFAULT: false,
     CURRENCY: "EUR",
@@ -174,6 +175,7 @@
     summaryVisible: null,
     tableAvailability: {
       reports: true,
+      pv: true,
       expenses: true,
       files: true,
       compensations: true,
@@ -307,20 +309,23 @@
       const baseItems = normalizeAssignments(assignments);
 
       const interventionIds = baseItems.map((row) => row.id).filter(Boolean);
-      const [reportsRes, expensesRes, filesRes, compensationsRes] = await Promise.all([
+      const [reportsRes, pvRes, expensesRes, filesRes, compensationsRes] = await Promise.all([
         fetchOptionalRowsByInterventionIds(CONFIG.REPORTS_TABLE, interventionIds),
+        fetchOptionalRowsByInterventionIds(CONFIG.PV_TABLE, interventionIds),
         fetchOptionalRowsByInterventionIds(CONFIG.EXPENSES_TABLE, interventionIds),
         fetchOptionalRowsByInterventionIds(CONFIG.FILES_TABLE, interventionIds),
         fetchOptionalRowsByInterventionIds(CONFIG.COMPENSATIONS_TABLE, interventionIds),
       ]);
 
       state.tableAvailability.reports = reportsRes.available;
+      state.tableAvailability.pv = pvRes.available;
       state.tableAvailability.expenses = expensesRes.available;
       state.tableAvailability.files = filesRes.available;
       state.tableAvailability.compensations = compensationsRes.available;
 
       state.items = enrichItems(baseItems, {
         reports: reportsRes.rows,
+        pv: pvRes.rows,
         expenses: expensesRes.rows,
         files: filesRes.rows,
         compensations: compensationsRes.rows,
@@ -382,6 +387,7 @@
   }
 
   async function fetchOptionalRowsByInterventionIds(table, interventionIds) {
+    if (!table) return { rows: [], available: true };
     if (!interventionIds.length) return { rows: [], available: true };
 
     const rows = [];
@@ -455,6 +461,7 @@
 
   function enrichItems(baseItems, payload) {
     const reportsByIntervention = new Map();
+    const pvByIntervention = new Map();
     const filesByIntervention = new Map();
     const expensesByIntervention = new Map();
     const compensationsByIntervention = new Map();
@@ -466,6 +473,17 @@
       const rowTs = toTimestamp(row.updated_at || row.created_at || row.date || row.id);
       const prevTs = prev ? toTimestamp(prev.updated_at || prev.created_at || prev.date || prev.id) : 0;
       if (!prev || rowTs >= prevTs) reportsByIntervention.set(id, row);
+    });
+
+    (payload.pv || []).forEach((row) => {
+      const id = row?.intervention_id;
+      if (!id) return;
+      const prev = pvByIntervention.get(id);
+      const rowTs = toTimestamp(row.updated_at || row.created_at || row.signed_uploaded_at || row.draft_uploaded_at);
+      const prevTs = prev
+        ? toTimestamp(prev.updated_at || prev.created_at || prev.signed_uploaded_at || prev.draft_uploaded_at)
+        : 0;
+      if (!prev || rowTs >= prevTs) pvByIntervention.set(id, row);
     });
 
     (payload.files || []).forEach((row) => {
@@ -523,9 +541,20 @@
 
     return baseItems.map((row) => {
       const report = reportsByIntervention.get(row.id) || null;
+      const pv = pvByIntervention.get(row.id) || null;
       const files = filesByIntervention.get(row.id) || { photos: 0, signatures: 0, signedPv: 0, total: 0 };
       const expenses = expensesByIntervention.get(row.id) || { amountCents: 0, refundCents: 0, rows: 0 };
       const compensationCents = compensationsByIntervention.get(row.id) || 0;
+
+      const pvDraftPath = firstNonEmpty(
+        pv?.pv_draft_path,
+        row?.pv_blank_path,
+        row?.pv_draft_path,
+        row?.pv_path
+      );
+      const pvSignedPath = firstNonEmpty(pv?.pv_signed_path, row?.pv_signed_path);
+      const pvDraftUrl = row._pvUrl || resolveStoragePublicUrl(pvDraftPath);
+      const pvSignedUrl = resolveStoragePublicUrl(pvSignedPath);
 
       const diagnostic = firstNonEmpty(
         report?.diagnostic,
@@ -541,7 +570,13 @@
         row?.resolution,
         row?.solution
       );
-      const observations = firstNonEmpty(report?.notes, report?.observation, row?.infos, row?.notes);
+      const observations = firstNonEmpty(
+        report?.notes,
+        report?.observation,
+        row?.observations,
+        row?.infos,
+        row?.notes
+      );
 
       const arrived =
         Boolean(row.arrived_at) ||
@@ -556,7 +591,11 @@
         { key: "diagnostic", label: "Diagnostic", ok: Boolean(diagnostic) },
         { key: "resolution", label: "Resolution", ok: Boolean(resolution) },
         { key: "photos", label: "Photos", ok: !row._requiresPhotos || files.photos > 0 },
-        { key: "signature", label: "Signature", ok: !row._requiresSignature || files.signatures > 0 },
+        {
+          key: "signature",
+          label: "Signature",
+          ok: !row._requiresSignature || files.signatures > 0 || Boolean(pvSignedPath || pvSignedUrl),
+        },
         { key: "checklist", label: "Checklist", ok: !row._requiresChecklist || checklistComplete },
       ];
 
@@ -574,6 +613,11 @@
       return {
         ...row,
         _report: report,
+        _pv: pv,
+        _pvDraftPath: pvDraftPath,
+        _pvSignedPath: pvSignedPath,
+        _pvUrl: pvDraftUrl,
+        _pvSignedUrl: pvSignedUrl,
         _files: files,
         _expenses: expenses,
         _compensationCents: compensationCents,
@@ -1237,6 +1281,14 @@
     return "";
   }
 
+  function resolveStoragePublicUrl(path) {
+    const raw = String(path || "").trim();
+    if (!raw) return "";
+    if (/^https?:\/\//i.test(raw)) return raw;
+    const { data } = supabase.storage.from(CONFIG.STORAGE_BUCKET).getPublicUrl(raw);
+    return data?.publicUrl || "";
+  }
+
   function renderShell(rootEl) {
     rootEl.innerHTML = `
       <section class="tdb-shell">
@@ -1687,7 +1739,12 @@
     if (d.storageBucket) CONFIG.STORAGE_BUCKET = pick(d.storageBucket);
     if (d.assigneesTable) CONFIG.ASSIGNEES_TABLE = pickRelation(d.assigneesTable);
     if (d.interventionsTable) CONFIG.INTERVENTIONS_TABLE = pickRelation(d.interventionsTable);
-    if (d.reportsTable) CONFIG.REPORTS_TABLE = pickRelation(d.reportsTable);
+    if (Object.prototype.hasOwnProperty.call(d, "reportsTable")) {
+      CONFIG.REPORTS_TABLE = normalizeOptionalRelationName(d.reportsTable);
+    }
+    if (Object.prototype.hasOwnProperty.call(d, "pvTable")) {
+      CONFIG.PV_TABLE = normalizeOptionalRelationName(d.pvTable);
+    }
     if (d.expensesTable) CONFIG.EXPENSES_TABLE = pickRelation(d.expensesTable);
     if (d.filesTable) CONFIG.FILES_TABLE = pickRelation(d.filesTable);
     if (d.compensationsTable) CONFIG.COMPENSATIONS_TABLE = pickRelation(d.compensationsTable);
@@ -1707,6 +1764,14 @@
       relation = relation.slice("public.".length).trim();
     }
     return relation;
+  }
+
+  function normalizeOptionalRelationName(value) {
+    const raw = String(value || "").trim();
+    const s = norm(raw);
+    if (!raw) return "";
+    if (["none", "null", "off", "false", "0"].includes(s)) return "";
+    return normalizeRelationName(raw);
   }
 
   function injectStyles() {
