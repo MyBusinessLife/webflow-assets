@@ -8,15 +8,13 @@ window.Webflow.push(async function () {
     return;
   }
 
-  const supabase = resolveSupabaseClient();
-  if (!supabase) {
-    root.textContent = "Supabase non charge.";
-    return;
-  }
-
   const GLOBAL_CFG = window.__MBL_CFG__ || {};
 
   const CONFIG = {
+    SUPABASE_URL: GLOBAL_CFG.SUPABASE_URL || "https://jrjdhdechcdlygpgaoes.supabase.co",
+    SUPABASE_ANON_KEY:
+      GLOBAL_CFG.SUPABASE_ANON_KEY ||
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJqcmpkaGRlY2hjZGx5Z3BnYW9lcyIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzY3Nzc3MzM0LCJleHAiOjIwODMzNTMzMzR9.E13XKKpIjB1auVtTmgBgV7jxmvS-EOv52t0mT1neKXE",
     BUCKET: GLOBAL_CFG.BUCKET || root.dataset.bucket || "interventions-files",
     QUOTES_TABLE: root.dataset.quotesTable || "devis",
     PRODUCTS_TABLE: root.dataset.productsTable || GLOBAL_CFG.PRODUCTS_TABLE || "products",
@@ -32,6 +30,31 @@ window.Webflow.push(async function () {
     CURRENCY: root.dataset.currency || "EUR",
     PDF_TTL: Number(root.dataset.pdfTtl || 3600),
   };
+
+  function resolveSupabaseClient() {
+    if (window.__MBL_SUPABASE__) return window.__MBL_SUPABASE__;
+    if (window.__adminSupabase) return window.__adminSupabase;
+    if (window.__techSupabase) return window.__techSupabase;
+    if (!window.supabase?.createClient) return null;
+
+    const client = window.supabase.createClient(CONFIG.SUPABASE_URL || "https://jrjdhdechcdlygpgaoes.supabase.co", CONFIG.SUPABASE_ANON_KEY || "", {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        storageKey: "mbl-extranet-auth",
+      },
+    });
+
+    window.__adminSupabase = client;
+    return client;
+  }
+
+  const supabase = resolveSupabaseClient();
+  if (!supabase) {
+    root.textContent = "Supabase non charge.";
+    return;
+  }
 
   const COMPANY = {
     name: root.dataset.companyName || GLOBAL_CFG.COMPANY_NAME || "My Business Life",
