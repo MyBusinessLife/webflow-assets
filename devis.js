@@ -8,6 +8,11 @@ window.Webflow.push(async function () {
     return;
   }
 
+  const url = new URL(window.location.href);
+  const DEBUG = url.searchParams.get("mbl_debug") === "1" || window.location.hostname.includes("webflow.io");
+  const log = (...a) => DEBUG && console.log("[DEVIS]", ...a);
+  const warn = (...a) => DEBUG && console.warn("[DEVIS]", ...a);
+
   const GLOBAL_CFG = window.__MBL_CFG__ || {};
 
   const CONFIG = {
@@ -15,8 +20,9 @@ window.Webflow.push(async function () {
     SUPABASE_ANON_KEY:
       GLOBAL_CFG.SUPABASE_ANON_KEY ||
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJqcmpkaGRlY2hjZGx5Z3BnYW9lcyIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzY3Nzc3MzM0LCJleHAiOjIwODMzNTMzMzR9.E13XKKpIjB1auVtTmgBgV7jxmvS-EOv52t0mT1neKXE",
-    // Root attribute must override global config because different pages can use different buckets.
-    BUCKET: root.dataset.bucket || GLOBAL_CFG.BUCKET || "devis-files",
+    // Quotes must not inherit the global bucket (used by other modules like interventions).
+    // Use per-page dataset override, otherwise default to devis-files.
+    BUCKET: root.dataset.bucket || "devis-files",
     QUOTES_TABLE: root.dataset.quotesTable || "devis",
     PRODUCTS_TABLE: root.dataset.productsTable || GLOBAL_CFG.PRODUCTS_TABLE || "products",
     CLIENTS_TABLE: root.dataset.clientsTable || "clients",
@@ -150,8 +156,25 @@ window.Webflow.push(async function () {
     const uid = auth?.data?.user?.id || "";
     state.currentUserId = uid;
 
-    if (state.organizationId) return;
     if (!uid) return;
+
+    // If an org id is already provided (dataset/global), verify membership. If it doesn't match, override.
+    if (state.organizationId) {
+      const check = await supabase
+        .from("organization_members")
+        .select("organization_id")
+        .eq("user_id", uid)
+        .eq("organization_id", state.organizationId)
+        .limit(1)
+        .maybeSingle();
+      if (!check.error && check.data?.organization_id) return;
+      warn("Provided organizationId not linked to current user; will auto-resolve.", {
+        organizationId: state.organizationId,
+        userId: uid,
+        error: check.error || null,
+      });
+      state.organizationId = "";
+    }
 
     // First try membership table, then profile fallback.
     let membership = await supabase
@@ -185,6 +208,8 @@ window.Webflow.push(async function () {
     if (!profile.error && profile.data?.organization_id) {
       state.organizationId = asUuid(profile.data.organization_id);
     }
+
+    log("Auth context resolved", { userId: uid, organizationId: state.organizationId });
   }
 
   async function detectStatusField() {
@@ -473,12 +498,48 @@ window.Webflow.push(async function () {
     const generatedAtFR = escapeHTML(formatDateTimeFR(generatedAt));
     const generatedIso = escapeHTML(generatedAt.toISOString());
     const electronicId = escapeHTML(buildElectronicDocumentId());
+    const vatBreakdown = computeVatBreakdown(
+      state.draft.items,
+      state.draft.subtotal_cents,
+      state.draft.discount_cents,
+      state.draft.vat_rate
+    );
+    const vatBreakdownHtml = vatBreakdown.length
+      ? `
+        <div class="dv-vat-wrap">
+          <div class="dv-vat-title">Detail TVA</div>
+          <table class="dv-vat-table">
+            <thead>
+              <tr>
+                <th>Taux</th>
+                <th class="dv-col-num">Base HT</th>
+                <th class="dv-col-num">TVA</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${vatBreakdown
+                .map((row) => {
+                  const rate = String(row.rate).replace(".", ",");
+                  return `
+                    <tr>
+                      <td>${rate}%</td>
+                      <td class="dv-col-num">${formatMoney(row.base_cents, CONFIG.CURRENCY)}</td>
+                      <td class="dv-col-num">${formatMoney(row.vat_cents, CONFIG.CURRENCY)}</td>
+                    </tr>
+                  `;
+                })
+                .join("")}
+            </tbody>
+          </table>
+        </div>
+      `
+      : "";
 
     els.preview.innerHTML = `
       <article class="dv-paper">
         <div class="dv-edoc-banner">
           <span>Format electronique</span>
-          <strong>Document numerique clair et structure pour la transition 2026</strong>
+          <strong>Document numerique clair et moderne (preparation: septembre 2026)</strong>
         </div>
 
         <header class="dv-paper-top">
@@ -519,6 +580,7 @@ window.Webflow.push(async function () {
             <div class="dv-doc-row"><span>Remise</span><strong>${formatMoney(state.draft.discount_cents, CONFIG.CURRENCY)}</strong></div>
             <div class="dv-doc-row"><span>TVA</span><strong>${formatMoney(state.draft.vat_cents, CONFIG.CURRENCY)}</strong></div>
             <div class="dv-doc-row dv-doc-row--total"><span>Total TTC</span><strong>${formatMoney(state.draft.total_cents, CONFIG.CURRENCY)}</strong></div>
+            ${vatBreakdownHtml}
           </div>
         </section>
 
@@ -551,39 +613,463 @@ window.Webflow.push(async function () {
             </div>
           ` : ""}
         </section>
+
+        <section class="dv-paper-accept">
+          <div class="dv-accept-card">
+            <div class="dv-accept-title">Bon pour accord</div>
+            <div class="dv-accept-grid">
+              <div class="dv-accept-field">
+                <span>Nom</span>
+                <div class="dv-accept-blank"></div>
+              </div>
+              <div class="dv-accept-field">
+                <span>Date</span>
+                <div class="dv-accept-blank"></div>
+              </div>
+              <div class="dv-accept-field dv-accept-field--wide">
+                <span>Signature</span>
+                <div class="dv-accept-blank dv-accept-blank--tall"></div>
+              </div>
+            </div>
+          </div>
+          <div class="dv-legal-card">
+            <div class="dv-legal-title">Mentions</div>
+            <div class="dv-legal-text">
+              <div>Devis valable jusqu'au ${validity}.</div>
+              <div>Prix en ${escapeHTML(CONFIG.CURRENCY)}. TVA detaillee par taux.</div>
+              <div>Document emis au format electronique (preparation: septembre 2026).</div>
+            </div>
+          </div>
+        </section>
+
+        <footer class="dv-paper-footer">
+          <div class="dv-paper-footer-left">
+            <div><strong>ID:</strong> ${electronicId}</div>
+            <div><strong>Horodatage:</strong> ${generatedAtFR}</div>
+            <div class="dv-paper-footer-sub">ISO: ${generatedIso}</div>
+          </div>
+          <div class="dv-paper-footer-right">
+            <div class="dv-paper-footer-brand">${escapeHTML(COMPANY.name)}</div>
+            ${COMPANY.email ? `<div>${escapeHTML(COMPANY.email)}</div>` : ""}
+            ${COMPANY.phone ? `<div>${escapeHTML(COMPANY.phone)}</div>` : ""}
+          </div>
+        </footer>
       </article>
     `;
   }
 
   async function generatePdfBlob() {
+    const documentId = buildElectronicDocumentId();
+    try {
+      await ensurePdfMake();
+      if (window.pdfMake?.createPdf) {
+        const dd = buildPdfDefinition(documentId);
+        return await new Promise((resolve, reject) => {
+          try {
+            window.pdfMake.createPdf(dd).getBlob((blob) => resolve(blob));
+          } catch (e) {
+            reject(e);
+          }
+        });
+      }
+    } catch (e) {
+      warn("pdfMake generation failed; falling back to canvas render.", e);
+    }
+
     await ensurePdfLibs();
+    return await generatePdfBlobFromCanvas(documentId);
+  }
+
+  function buildPdfDefinition(documentId) {
+    const now = new Date();
+    const primary = "#0ea5e9";
+    const ink = "#0f172a";
+    const soft = "#64748b";
+    const cardBg = "#f8fbff";
+    const border = "#dbe7ff";
+    const subtle = "#e2e8f0";
+
+    const reference = String(state.draft.reference || "").trim() || "Sans reference";
+    const validUntil = formatDateFR(state.draft.valid_until) || "—";
+    const issuedAtFR = formatDateTimeFR(now) || todayFR();
+    const issuedIso = now.toISOString();
+
+    const companyLines = [
+      COMPANY.address,
+      [COMPANY.email, COMPANY.phone].filter(Boolean).join(" • "),
+      COMPANY.siret ? `SIRET: ${COMPANY.siret}` : "",
+      COMPANY.tva ? `TVA: ${COMPANY.tva}` : "",
+    ].filter((s) => String(s || "").trim());
+
+    const clientLines = [
+      state.draft.client_name,
+      state.draft.contact_name,
+      state.draft.client_address,
+      state.draft.client_email,
+      state.draft.client_phone,
+    ].filter((s) => String(s || "").trim());
+
+    const items = (state.draft.items || []).filter((it) => {
+      if (!it) return false;
+      const nameOk = String(it.name || "").trim().length > 0;
+      const qtyOk = Number(it.qty || 0) > 0;
+      const priceOk = Number(it.unit_cents || 0) > 0;
+      return nameOk || qtyOk || priceOk;
+    });
+    if (!items.length) items.push(createItem());
+
+    const tableRows = items.map((item) => {
+      const rate = sanitizeVatRate(item.vat_rate ?? state.draft.vat_rate);
+      return [
+        { text: String(item.name || "—"), style: "td" },
+        { text: String(Math.max(1, Number(item.qty || 1))), style: "td", alignment: "right" },
+        { text: formatMoney(Number(item.unit_cents || 0), CONFIG.CURRENCY), style: "td", alignment: "right" },
+        { text: `${String(rate).replace(".", ",")}%`, style: "td", alignment: "right" },
+        { text: formatMoney(calcLineTotal(item), CONFIG.CURRENCY), style: "td", alignment: "right" },
+      ];
+    });
+
+    const vatBreakdown = computeVatBreakdown(
+      state.draft.items,
+      state.draft.subtotal_cents,
+      state.draft.discount_cents,
+      state.draft.vat_rate
+    );
+    const vatBreakdownBody = [
+      [
+        { text: "Taux", style: "th" },
+        { text: "Base HT", style: "th", alignment: "right" },
+        { text: "TVA", style: "th", alignment: "right" },
+      ],
+      ...vatBreakdown.map((row) => [
+        { text: `${String(row.rate).replace(".", ",")}%`, style: "tdSmall" },
+        { text: formatMoney(row.base_cents, CONFIG.CURRENCY), style: "tdSmall", alignment: "right" },
+        { text: formatMoney(row.vat_cents, CONFIG.CURRENCY), style: "tdSmall", alignment: "right" },
+      ]),
+    ];
+
+    const totalsBody = [
+      ["Sous-total", formatMoney(state.draft.subtotal_cents, CONFIG.CURRENCY)],
+      ["Remise", formatMoney(state.draft.discount_cents, CONFIG.CURRENCY)],
+      ["TVA", formatMoney(state.draft.vat_cents, CONFIG.CURRENCY)],
+      ["Total TTC", formatMoney(state.draft.total_cents, CONFIG.CURRENCY)],
+    ].map(([k, v], idx, arr) => [
+      { text: k, style: idx === arr.length - 1 ? "totalKey" : "totalKey" },
+      { text: v, style: idx === arr.length - 1 ? "totalVal" : "totalVal", alignment: "right" },
+    ]);
+
+    const bannerTable = {
+      table: {
+        widths: ["*"],
+        body: [
+          [
+            {
+              stack: [
+                { text: "FORMAT ELECTRONIQUE", style: "bannerLabel" },
+                { text: "Document numerique clair et moderne (preparation: septembre 2026).", style: "bannerText" },
+              ],
+              fillColor: "#eef2ff",
+            },
+          ],
+        ],
+      },
+      layout: {
+        hLineWidth: () => 0,
+        vLineWidth: () => 0,
+        paddingLeft: () => 12,
+        paddingRight: () => 12,
+        paddingTop: () => 10,
+        paddingBottom: () => 10,
+      },
+      margin: [0, 0, 0, 14],
+    };
+
+    const cardLayout = {
+      hLineWidth: () => 1,
+      vLineWidth: () => 1,
+      hLineColor: () => border,
+      vLineColor: () => border,
+      paddingLeft: () => 12,
+      paddingRight: () => 12,
+      paddingTop: () => 10,
+      paddingBottom: () => 10,
+    };
+
+    const tableLayout = {
+      hLineWidth: (i) => (i === 0 ? 1 : 0.75),
+      vLineWidth: () => 0,
+      hLineColor: () => subtle,
+      paddingLeft: () => 8,
+      paddingRight: () => 8,
+      paddingTop: () => 7,
+      paddingBottom: () => 7,
+      fillColor: (rowIndex) => {
+        if (rowIndex === 0) return "#f8fbff";
+        return rowIndex % 2 === 0 ? "#fbfdff" : null;
+      },
+    };
+
+    const dd = {
+      pageSize: "A4",
+      pageMargins: [42, 42, 42, 42],
+      info: {
+        title: `Devis ${reference}`,
+        author: COMPANY.name,
+        subject: "Devis",
+      },
+      defaultStyle: { fontSize: 10, color: ink },
+      styles: {
+        bannerLabel: { fontSize: 9, bold: true, color: "#075985", characterSpacing: 0.8 },
+        bannerText: { fontSize: 11, bold: true, color: ink, margin: [0, 2, 0, 0] },
+        companyName: { fontSize: 18, bold: true, color: ink },
+        companyLine: { fontSize: 10, color: soft },
+        docPill: { fontSize: 10, bold: true, color: "#075985", margin: [0, 0, 0, 6] },
+        docKey: { fontSize: 10, color: soft },
+        docVal: { fontSize: 10, bold: true, color: ink },
+        sectionTitle: { fontSize: 11, bold: true, color: ink, margin: [0, 0, 0, 6] },
+        metaKey: { fontSize: 9, bold: true, color: soft, characterSpacing: 0.5 },
+        metaVal: { fontSize: 10, color: ink },
+        th: { fontSize: 9, bold: true, color: ink, characterSpacing: 0.5 },
+        td: { fontSize: 10, color: ink },
+        tdSmall: { fontSize: 9, color: ink },
+        totalKey: { fontSize: 10, color: soft },
+        totalVal: { fontSize: 10, color: ink, bold: true },
+      },
+      content: [
+        bannerTable,
+        {
+          columns: [
+            {
+              width: "*",
+              stack: [{ text: COMPANY.name, style: "companyName" }, ...companyLines.map((l) => ({ text: l, style: "companyLine" }))],
+            },
+            {
+              width: 220,
+              stack: [
+                {
+                  table: {
+                    widths: ["*"],
+                    body: [
+                      [
+                        {
+                          text: "DEVIS",
+                          style: "docPill",
+                          fillColor: "#e0f2fe",
+                          alignment: "center",
+                          margin: [0, 4, 0, 4],
+                        },
+                      ],
+                    ],
+                  },
+                  layout: {
+                    hLineWidth: () => 0,
+                    vLineWidth: () => 0,
+                    paddingLeft: () => 0,
+                    paddingRight: () => 0,
+                    paddingTop: () => 0,
+                    paddingBottom: () => 0,
+                  },
+                },
+                {
+                  table: {
+                    widths: ["*", "auto"],
+                    body: [
+                      [{ text: "Reference", style: "docKey" }, { text: reference, style: "docVal", alignment: "right" }],
+                      [{ text: "Date", style: "docKey" }, { text: todayFR(), style: "docVal", alignment: "right" }],
+                      [{ text: "Validite", style: "docKey" }, { text: validUntil, style: "docVal", alignment: "right" }],
+                    ],
+                  },
+                  layout: "noBorders",
+                  margin: [0, 8, 0, 0],
+                },
+              ],
+              alignment: "right",
+            },
+          ],
+          columnGap: 16,
+          margin: [0, 0, 0, 12],
+        },
+        {
+          table: {
+            widths: ["*", "*"],
+            body: [
+              [
+                {
+                  stack: [
+                    { text: "Informations document", style: "sectionTitle" },
+                    { text: "ID document", style: "metaKey" },
+                    { text: documentId, style: "metaVal", margin: [0, 0, 0, 6] },
+                    { text: "Horodatage", style: "metaKey" },
+                    { text: issuedAtFR, style: "metaVal", margin: [0, 0, 0, 6] },
+                    { text: "Timestamp ISO", style: "metaKey" },
+                    { text: issuedIso, style: "metaVal" },
+                  ],
+                  fillColor: cardBg,
+                },
+                {
+                  stack: [
+                    { text: "Client", style: "sectionTitle" },
+                    ...(clientLines.length
+                      ? clientLines.map((l, idx) => ({ text: l, style: idx === 0 ? "metaVal" : "companyLine" }))
+                      : [{ text: "—", style: "companyLine" }]),
+                  ],
+                  fillColor: cardBg,
+                },
+              ],
+            ],
+          },
+          layout: cardLayout,
+          margin: [0, 0, 0, 12],
+        },
+        {
+          table: {
+            headerRows: 1,
+            widths: ["*", 42, 72, 44, 82],
+            body: [
+              [
+                { text: "Libelle", style: "th" },
+                { text: "Qte", style: "th", alignment: "right" },
+                { text: "PU HT", style: "th", alignment: "right" },
+                { text: "TVA", style: "th", alignment: "right" },
+                { text: "Total HT", style: "th", alignment: "right" },
+              ],
+              ...tableRows,
+            ],
+          },
+          layout: tableLayout,
+          margin: [0, 0, 0, 12],
+        },
+        {
+          columns: [
+            vatBreakdown.length
+              ? {
+                  width: "*",
+                  stack: [
+                    { text: "Detail TVA", style: "sectionTitle" },
+                    {
+                      table: { headerRows: 1, widths: [48, "*", "*"], body: vatBreakdownBody },
+                      layout: tableLayout,
+                    },
+                  ],
+                }
+              : { width: "*", text: "" },
+            {
+              width: 220,
+              stack: [
+                { text: "Recapitulatif", style: "sectionTitle" },
+                {
+                  table: { widths: ["*", "auto"], body: totalsBody },
+                  layout: "noBorders",
+                },
+              ],
+            },
+          ],
+          columnGap: 16,
+          margin: [0, 0, 0, 12],
+        },
+        ...(String(state.draft.notes || "").trim()
+          ? [{ text: "Notes", style: "sectionTitle" }, { text: String(state.draft.notes || ""), color: "#334155", margin: [0, 0, 0, 12] }]
+          : []),
+        ...(String(state.draft.terms || "").trim()
+          ? [
+              { text: "Conditions", style: "sectionTitle" },
+              { text: String(state.draft.terms || ""), color: "#334155", margin: [0, 0, 0, 12] },
+            ]
+          : []),
+        {
+          table: {
+            widths: ["*", "*"],
+            body: [
+              [
+                {
+                  stack: [
+                    { text: "Bon pour accord", style: "sectionTitle" },
+                    { text: "Nom:", style: "metaKey" },
+                    { text: " ", margin: [0, 2, 0, 10] },
+                    { canvas: [{ type: "line", x1: 0, y1: 0, x2: 220, y2: 0, lineWidth: 1, lineColor: border }] },
+                    { text: "Date:", style: "metaKey", margin: [0, 10, 0, 0] },
+                    { text: " ", margin: [0, 2, 0, 10] },
+                    { canvas: [{ type: "line", x1: 0, y1: 0, x2: 220, y2: 0, lineWidth: 1, lineColor: border }] },
+                    { text: "Signature:", style: "metaKey", margin: [0, 10, 0, 0] },
+                    { text: " ", margin: [0, 2, 0, 26] },
+                    { canvas: [{ type: "rect", x: 0, y: 0, w: 220, h: 46, lineWidth: 1, lineColor: border }] },
+                  ],
+                  fillColor: "#fbfdff",
+                },
+                {
+                  stack: [
+                    { text: "Mentions", style: "sectionTitle" },
+                    { text: `Devis valable jusqu'au ${validUntil}.`, color: "#334155", margin: [0, 0, 0, 6] },
+                    { text: `Prix en ${CONFIG.CURRENCY}. TVA detaillee par taux.`, color: "#334155", margin: [0, 0, 0, 6] },
+                    { text: "Document emis au format electronique (preparation: septembre 2026).", color: "#334155" },
+                  ],
+                  fillColor: "#fbfdff",
+                },
+              ],
+            ],
+          },
+          layout: cardLayout,
+          margin: [0, 0, 0, 10],
+        },
+        {
+          columns: [
+            { width: "*", text: `ID: ${documentId} • Horodatage: ${issuedAtFR}`, fontSize: 9, color: soft },
+            { width: "auto", text: COMPANY.name, fontSize: 9, color: soft, alignment: "right" },
+          ],
+        },
+      ],
+    };
+
+    // Small visual accent line under banner using a canvas stroke.
+    dd.content.splice(1, 0, {
+      canvas: [{ type: "line", x1: 0, y1: 0, x2: 510, y2: 0, lineWidth: 2, lineColor: primary }],
+      margin: [0, -6, 0, 10],
+    });
+
+    return dd;
+  }
+
+  async function generatePdfBlobFromCanvas(documentId) {
     const target = els.preview.querySelector(".dv-paper") || els.preview;
-    const canvas = await window.html2canvas(target, {
-      scale: 2.2,
+    const stage = document.createElement("div");
+    stage.style.cssText = "position:fixed;left:-10000px;top:0;background:#fff;z-index:-1;";
+    const clone = target.cloneNode(true);
+    clone.style.width = "794px"; // A4 @ 96dpi
+    clone.style.maxWidth = "794px";
+    clone.style.margin = "0";
+    stage.appendChild(clone);
+    document.body.appendChild(stage);
+
+    await new Promise((r) => requestAnimationFrame(() => r()));
+
+    const canvas = await window.html2canvas(clone, {
+      scale: 2.6,
       backgroundColor: "#ffffff",
       useCORS: true,
-      windowWidth: target.scrollWidth,
+      windowWidth: 794,
       scrollX: 0,
-      scrollY: -window.scrollY,
+      scrollY: 0,
     });
-    const imgData = canvas.toDataURL("image/png");
+    document.body.removeChild(stage);
+
+    const imgData = canvas.toDataURL("image/jpeg", 0.92);
     const pdf = new window.jspdf.jsPDF("p", "pt", "a4");
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
-    const margin = 16;
+    const margin = 18;
     const printableWidth = pageWidth - margin * 2;
     const printableHeight = pageHeight - margin * 2;
     const imgHeight = (canvas.height * printableWidth) / canvas.width;
     let heightLeft = imgHeight;
     let position = margin;
 
-    pdf.addImage(imgData, "PNG", margin, position, printableWidth, imgHeight);
+    pdf.addImage(imgData, "JPEG", margin, position, printableWidth, imgHeight);
     heightLeft -= printableHeight;
 
     while (heightLeft > 0) {
       position -= printableHeight;
       pdf.addPage();
-      pdf.addImage(imgData, "PNG", margin, position, printableWidth, imgHeight);
+      pdf.addImage(imgData, "JPEG", margin, position, printableWidth, imgHeight);
       heightLeft -= printableHeight;
     }
 
@@ -737,6 +1223,7 @@ window.Webflow.push(async function () {
       : [`devis/${quotePart}/${fileName}`];
 
     let denied = false;
+    let lastError = null;
     for (const path of candidates) {
       const up = await supabase.storage.from(CONFIG.BUCKET).upload(path, blob, {
         cacheControl: "3600",
@@ -747,11 +1234,13 @@ window.Webflow.push(async function () {
         const { data } = supabase.storage.from(CONFIG.BUCKET).getPublicUrl(path);
         return { path, url: data?.publicUrl || "" };
       }
+      lastError = up.error;
+      warn("PDF upload failed", { bucket: CONFIG.BUCKET, path, error: up.error });
       if (isPermissionDenied(up.error)) denied = true;
     }
 
-    if (denied) return { denied: true };
-    return null;
+    if (denied) return { denied: true, error: lastError };
+    return { error: lastError };
   }
 
   async function resolvePdfUrlFromPath(path) {
@@ -813,6 +1302,11 @@ window.Webflow.push(async function () {
           showToast("success", STR.msgSavedWithPdf);
         } else if (saved?.ok && uploaded?.denied) {
           showToast("warning", STR.msgStorageDenied);
+          if (DEBUG && uploaded?.error) warn("Storage denied details:", uploaded.error);
+        } else if (saved?.ok && uploaded?.error) {
+          const msg = String(uploaded.error?.message || uploaded.error?.error || "").trim();
+          showToast("warning", msg ? `Upload PDF impossible: ${msg}` : STR.msgSavedNoPdf);
+          if (DEBUG) warn("Storage upload error details:", uploaded.error);
         } else if (saved?.ok && !uploaded?.path) {
           showToast("warning", STR.msgSavedNoPdf);
         } else if (saved?.denied || !saved?.ok) {
@@ -978,6 +1472,36 @@ window.Webflow.push(async function () {
     return Math.round(rawVat * ratio);
   }
 
+  function computeVatBreakdown(items, subtotal, discount, fallbackRate) {
+    const safeSubtotal = Math.max(0, Number(subtotal || 0));
+    if (safeSubtotal === 0) return [];
+
+    const safeDiscount = Math.max(0, Number(discount || 0));
+    const taxable = Math.max(0, safeSubtotal - safeDiscount);
+    const ratio = taxable / safeSubtotal;
+
+    const baseByRate = new Map();
+    const rawVatByRate = new Map();
+
+    (items || []).forEach((item) => {
+      const rate = sanitizeVatRate(item?.vat_rate ?? fallbackRate);
+      const base = Math.max(0, Number(calcLineTotal(item) || 0));
+      baseByRate.set(rate, (baseByRate.get(rate) || 0) + base);
+      rawVatByRate.set(rate, (rawVatByRate.get(rate) || 0) + Math.round(base * (rate / 100)));
+    });
+
+    const rates = Array.from(baseByRate.keys()).sort((a, b) => Number(a) - Number(b));
+    return rates
+      .map((rate) => {
+        const baseRaw = baseByRate.get(rate) || 0;
+        const vatRaw = rawVatByRate.get(rate) || 0;
+        const baseAdj = Math.round(baseRaw * ratio);
+        const vatAdj = Math.round(vatRaw * ratio);
+        return { rate, base_cents: baseAdj, vat_cents: vatAdj, total_cents: baseAdj + vatAdj };
+      })
+      .filter((row) => row.base_cents || row.vat_cents);
+  }
+
   function createItem() {
     return {
       name: "",
@@ -1029,6 +1553,13 @@ window.Webflow.push(async function () {
     if (window.jspdf?.jsPDF && window.html2canvas) return;
     await loadScript("https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js");
     await loadScript("https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js");
+  }
+
+  async function ensurePdfMake() {
+    if (window.pdfMake?.createPdf) return;
+    await loadScript("https://cdn.jsdelivr.net/npm/pdfmake@0.2.10/build/pdfmake.min.js");
+    // Must be loaded after pdfmake. Defines pdfMake.vfs for the default font.
+    await loadScript("https://cdn.jsdelivr.net/npm/pdfmake@0.2.10/build/vfs_fonts.js");
   }
 
   function loadScript(src) {
@@ -1509,7 +2040,7 @@ window.Webflow.push(async function () {
       .dv-preview {
         background: #f5f9ff;
         border-radius: 16px;
-        padding: 14px;
+        padding: 10px;
         border: 1px solid #e2ebff;
         box-shadow: inset 0 1px 0 #ffffff;
         min-height: 460px;
@@ -1599,6 +2130,39 @@ window.Webflow.push(async function () {
         margin-top: 2px;
         padding-top: 8px;
         border-top: 1px dashed #c9daff;
+      }
+      .dv-vat-wrap {
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px dashed #c9daff;
+      }
+      .dv-vat-title {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #64748b;
+        margin-bottom: 6px;
+        font-weight: 800;
+      }
+      .dv-vat-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 11px;
+      }
+      .dv-vat-table th,
+      .dv-vat-table td {
+        border-bottom: 1px solid #e2e8f0;
+        padding: 6px 6px;
+        text-align: left;
+        vertical-align: top;
+      }
+      .dv-vat-table th {
+        font-weight: 800;
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #0f172a;
+        background: #f8fbff;
       }
       .dv-edoc-meta {
         display: grid;
@@ -1714,6 +2278,93 @@ window.Webflow.push(async function () {
         white-space: pre-line;
         word-break: break-word;
       }
+      .dv-paper-accept {
+        margin-top: 10px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        align-items: start;
+      }
+      .dv-accept-card,
+      .dv-legal-card {
+        border: 1px solid #deebff;
+        border-radius: 12px;
+        padding: 12px;
+        background: #fbfdff;
+        display: grid;
+        gap: 10px;
+      }
+      .dv-accept-title,
+      .dv-legal-title {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #64748b;
+        font-weight: 800;
+      }
+      .dv-accept-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+      .dv-accept-field {
+        display: grid;
+        gap: 6px;
+        font-size: 12px;
+        color: #0f172a;
+      }
+      .dv-accept-field span {
+        font-size: 10px;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-weight: 800;
+      }
+      .dv-accept-field--wide {
+        grid-column: span 2;
+      }
+      .dv-accept-blank {
+        height: 28px;
+        border-radius: 10px;
+        border: 1px dashed #c9daff;
+        background: #ffffff;
+      }
+      .dv-accept-blank--tall {
+        height: 70px;
+      }
+      .dv-legal-text {
+        font-size: 12px;
+        color: #334155;
+        line-height: 1.55;
+        display: grid;
+        gap: 6px;
+      }
+      .dv-paper-footer {
+        margin-top: 12px;
+        border-top: 1px solid #e6eefc;
+        padding-top: 10px;
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        font-size: 11px;
+        color: #475569;
+      }
+      .dv-paper-footer-left {
+        display: grid;
+        gap: 4px;
+      }
+      .dv-paper-footer-right {
+        text-align: right;
+        display: grid;
+        gap: 4px;
+      }
+      .dv-paper-footer-brand {
+        color: #0f172a;
+        font-weight: 800;
+      }
+      .dv-paper-footer-sub {
+        color: #64748b;
+      }
       .dv-toasts {
         display: grid;
         gap: 8px;
@@ -1735,6 +2386,7 @@ window.Webflow.push(async function () {
         .dv-preview-panel { position: static; }
         .dv-edoc-meta { grid-template-columns: 1fr; }
         .dv-paper-meta { grid-template-columns: 1fr; }
+        .dv-paper-accept { grid-template-columns: 1fr; }
       }
       @media (max-width: 720px) {
         .dv-shell { padding: 16px; }
