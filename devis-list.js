@@ -38,6 +38,8 @@ window.Webflow.push(async function () {
     statusDraft: "Brouillons",
     statusSent: "Envoyes",
     statusAccepted: "Acceptes",
+    statusRejected: "Refuses",
+    statusCanceled: "Annules",
     statusExpired: "Expires",
     emptyTitle: "Aucun devis",
     emptyBody: "Aucun devis ne correspond aux filtres actuels.",
@@ -55,9 +57,16 @@ window.Webflow.push(async function () {
     preview: "Previsualiser",
     openPdf: "Ouvrir PDF",
     downloadPdf: "Telecharger PDF",
+    saveStatus: "Mettre a jour",
+    deleteQuote: "Supprimer",
     close: "Fermer",
     noPdf: "Aucun PDF enregistre pour ce devis.",
     noItems: "Aucune ligne",
+    statusUpdated: "Etat du devis mis a jour.",
+    statusUpdateError: "Impossible de mettre a jour l'etat.",
+    deleteConfirm: "Supprimer ce devis ?",
+    deleteSuccess: "Devis supprime.",
+    deleteError: "Impossible de supprimer le devis.",
   };
 
   const supabase = resolveSupabaseClient(CONFIG);
@@ -72,6 +81,7 @@ window.Webflow.push(async function () {
   const state = {
     currentUserId: "",
     organizationId: asUuid(CONFIG.ORGANIZATION_ID),
+    statusField: "",
     filter: "all",
     search: "",
     quotes: [],
@@ -88,6 +98,7 @@ window.Webflow.push(async function () {
       if (!state.organizationId) {
         setStatus(STR.orgMissing);
       }
+      state.statusField = await detectStatusField();
       await loadQuotes();
       render();
       if (state.selected) openPreview(state.selected.id);
@@ -163,6 +174,16 @@ window.Webflow.push(async function () {
     }
   }
 
+  async function detectStatusField() {
+    const tests = ["status", "quote_status", "state"];
+    for (const field of tests) {
+      const res = await supabase.from(CONFIG.QUOTES_TABLE).select(`id,${field}`).limit(1);
+      if (!res.error) return field;
+      if (!isMissingColumnError(res.error)) break;
+    }
+    return "";
+  }
+
   async function loadQuotes() {
     let query = supabase
       .from(CONFIG.QUOTES_TABLE)
@@ -230,6 +251,11 @@ window.Webflow.push(async function () {
         <div class="dl-actions">
           <button type="button" class="dl-btn dl-btn--primary" data-action="preview">${STR.preview}</button>
           ${quote.pdfAvailable ? `<button type="button" class="dl-btn dl-btn--ghost" data-action="open-pdf">${STR.openPdf}</button>` : ""}
+          <select class="dl-status-select" data-action="status-select">
+            ${renderStatusOptions(quote.status.key)}
+          </select>
+          <button type="button" class="dl-btn dl-btn--ghost" data-action="save-status">${STR.saveStatus}</button>
+          <button type="button" class="dl-btn dl-btn--danger" data-action="delete">${STR.deleteQuote}</button>
         </div>
       `;
 
@@ -242,6 +268,31 @@ window.Webflow.push(async function () {
         openPdfBtn.addEventListener("click", async () => {
           const url = await resolveQuotePdfUrl(quote);
           if (url) window.open(url, "_blank", "noopener");
+        });
+      }
+
+      const saveStatusBtn = card.querySelector('[data-action="save-status"]');
+      const statusSelect = card.querySelector('[data-action="status-select"]');
+      if (saveStatusBtn && statusSelect) {
+        saveStatusBtn.addEventListener("click", async () => {
+          const nextStatus = statusSelect.value;
+          const ok = await updateQuoteStatus(quote.id, nextStatus);
+          if (!ok) return;
+          await loadQuotes();
+          render();
+          showToast("success", STR.statusUpdated);
+        });
+      }
+
+      const deleteBtn = card.querySelector('[data-action="delete"]');
+      if (deleteBtn) {
+        deleteBtn.addEventListener("click", async () => {
+          if (!window.confirm(STR.deleteConfirm)) return;
+          const ok = await deleteQuote(quote);
+          if (!ok) return;
+          await loadQuotes();
+          render();
+          showToast("success", STR.deleteSuccess);
         });
       }
 
@@ -327,6 +378,66 @@ window.Webflow.push(async function () {
     return pub?.data?.publicUrl || "";
   }
 
+  function renderStatusOptions(currentKey) {
+    const current = normalizeStatusKey(currentKey);
+    const options = [
+      { value: "draft", label: "Brouillon" },
+      { value: "sent", label: "Envoye" },
+      { value: "accepted", label: "Accepte" },
+      { value: "rejected", label: "Refuse" },
+      { value: "canceled", label: "Annule" },
+      { value: "expired", label: "Expire" },
+    ];
+    return options
+      .map((opt) => `<option value="${opt.value}" ${opt.value === current ? "selected" : ""}>${opt.label}</option>`)
+      .join("");
+  }
+
+  async function updateQuoteStatus(quoteId, nextStatus) {
+    const status = normalizeStatusKey(nextStatus);
+    const candidates = state.statusField
+      ? [{ [state.statusField]: status }]
+      : [{ status }, { quote_status: status }, { state: status }];
+
+    let lastError = null;
+    for (const payload of candidates) {
+      const res = await supabase
+        .from(CONFIG.QUOTES_TABLE)
+        .update(payload)
+        .eq("id", quoteId);
+      if (!res.error) {
+        if (payload.status !== undefined) state.statusField = "status";
+        if (payload.quote_status !== undefined) state.statusField = "quote_status";
+        if (payload.state !== undefined) state.statusField = "state";
+        return true;
+      }
+      lastError = res.error;
+      if (isMissingColumnError(res.error) || isConstraintViolation(res.error)) continue;
+      break;
+    }
+
+    console.error(lastError);
+    showToast("error", STR.statusUpdateError);
+    return false;
+  }
+
+  async function deleteQuote(quote) {
+    const del = await supabase
+      .from(CONFIG.QUOTES_TABLE)
+      .delete()
+      .eq("id", quote.id);
+    if (del.error) {
+      console.error(del.error);
+      showToast("error", STR.deleteError);
+      return false;
+    }
+
+    if (quote?.pdf_path) {
+      await supabase.storage.from(CONFIG.BUCKET).remove([quote.pdf_path]);
+    }
+    return true;
+  }
+
   function renderFallbackPreview(quote) {
     const items = parseItems(quote.items);
     const lines = items.length
@@ -381,6 +492,12 @@ window.Webflow.push(async function () {
     if (["accepted", "accepte", "acceptee", "signed", "valide", "validated", "validee"].includes(raw)) {
       return { key: "accepted", label: "Accepte", tone: "success" };
     }
+    if (["rejected", "refuse", "refusee", "declined"].includes(raw)) {
+      return { key: "rejected", label: "Refuse", tone: "danger" };
+    }
+    if (["canceled", "cancelled", "annule", "annulee"].includes(raw)) {
+      return { key: "canceled", label: "Annule", tone: "danger" };
+    }
     if (["sent", "envoye", "envoyee", "issued", "finalized", "finalise"].includes(raw)) {
       return { key: "sent", label: "Envoye", tone: "info" };
     }
@@ -394,6 +511,16 @@ window.Webflow.push(async function () {
 
     if (row.pdf_url || row.pdf_path) return { key: "sent", label: "Pret", tone: "info" };
     return { key: "draft", label: "Brouillon", tone: "neutral" };
+  }
+
+  function normalizeStatusKey(value) {
+    const raw = normalize(value);
+    if (["accepted", "accepte", "acceptee", "signed", "valide", "validated", "validee"].includes(raw)) return "accepted";
+    if (["rejected", "refuse", "refusee", "declined"].includes(raw)) return "rejected";
+    if (["canceled", "cancelled", "annule", "annulee"].includes(raw)) return "canceled";
+    if (["expired", "expire"].includes(raw)) return "expired";
+    if (["sent", "envoye", "envoyee", "issued", "finalized", "finalise"].includes(raw)) return "sent";
+    return "draft";
   }
 
   function parseItems(value) {
@@ -416,6 +543,15 @@ window.Webflow.push(async function () {
 
   function setStatus(text) {
     els.status.textContent = text || "";
+  }
+
+  function showToast(type, message) {
+    if (!els.toasts) return;
+    const el = document.createElement("div");
+    el.className = `dl-toast dl-toast--${type}`;
+    el.textContent = message;
+    els.toasts.appendChild(el);
+    setTimeout(() => el.remove(), 3000);
   }
 
   function formatMoney(cents, currency) {
@@ -461,6 +597,12 @@ window.Webflow.push(async function () {
     const code = String(error?.code || "");
     const msg = String(error?.message || "").toLowerCase();
     return code === "42703" || (msg.includes("column") && msg.includes("does not exist"));
+  }
+
+  function isConstraintViolation(error) {
+    const code = String(error?.code || "");
+    const msg = String(error?.message || "").toLowerCase();
+    return code === "23514" || msg.includes("violates check constraint");
   }
 
   function escapeHTML(str) {
@@ -513,6 +655,8 @@ window.Webflow.push(async function () {
             <button class="dl-chip" data-filter="draft">${copy.statusDraft}</button>
             <button class="dl-chip" data-filter="sent">${copy.statusSent}</button>
             <button class="dl-chip" data-filter="accepted">${copy.statusAccepted}</button>
+            <button class="dl-chip" data-filter="rejected">${copy.statusRejected}</button>
+            <button class="dl-chip" data-filter="canceled">${copy.statusCanceled}</button>
             <button class="dl-chip" data-filter="expired">${copy.statusExpired}</button>
           </div>
           <input class="dl-search" type="search" placeholder="${copy.searchPlaceholder}" data-search />
@@ -534,6 +678,8 @@ window.Webflow.push(async function () {
         </div>
 
         <div class="dl-list" data-list></div>
+
+        <div class="dl-toasts" data-toasts></div>
 
         <div class="dl-modal" data-modal hidden>
           <div class="dl-modal-backdrop" data-modal-backdrop></div>
@@ -572,6 +718,7 @@ window.Webflow.push(async function () {
       btnNewQuote: rootEl.querySelector("[data-new-quote]"),
       search: rootEl.querySelector("[data-search]"),
       filters: Array.from(rootEl.querySelectorAll("[data-filter]")),
+      toasts: rootEl.querySelector("[data-toasts]"),
       modal: rootEl.querySelector("[data-modal]"),
       modalBackdrop: rootEl.querySelector("[data-modal-backdrop]"),
       modalClose: rootEl.querySelector("[data-modal-close]"),
@@ -749,6 +896,15 @@ window.Webflow.push(async function () {
         flex-wrap: wrap;
         gap: 8px;
       }
+      .dl-status-select {
+        border: 1px solid #bfd3f8;
+        background: #f8fbff;
+        color: #0f172a;
+        border-radius: 10px;
+        padding: 8px 10px;
+        font-size: 13px;
+        min-height: 36px;
+      }
       .dl-btn {
         border: none;
         border-radius: 10px;
@@ -767,6 +923,10 @@ window.Webflow.push(async function () {
       .dl-btn--ghost {
         background: #e9f0fb;
         color: #0f172a;
+      }
+      .dl-btn--danger {
+        background: #fee2e2;
+        color: #991b1b;
       }
       .dl-badge {
         border-radius: 999px;
@@ -793,6 +953,21 @@ window.Webflow.push(async function () {
       .dl-empty-body {
         color: #64748b;
       }
+      .dl-toasts {
+        display: grid;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .dl-toast {
+        border-radius: 10px;
+        padding: 9px 11px;
+        font-size: 12px;
+        color: #fff;
+        background: #0f172a;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.2);
+      }
+      .dl-toast--success { background: #16a34a; }
+      .dl-toast--error { background: #dc2626; }
 
       .dl-modal {
         position: fixed;

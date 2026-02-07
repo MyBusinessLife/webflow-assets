@@ -120,8 +120,9 @@ window.Webflow.push(async function () {
     productByName: new Map(),
     quoteId: null,
     statusField: "",
+    nextReference: "",
     pdf: { url: "", path: "" },
-    draft: loadDraft(),
+    draft: defaultDraft(),
   };
 
   await boot();
@@ -131,6 +132,7 @@ window.Webflow.push(async function () {
     await resolveAuthContext();
     await Promise.all([loadClients(), loadInterventions(), loadProducts()]);
     state.statusField = await detectStatusField();
+    state.nextReference = await loadNextReference();
     hydrateDraft();
     applyAutoPrefillFromContext();
     ensureReference();
@@ -194,11 +196,51 @@ window.Webflow.push(async function () {
     return "";
   }
 
+  async function loadNextReference() {
+    const currentYear = new Date().getFullYear();
+    const basePrefix = `DV-${currentYear}-`;
+    const fallback = `${basePrefix}0001`;
+
+    let query = supabase
+      .from(CONFIG.QUOTES_TABLE)
+      .select("reference,created_at")
+      .limit(500);
+
+    if (state.organizationId) query = query.eq("organization_id", state.organizationId);
+
+    let res = await query;
+    if (res.error && isMissingColumnError(res.error)) {
+      res = await supabase
+        .from(CONFIG.QUOTES_TABLE)
+        .select("reference,created_at")
+        .limit(500);
+    }
+    if (res.error) return fallback;
+
+    let max = 0;
+    (res.data || []).forEach((row) => {
+      const ref = String(row?.reference || "").trim();
+      const m = ref.match(new RegExp(`^DV-${currentYear}-(\\\\d{1,})$`));
+      if (m) {
+        max = Math.max(max, Number(m[1] || 0));
+      }
+    });
+
+    if (max <= 0) {
+      (res.data || []).forEach((row) => {
+        const ref = String(row?.reference || "").trim();
+        const m = ref.match(/(\d+)(?!.*\d)/);
+        if (m) max = Math.max(max, Number(m[1] || 0));
+      });
+    }
+
+    const next = String(max + 1).padStart(4, "0");
+    return `${basePrefix}${next}`;
+  }
+
   function ensureReference() {
     if (String(state.draft.reference || "").trim()) return;
-    const base = `DV-${todayCompact()}`;
-    const suffix = randomId().slice(0, 4).toUpperCase();
-    state.draft.reference = `${base}-${suffix}`;
+    state.draft.reference = state.nextReference || `DV-${new Date().getFullYear()}-0001`;
     els.ref.value = state.draft.reference;
   }
 
@@ -566,15 +608,19 @@ window.Webflow.push(async function () {
       return { ok: false, reason: "missing_table_name" };
     }
 
-    const statusValue = mode === STATUS_VALIDATED ? STATUS_VALIDATED : STATUS_DRAFT;
+    const statusValues = mode === STATUS_VALIDATED
+      ? [STATUS_VALIDATED, "accepted", "validated", "confirmed"]
+      : [STATUS_DRAFT, "pending"];
     const payloadVariants = [];
 
     if (state.statusField) {
-      payloadVariants.push({ ...payload, [state.statusField]: statusValue });
+      statusValues.forEach((v) => payloadVariants.push({ ...payload, [state.statusField]: v }));
     } else {
-      payloadVariants.push({ ...payload, status: statusValue });
-      payloadVariants.push({ ...payload, quote_status: statusValue });
-    payloadVariants.push({ ...payload, state: statusValue });
+      statusValues.forEach((v) => {
+        payloadVariants.push({ ...payload, status: v });
+        payloadVariants.push({ ...payload, quote_status: v });
+        payloadVariants.push({ ...payload, state: v });
+      });
     }
     payloadVariants.push(payload);
 
@@ -590,12 +636,17 @@ window.Webflow.push(async function () {
         if (candidate.status !== undefined) state.statusField = "status";
         if (candidate.quote_status !== undefined) state.statusField = "quote_status";
         if (candidate.state !== undefined) state.statusField = "state";
-        state.draft.quote_status = statusValue;
-        return { ok: true, mode: statusValue };
+        state.draft.quote_status = String(
+          candidate.status ?? candidate.quote_status ?? candidate.state ?? mode
+        );
+        return { ok: true, mode: state.draft.quote_status };
       }
       lastError = res.error;
       if (isPermissionDenied(res.error)) {
         return { ok: false, denied: true, reason: "rls" };
+      }
+      if (isConstraintViolation(res.error)) {
+        continue;
       }
       if (isMissingColumnError(res.error)) {
         continue;
@@ -641,19 +692,29 @@ window.Webflow.push(async function () {
   }
 
   async function uploadPdfToStorage(blob) {
-    const orgPart = state.organizationId || "org";
-    const path = `devis/${orgPart}/${state.quoteId || "draft"}/${Date.now()}_${randomId()}.pdf`;
-    const up = await supabase.storage.from(CONFIG.BUCKET).upload(path, blob, {
-      cacheControl: "3600",
-      upsert: true,
-      contentType: "application/pdf",
-    });
-    if (up.error) {
-      if (isPermissionDenied(up.error)) return { denied: true };
-      return null;
+    const quotePart = state.quoteId || randomId();
+    const fileName = `${Date.now()}_${randomId()}.pdf`;
+    const orgPart = asUuid(state.organizationId);
+    const candidates = orgPart
+      ? [`devis/${orgPart}/${quotePart}/${fileName}`]
+      : [`devis/${quotePart}/${fileName}`];
+
+    let denied = false;
+    for (const path of candidates) {
+      const up = await supabase.storage.from(CONFIG.BUCKET).upload(path, blob, {
+        cacheControl: "3600",
+        upsert: true,
+        contentType: "application/pdf",
+      });
+      if (!up.error) {
+        const { data } = supabase.storage.from(CONFIG.BUCKET).getPublicUrl(path);
+        return { path, url: data?.publicUrl || "" };
+      }
+      if (isPermissionDenied(up.error)) denied = true;
     }
-    const { data } = supabase.storage.from(CONFIG.BUCKET).getPublicUrl(path);
-    return { path, url: data?.publicUrl || "" };
+
+    if (denied) return { denied: true };
+    return null;
   }
 
   function wireActions() {
@@ -713,6 +774,10 @@ window.Webflow.push(async function () {
           }
           await triggerDownloadFromBlob(blob);
           showToast("success", STR.msgPdfOnly);
+        }
+
+        if (saved?.ok) {
+          state.nextReference = bumpReference(state.draft.reference) || (await loadNextReference());
         }
       } catch (e) {
         console.error(e);
@@ -892,16 +957,12 @@ window.Webflow.push(async function () {
   }
 
   function persistDraft() {
-    localStorage.setItem("mbl-devis-draft", JSON.stringify(state.draft));
+    // Intentionally no cross-page persistence:
+    // each new quote page starts clean except business context prefill.
   }
 
   function loadDraft() {
-    try {
-      const raw = localStorage.getItem("mbl-devis-draft");
-      return raw ? JSON.parse(raw) : defaultDraft();
-    } catch (_) {
-      return defaultDraft();
-    }
+    return defaultDraft();
   }
 
   function todayFR() {
@@ -936,9 +997,9 @@ window.Webflow.push(async function () {
     if (opts.order) query = query.order(opts.order, { ascending: !opts.desc });
     if (opts.limit) query = query.limit(opts.limit);
     let res = await query;
-    if (res.error && isMissingColumnError(res.error)) {
+    if (res.error && (isMissingColumnError(res.error) || isOrderParseError(res.error))) {
       let q2 = supabase.from(table).select(select);
-      if (opts.order) q2 = q2.order(opts.order, { ascending: !opts.desc });
+      if (opts.order && !isOrderParseError(res.error)) q2 = q2.order(opts.order, { ascending: !opts.desc });
       if (opts.limit) q2 = q2.limit(opts.limit);
       res = await q2;
     }
@@ -1030,6 +1091,16 @@ window.Webflow.push(async function () {
     return `${yy}${mm}${dd}`;
   }
 
+  function bumpReference(ref) {
+    const raw = String(ref || "").trim();
+    const m = raw.match(/^(.*?)(\d+)\s*$/);
+    if (!m) return "";
+    const prefix = m[1];
+    const digits = m[2];
+    const next = String(Number(digits) + 1).padStart(digits.length, "0");
+    return `${prefix}${next}`;
+  }
+
   function isTableMissing(error) {
     const code = String(error?.code || "");
     const msg = String(error?.message || "").toLowerCase();
@@ -1042,10 +1113,21 @@ window.Webflow.push(async function () {
     return code === "42501" || msg.includes("row-level security") || msg.includes("permission denied");
   }
 
+  function isConstraintViolation(error) {
+    const code = String(error?.code || "");
+    const msg = String(error?.message || "").toLowerCase();
+    return code === "23514" || msg.includes("violates check constraint");
+  }
+
   function isMissingColumnError(error) {
     const code = String(error?.code || "");
     const msg = String(error?.message || "").toLowerCase();
     return code === "42703" || msg.includes("column") && msg.includes("does not exist");
+  }
+
+  function isOrderParseError(error) {
+    const msg = String(error?.message || "").toLowerCase();
+    return msg.includes("failed to parse order") || msg.includes("order");
   }
 
   function escapeHTML(str) {
@@ -1270,8 +1352,8 @@ window.Webflow.push(async function () {
       }
       .dv-grid {
         display: grid;
-        grid-template-columns: minmax(360px, 0.95fr) minmax(520px, 1.05fr);
-        gap: 18px;
+        grid-template-columns: minmax(420px, 1.1fr) minmax(500px, 0.9fr);
+        gap: 22px;
         align-items: start;
       }
       .dv-panel {
@@ -1352,7 +1434,8 @@ window.Webflow.push(async function () {
       }
       .dv-preview-panel {
         position: sticky;
-        top: 8px;
+        top: 0;
+        z-index: 2;
       }
       .dv-preview-toolbar {
         display: flex;

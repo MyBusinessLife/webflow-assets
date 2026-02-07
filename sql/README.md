@@ -8,6 +8,7 @@ Order to run in Supabase SQL Editor:
 4. `004_user_type_internal_external.sql`
 5. `005_devis_table_and_rls.sql`
 6. `006_devis_status_and_storage_rls.sql`
+7. `007_devis_rls_hardening.sql`
 
 ## Important
 - Run each file in full, then validate before the next file.
