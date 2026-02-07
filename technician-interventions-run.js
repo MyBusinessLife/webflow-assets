@@ -325,19 +325,45 @@
   }
 
   async function loadCatalog() {
-    const res = await supabase
+    const activeRes = await supabase
       .from(CONFIG.PRODUCTS_TABLE)
       .select("id, name, price_cents, is_active")
       .eq("is_active", true)
       .order("name", { ascending: true })
       .limit(1000);
 
-    if (res.error) {
-      console.warn("[TECH RUN] catalog warning:", res.error.message);
+    if (!activeRes.error && (activeRes.data || []).length) {
+      return activeRes.data || [];
+    }
+
+    if (activeRes.error) {
+      console.warn("[TECH RUN] catalog(active) warning:", activeRes.error.message);
+    }
+
+    const relaxedRes = await supabase
+      .from(CONFIG.PRODUCTS_TABLE)
+      .select("id, name, price_cents, is_active")
+      .order("name", { ascending: true })
+      .limit(1000);
+
+    if (!relaxedRes.error) {
+      return (relaxedRes.data || []).filter((row) => String(row?.name || "").trim());
+    }
+
+    console.warn("[TECH RUN] catalog(relaxed) warning:", relaxedRes.error.message);
+
+    const minimalRes = await supabase
+      .from(CONFIG.PRODUCTS_TABLE)
+      .select("id, name, price_cents")
+      .order("name", { ascending: true })
+      .limit(1000);
+
+    if (minimalRes.error) {
+      console.warn("[TECH RUN] catalog(minimal) warning:", minimalRes.error.message);
       return [];
     }
 
-    return res.data || [];
+    return (minimalRes.data || []).filter((row) => String(row?.name || "").trim());
   }
 
   function hydrateCatalog(rows) {
@@ -1759,6 +1785,43 @@
     return msg.includes("object not found") || msg.includes("resource was not found");
   }
 
+  function isMimeNotSupportedError(error) {
+    const msg = String(error?.message || "").toLowerCase();
+    return msg.includes("mime type") && (msg.includes("not supported") || msg.includes("unsupported"));
+  }
+
+  function buildUploadOptionsVariants(options, file) {
+    const base = { ...(options || {}) };
+    const providedType = String(base.contentType || "").trim();
+    const fileType = String(file?.type || "").trim();
+    const firstType = providedType || fileType;
+    if (!firstType) return [base];
+
+    const variants = [];
+    const seen = new Set();
+    const pushVariant = (mime) => {
+      const key = String(mime || "__none__");
+      if (seen.has(key)) return;
+      seen.add(key);
+
+      const next = { ...base };
+      if (mime) next.contentType = mime;
+      else delete next.contentType;
+      variants.push(next);
+    };
+
+    pushVariant(firstType);
+    pushVariant("");
+
+    if (firstType.startsWith("image/")) {
+      pushVariant("image/jpg");
+      pushVariant("image/jpeg");
+      pushVariant("application/octet-stream");
+    }
+
+    return variants.length ? variants : [base];
+  }
+
   function setResolvedStorageBucket(bucket) {
     if (!bucket) return;
     resolvedStorageBucket = bucket;
@@ -1767,19 +1830,41 @@
 
   async function uploadWithBucketFallback(path, file, options) {
     const candidates = getBucketCandidates();
+    const optionVariants = buildUploadOptionsVariants(options, file);
     let lastError = null;
 
     for (const bucket of candidates) {
-      const res = await supabase.storage.from(bucket).upload(path, file, options);
-      if (!res.error) {
-        setResolvedStorageBucket(bucket);
-        return { bucket, path };
+      let shouldTryNextBucket = false;
+
+      for (const variant of optionVariants) {
+        const res = await supabase.storage.from(bucket).upload(path, file, variant);
+        if (!res.error) {
+          setResolvedStorageBucket(bucket);
+          return { bucket, path };
+        }
+
+        lastError = res.error;
+        if (isBucketNotFoundError(res.error)) {
+          shouldTryNextBucket = true;
+          break;
+        }
+
+        if (isMimeNotSupportedError(res.error)) {
+          continue;
+        }
+
+        throw new Error(`[${bucket}] ${res.error.message}`);
       }
 
-      lastError = res.error;
-      if (isBucketNotFoundError(res.error)) continue;
+      if (shouldTryNextBucket || isMimeNotSupportedError(lastError)) {
+        continue;
+      }
+    }
 
-      throw new Error(`[${bucket}] ${res.error.message}`);
+    if (isMimeNotSupportedError(lastError)) {
+      throw new Error(
+        `Type MIME non autorise par les buckets testes (${candidates.join(", ")}). Verifie les types autorises du bucket Storage.`
+      );
     }
 
     throw new Error(
