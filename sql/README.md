@@ -15,6 +15,9 @@ Order to run in Supabase SQL Editor:
 11. `011_devis_facture_bridge.sql`
 12. `012_factures_tables_and_rls.sql`
 13. `013_factures_storage_rls.sql`
+14. `014_entitlements_and_stripe.sql`
+15. `015_invoice_payments.sql`
+16. `016_interventions_extensibility.sql`
 
 ## Important
 - Run each file in full, then validate before the next file.
