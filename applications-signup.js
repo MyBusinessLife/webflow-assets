@@ -119,6 +119,93 @@
       } catch (_) {}
     }
 
+    function injectAuthMessageStyles() {
+      if (document.getElementById("mbl-auth-msg-style")) return;
+      ensureThemeRgbVars();
+      const st = document.createElement("style");
+      st.id = "mbl-auth-msg-style";
+      st.textContent = `
+        @keyframes mblMsgIn {
+          from { opacity: 0; transform: translateY(6px); }
+          to { opacity: 1; transform: translateY(0px); }
+        }
+
+        html[data-page="login"] .w-form-done,
+        html[data-page="signup"] .w-form-done,
+        html[data-page="login"] .w-form-fail,
+        html[data-page="signup"] .w-form-fail {
+          border-radius: 16px;
+          padding: 14px 14px 14px 14px;
+          margin-top: 14px;
+          border: 1px solid rgba(15, 23, 42, 0.12);
+          background: rgba(255, 255, 255, 0.92);
+          color: rgba(2, 6, 23, 0.84);
+          box-shadow:
+            0 18px 44px rgba(2, 6, 23, 0.12),
+            0 1px 0 rgba(255, 255, 255, 0.70) inset;
+          position: relative;
+          overflow: hidden;
+          animation: mblMsgIn 220ms ease both;
+          backdrop-filter: blur(6px);
+          -webkit-backdrop-filter: blur(6px);
+        }
+
+        html[data-page="login"] .w-form-done::before,
+        html[data-page="signup"] .w-form-done::before {
+          content: "";
+          position: absolute;
+          inset: 0 auto 0 0;
+          width: 4px;
+          background: rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.95);
+        }
+
+        html[data-page="login"] .w-form-done,
+        html[data-page="signup"] .w-form-done {
+          border-color: rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.22);
+          background: linear-gradient(
+            180deg,
+            rgba(255, 255, 255, 0.96),
+            rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.08)
+          );
+        }
+
+        html[data-page="login"] .w-form-fail::before,
+        html[data-page="signup"] .w-form-fail::before {
+          content: "";
+          position: absolute;
+          inset: 0 auto 0 0;
+          width: 4px;
+          background: rgba(239, 68, 68, 0.92);
+        }
+
+        html[data-page="login"] .w-form-fail,
+        html[data-page="signup"] .w-form-fail {
+          border-color: rgba(239, 68, 68, 0.22);
+          background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(239, 68, 68, 0.08));
+        }
+
+        html[data-page="login"] .w-form-done > *,
+        html[data-page="signup"] .w-form-done > *,
+        html[data-page="login"] .w-form-fail > *,
+        html[data-page="signup"] .w-form-fail > * {
+          margin: 0;
+          font-size: 14.5px;
+          line-height: 1.5;
+          letter-spacing: 0.01em;
+          font-weight: 750;
+        }
+
+        html[data-page="login"] .w-form-done a,
+        html[data-page="signup"] .w-form-done a {
+          color: rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.95);
+          font-weight: 900;
+          text-decoration: underline;
+          text-underline-offset: 3px;
+        }
+      `;
+      document.head.appendChild(st);
+    }
+
     function injectGoogleStyles() {
       if (document.getElementById("mbl-google-btn-style")) return;
       ensureThemeRgbVars();
@@ -458,6 +545,8 @@
       console.error("[SIGNUP]", STR.missingForm);
       return;
     }
+
+    injectAuthMessageStyles();
 
     const emailEl = findEmailInput(form);
     const { pwd: pwdEl, confirm: confirmEl } = findPasswordInputs(form);
