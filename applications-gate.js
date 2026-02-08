@@ -4,7 +4,8 @@
 
   const CFG = window.__MBL_CFG__ || {};
   const CONFIG = {
-    LOGIN_PATH: CFG.LOGIN_PATH || "/login",
+    // In this project the login is typically under /applications/login.
+    LOGIN_PATH: CFG.LOGIN_PATH || "/applications/login",
     SUBSCRIBE_PATH: CFG.SUBSCRIBE_PATH || "/abonnement",
     OVERLAY_DELAY_MS: 40,
     MAX_WAIT_MS: 8000,
@@ -33,7 +34,23 @@
     "technician-interventions-run": ["interventions"],
   };
 
+  function isExcludedPage() {
+    const page = String(document.documentElement.dataset.page || "").trim();
+    if (page === "login" || page === "abonnement") return true;
+
+    const path = String(location.pathname || "");
+    if (path === CONFIG.LOGIN_PATH) return true;
+    if (path === CONFIG.SUBSCRIBE_PATH) return true;
+
+    // Allow manual opt-out on any page (Webflow custom attribute).
+    if (document.documentElement.hasAttribute("data-no-gate")) return true;
+    if (document.querySelector("[data-no-gate]")) return true;
+
+    return false;
+  }
+
   function shouldGatePage() {
+    if (isExcludedPage()) return false;
     const page = String(document.documentElement.dataset.page || "").trim();
     if (page && PAGE_REQUIRED_MODULES[page]) return true;
     // Backstop: if you later move your app under /applications/, it will be gated automatically.
