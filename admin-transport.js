@@ -61,7 +61,7 @@ window.Webflow.push(async function () {
     forbiddenTitle: "Acces refuse",
     forbiddenBody: "Ce module est reserve aux administrateurs.",
     moduleMissingTitle: "Module non inclus",
-    moduleMissingBody: "Ton abonnement n'inclut pas le module Transport.",
+    moduleMissingBody: "Ton abonnement n'inclut pas la gestion de flotte / transport.",
     moduleCta: "Gerer mon abonnement",
     loadError: "Impossible de charger le module transport.",
     saving: "Enregistrement...",
@@ -141,6 +141,20 @@ window.Webflow.push(async function () {
     const d = new Date(iso);
     if (!Number.isFinite(d.getTime())) return "";
     return `${fmtDate(d)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  }
+
+  function parseDateMs(isoDate) {
+    const raw = String(isoDate || "").trim();
+    if (!raw) return null;
+    const t = Date.parse(raw);
+    return Number.isFinite(t) ? t : null;
+  }
+
+  function daysUntil(isoDate) {
+    const t = parseDateMs(isoDate);
+    if (!t) return null;
+    const ms = t - Date.now();
+    return Math.ceil(ms / 86400000);
   }
 
   function clean(s) {
@@ -390,6 +404,26 @@ window.Webflow.push(async function () {
       html[data-page="admin-transport"] .tr-badge.is-progress .tr-dot { background: rgba(234,179,8,0.92); }
       html[data-page="admin-transport"] .tr-badge.is-done .tr-dot { background: rgba(34,197,94,0.92); }
       html[data-page="admin-transport"] .tr-badge.is-canceled .tr-dot { background: rgba(239,68,68,0.92); }
+      html[data-page="admin-transport"] .tr-badge.is-warn .tr-dot { background: rgba(234,179,8,0.92); }
+      html[data-page="admin-transport"] .tr-badge.is-danger .tr-dot { background: rgba(239,68,68,0.92); }
+
+      html[data-page="admin-transport"] .tr-insights {
+        display:flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-bottom: 12px;
+      }
+      html[data-page="admin-transport"] .tr-insight {
+        flex: 1;
+        min-width: 210px;
+        padding: 12px;
+        border-radius: 16px;
+        border: 1px solid rgba(15,23,42,0.10);
+        background: rgba(255,255,255,0.86);
+        box-shadow: 0 12px 24px rgba(2,6,23,0.06);
+      }
+      html[data-page="admin-transport"] .tr-insight strong { display:block; font-size: 13px; font-weight: 900; }
+      html[data-page="admin-transport"] .tr-insight span { display:block; margin-top: 6px; color: var(--tr-muted); font-weight: 800; }
 
       html[data-page="admin-transport"] .tr-actions-inline { display:flex; gap:10px; flex-wrap: wrap; margin-top: 12px; }
 
@@ -643,13 +677,24 @@ window.Webflow.push(async function () {
 
   let supabase = null;
 
+  const TAB_KEYS = ["shipments", "tours", "vehicles", "drivers", "rates"];
+  const initialTabRaw = clean(url.searchParams.get("tab") || "");
+  const initialTab = TAB_KEYS.includes(initialTabRaw) ? initialTabRaw : "shipments";
+  const VEHICLE_ALERT_DAYS = (() => {
+    const v = Number(root.dataset.vehicleAlertDays || root.dataset.alertDays || 30);
+    if (!Number.isFinite(v)) return 30;
+    return Math.max(7, Math.min(180, Math.round(v)));
+  })();
+
   const state = {
     userId: "",
     organizationId: asUuid(CONFIG.ORGANIZATION_ID),
     isAdmin: false,
+    fleetEnabled: false,
     transportEnabled: false,
+    modules: {},
 
-    tab: "shipments",
+    tab: initialTab,
     search: "",
 
     clients: [],
@@ -712,11 +757,14 @@ window.Webflow.push(async function () {
         });
       }
 
-      const [isAdmin, transportEnabled] = await Promise.all([checkIsAdmin(), checkTransportEnabled()]);
+      const [isAdmin, mods] = await Promise.all([checkIsAdmin(), fetchModules()]);
       state.isAdmin = isAdmin;
-      state.transportEnabled = transportEnabled;
+      state.modules = mods;
+      state.transportEnabled = Boolean(mods?.transport);
+      // Transport implies fleet access, even if the "fleet" key is missing for legacy orgs.
+      state.fleetEnabled = Boolean(mods?.fleet || mods?.transport);
 
-      if (!transportEnabled) {
+      if (!state.fleetEnabled && !state.transportEnabled) {
         return renderBlocking({
           title: STR.moduleMissingTitle,
           body: STR.moduleMissingBody,
@@ -732,7 +780,12 @@ window.Webflow.push(async function () {
         });
       }
 
+      applyTabVisibility();
+
       await preloadBase();
+      // If transport isn't enabled, force a fleet tab.
+      if (!state.transportEnabled && ["shipments", "tours", "rates"].includes(state.tab)) state.tab = "vehicles";
+      els.tabs.forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab) === state.tab ? "true" : "false"));
       await loadTabData(state.tab);
       render();
     } catch (e) {
@@ -786,18 +839,30 @@ window.Webflow.push(async function () {
     return pr === "admin";
   }
 
-  async function checkTransportEnabled() {
+  async function fetchModules() {
     const ent = await supabase
       .from("organization_entitlements")
       .select("modules")
       .eq("organization_id", state.organizationId)
       .maybeSingle();
-    const mods = ent?.data?.modules && typeof ent.data.modules === "object" ? ent.data.modules : {};
-    return Boolean(mods?.transport);
+    return ent?.data?.modules && typeof ent.data.modules === "object" ? ent.data.modules : {};
+  }
+
+  function applyTabVisibility() {
+    // Transport-only tabs are hidden when the transport module isn't enabled.
+    const transportTabs = new Set(["shipments", "tours", "rates"]);
+    els.tabs.forEach((b) => {
+      const key = String(b.dataset.tab || "");
+      if (!key) return;
+      const isTransportTab = transportTabs.has(key);
+      b.style.display = isTransportTab && !state.transportEnabled ? "none" : "";
+    });
   }
 
   async function preloadBase() {
-    await Promise.all([loadClients(), loadRateCards(), loadVehicles(), loadDrivers()]);
+    const jobs = [loadVehicles(), loadDrivers()];
+    if (state.transportEnabled) jobs.push(loadClients(), loadRateCards());
+    await Promise.all(jobs);
   }
 
   function renderBlocking({ title, body, cta }) {
@@ -820,6 +885,11 @@ window.Webflow.push(async function () {
 
   function setTab(tab) {
     const next = String(tab || "shipments");
+    const transportTabs = new Set(["shipments", "tours", "rates"]);
+    if (transportTabs.has(next) && !state.transportEnabled) {
+      showAlert(els, "Cette fonctionnalite necessite le module Transport.", "error");
+      return;
+    }
     state.tab = next;
     els.tabs.forEach((b) => {
       const active = String(b.dataset.tab) === next;
@@ -1054,10 +1124,78 @@ window.Webflow.push(async function () {
     const vehicles = (state.vehicles || []).filter((v) => matchesSearch([v.plate_number, v.name, v.brand, v.model].filter(Boolean).join(" ")));
     if (!vehicles.length) return renderEmpty();
 
-    els.body.innerHTML = vehicles
+    const computeStats = (field) => {
+      let overdue = 0;
+      let soon = 0;
+      let missing = 0;
+      vehicles.forEach((v) => {
+        const iso = String(v?.[field] || "").trim();
+        if (!iso) {
+          missing++;
+          return;
+        }
+        const d = daysUntil(iso);
+        if (d === null) {
+          missing++;
+          return;
+        }
+        if (d < 0) overdue++;
+        else if (d <= VEHICLE_ALERT_DAYS) soon++;
+      });
+      return { overdue, soon, missing };
+    };
+
+    const ct = computeStats("technical_inspection_due_at");
+    const ins = computeStats("insurance_expires_at");
+
+    const insights =
+      ct.overdue + ct.soon + ins.overdue + ins.soon > 0
+        ? `
+          <div class="tr-insights">
+            <div class="tr-insight">
+              <strong>Controle technique</strong>
+              <span>${ct.overdue} en retard • ${ct.soon} a venir (<= ${VEHICLE_ALERT_DAYS}j)</span>
+            </div>
+            <div class="tr-insight">
+              <strong>Assurance</strong>
+              <span>${ins.overdue} en retard • ${ins.soon} a venir (<= ${VEHICLE_ALERT_DAYS}j)</span>
+            </div>
+          </div>
+        `
+        : "";
+
+    const cards = vehicles
       .map((v) => {
         const label = String(v.plate_number || "").trim() || "—";
-        const meta = [v.vehicle_type, v.brand, v.model].filter(Boolean).join(" • ") || "—";
+        const metaBits = [v.vehicle_type, v.brand, v.model].filter(Boolean);
+        if (v?.odometer_km != null && String(v.odometer_km) !== "") metaBits.push(`${Number(v.odometer_km).toLocaleString("fr-FR")} km`);
+        const meta = metaBits.join(" • ") || "—";
+
+        const badges = [];
+        badges.push(`<span class="tr-badge"><span class="tr-dot"></span>${v.is_active ? "Actif" : "Inactif"}</span>`);
+
+        const ctDue = String(v.technical_inspection_due_at || "").trim();
+        if (ctDue) {
+          const d = daysUntil(ctDue);
+          const cls = d !== null && d < 0 ? "is-danger" : d !== null && d <= VEHICLE_ALERT_DAYS ? "is-warn" : "is-done";
+          const extra = d === null ? "" : d < 0 ? ` (expire)` : d <= VEHICLE_ALERT_DAYS ? ` (J-${d})` : "";
+          badges.unshift(
+            `<span class="tr-badge ${cls}"><span class="tr-dot"></span>CT: ${escapeHTML(fmtDate(ctDue))}${escapeHTML(extra)}</span>`
+          );
+        }
+
+        const insExp = String(v.insurance_expires_at || "").trim();
+        if (insExp) {
+          const d = daysUntil(insExp);
+          if (d !== null && (d < 0 || d <= VEHICLE_ALERT_DAYS)) {
+            const cls = d < 0 ? "is-danger" : "is-warn";
+            const extra = d < 0 ? ` (expiree)` : ` (J-${d})`;
+            badges.unshift(
+              `<span class="tr-badge ${cls}"><span class="tr-dot"></span>Assurance: ${escapeHTML(fmtDate(insExp))}${escapeHTML(extra)}</span>`
+            );
+          }
+        }
+
         return `
           <article class="tr-card" data-id="${escapeHTML(v.id)}" data-entity="vehicle">
             <div class="tr-row">
@@ -1066,7 +1204,7 @@ window.Webflow.push(async function () {
                 <div class="tr-meta">${escapeHTML(meta)}</div>
               </div>
               <div class="tr-badges">
-                <span class="tr-badge"><span class="tr-dot"></span>${v.is_active ? "Actif" : "Inactif"}</span>
+                ${badges.join("")}
               </div>
             </div>
             <div class="tr-actions-inline">
@@ -1077,6 +1215,8 @@ window.Webflow.push(async function () {
         `;
       })
       .join("");
+
+    els.body.innerHTML = insights + cards;
 
     els.body.querySelectorAll('[data-entity="vehicle"]').forEach((card) => {
       const id = String(card.getAttribute("data-id") || "");
@@ -1093,6 +1233,33 @@ window.Webflow.push(async function () {
       .map((d) => {
         const name = [d.first_name, d.last_name].filter(Boolean).join(" ").trim() || "—";
         const meta = [d.email, d.phone, d.license_number].filter(Boolean).join(" • ") || "—";
+
+        const badges = [];
+        badges.push(`<span class="tr-badge"><span class="tr-dot"></span>${d.is_active ? "Actif" : "Inactif"}</span>`);
+
+        const licExp = String(d.license_expiry || "").trim();
+        if (licExp) {
+          const days = daysUntil(licExp);
+          if (days !== null && (days < 0 || days <= VEHICLE_ALERT_DAYS)) {
+            const cls = days < 0 ? "is-danger" : "is-warn";
+            const extra = days < 0 ? " (expire)" : ` (J-${days})`;
+            badges.unshift(
+              `<span class="tr-badge ${cls}"><span class="tr-dot"></span>Permis: ${escapeHTML(fmtDate(licExp))}${escapeHTML(extra)}</span>`
+            );
+          }
+        }
+
+        const medExp = String(d.medical_visit_expires_at || "").trim();
+        if (medExp) {
+          const days = daysUntil(medExp);
+          if (days !== null && (days < 0 || days <= VEHICLE_ALERT_DAYS)) {
+            const cls = days < 0 ? "is-danger" : "is-warn";
+            const extra = days < 0 ? " (expiree)" : ` (J-${days})`;
+            badges.unshift(
+              `<span class="tr-badge ${cls}"><span class="tr-dot"></span>Medical: ${escapeHTML(fmtDate(medExp))}${escapeHTML(extra)}</span>`
+            );
+          }
+        }
         return `
           <article class="tr-card" data-id="${escapeHTML(d.id)}" data-entity="driver">
             <div class="tr-row">
@@ -1101,7 +1268,7 @@ window.Webflow.push(async function () {
                 <div class="tr-meta">${escapeHTML(meta)}</div>
               </div>
               <div class="tr-badges">
-                <span class="tr-badge"><span class="tr-dot"></span>${d.is_active ? "Actif" : "Inactif"}</span>
+                ${badges.join("")}
               </div>
             </div>
             <div class="tr-actions-inline">
@@ -1202,37 +1369,61 @@ window.Webflow.push(async function () {
     const v = (state.vehicles || []).find((x) => String(x.id) === String(id)) || null;
     openModal(els, {
       title: v ? "Modifier vehicule" : "Nouveau vehicule",
-      bodyHtml: `
-        <form class="tr-form" data-form="vehicle">
-          <div>
-            <label class="tr-label">Immatriculation</label>
-            <input class="tr-input" name="plate_number" required value="${escapeHTML(v?.plate_number || "")}" />
-          </div>
-          <div>
-            <label class="tr-label">Nom (optionnel)</label>
-            <input class="tr-input" name="name" value="${escapeHTML(v?.name || "")}" />
-          </div>
-          <div>
-            <label class="tr-label">Type</label>
-            <input class="tr-input" name="vehicle_type" value="${escapeHTML(v?.vehicle_type || "")}" placeholder="Fourgon, PL, VL..." />
-          </div>
-          <div>
-            <label class="tr-label">Marque / modele</label>
-            <input class="tr-input" name="brand_model" value="${escapeHTML([v?.brand, v?.model].filter(Boolean).join(" "))}" />
-          </div>
-          <div>
-            <label class="tr-label">Charge utile (kg)</label>
-            <input class="tr-input" name="payload_kg" type="number" min="0" step="1" value="${escapeHTML(v?.payload_kg ?? "")}" />
-          </div>
-          <div>
-            <label class="tr-label">Volume (m3)</label>
-            <input class="tr-input" name="volume_m3" type="number" min="0" step="0.01" value="${escapeHTML(v?.volume_m3 ?? "")}" />
-          </div>
-          <div class="tr-full">
-            <label class="tr-label"><input type="checkbox" name="is_active" ${v?.is_active === false ? "" : "checked"} /> Actif</label>
-          </div>
-        </form>
-      `,
+	      bodyHtml: `
+	        <form class="tr-form" data-form="vehicle">
+	          <div>
+	            <label class="tr-label">Immatriculation</label>
+	            <input class="tr-input" name="plate_number" required value="${escapeHTML(v?.plate_number || "")}" />
+	          </div>
+	          <div>
+	            <label class="tr-label">Nom (optionnel)</label>
+	            <input class="tr-input" name="name" value="${escapeHTML(v?.name || "")}" />
+	          </div>
+	          <div>
+	            <label class="tr-label">Type</label>
+	            <input class="tr-input" name="vehicle_type" value="${escapeHTML(v?.vehicle_type || "")}" placeholder="Fourgon, PL, VL..." />
+	          </div>
+	          <div>
+	            <label class="tr-label">Marque / modele</label>
+	            <input class="tr-input" name="brand_model" value="${escapeHTML([v?.brand, v?.model].filter(Boolean).join(" "))}" />
+	          </div>
+	          <div>
+	            <label class="tr-label">Charge utile (kg)</label>
+	            <input class="tr-input" name="payload_kg" type="number" min="0" step="1" value="${escapeHTML(v?.payload_kg ?? "")}" />
+	          </div>
+	          <div>
+	            <label class="tr-label">Volume (m3)</label>
+	            <input class="tr-input" name="volume_m3" type="number" min="0" step="0.01" value="${escapeHTML(v?.volume_m3 ?? "")}" />
+	          </div>
+	          <div>
+	            <label class="tr-label">Compteur (km)</label>
+	            <input class="tr-input" name="odometer_km" type="number" min="0" step="1" value="${escapeHTML(v?.odometer_km ?? "")}" />
+	          </div>
+	          <div>
+	            <label class="tr-label">Dernier controle technique</label>
+	            <input class="tr-input" name="technical_inspection_last_at" type="date" value="${escapeHTML(String(v?.technical_inspection_last_at || "").slice(0, 10))}" />
+	          </div>
+	          <div>
+	            <label class="tr-label">Prochain controle technique (echeance)</label>
+	            <input class="tr-input" name="technical_inspection_due_at" type="date" value="${escapeHTML(String(v?.technical_inspection_due_at || "").slice(0, 10))}" />
+	          </div>
+	          <div>
+	            <label class="tr-label">Assurance (expiration)</label>
+	            <input class="tr-input" name="insurance_expires_at" type="date" value="${escapeHTML(String(v?.insurance_expires_at || "").slice(0, 10))}" />
+	          </div>
+	          <div>
+	            <label class="tr-label">Prochain entretien (date)</label>
+	            <input class="tr-input" name="next_service_due_at" type="date" value="${escapeHTML(String(v?.next_service_due_at || "").slice(0, 10))}" />
+	          </div>
+	          <div>
+	            <label class="tr-label">Prochain entretien (km)</label>
+	            <input class="tr-input" name="next_service_due_km" type="number" min="0" step="1" value="${escapeHTML(v?.next_service_due_km ?? "")}" />
+	          </div>
+	          <div class="tr-full">
+	            <label class="tr-label"><input type="checkbox" name="is_active" ${v?.is_active === false ? "" : "checked"} /> Actif</label>
+	          </div>
+	        </form>
+	      `,
       footHtml: `
         <button type="button" class="tr-btn" data-action="cancel">${escapeHTML(STR.btnCancel)}</button>
         <button type="button" class="tr-btn tr-btn--primary" data-action="save">${escapeHTML(STR.btnSave)}</button>
@@ -1242,15 +1433,21 @@ window.Webflow.push(async function () {
     els.modalFoot.querySelector('[data-action="cancel"]').addEventListener("click", () => closeModal(els));
     els.modalFoot.querySelector('[data-action="save"]').addEventListener("click", async () => {
       const form = els.modalBody.querySelector('[data-form="vehicle"]');
-      const payload = {
-        organization_id: state.organizationId,
-        plate_number: String(form.plate_number.value || "").trim(),
-        name: String(form.name.value || "").trim() || null,
-        vehicle_type: String(form.vehicle_type.value || "").trim() || null,
-        payload_kg: form.payload_kg.value ? Number(form.payload_kg.value) : null,
-        volume_m3: form.volume_m3.value ? Number(form.volume_m3.value) : null,
-        is_active: Boolean(form.is_active.checked),
-      };
+	      const payload = {
+	        organization_id: state.organizationId,
+	        plate_number: String(form.plate_number.value || "").trim(),
+	        name: String(form.name.value || "").trim() || null,
+	        vehicle_type: String(form.vehicle_type.value || "").trim() || null,
+	        payload_kg: form.payload_kg.value ? Number(form.payload_kg.value) : null,
+	        volume_m3: form.volume_m3.value ? Number(form.volume_m3.value) : null,
+	        odometer_km: form.odometer_km.value ? Number(form.odometer_km.value) : null,
+	        technical_inspection_last_at: form.technical_inspection_last_at.value ? String(form.technical_inspection_last_at.value) : null,
+	        technical_inspection_due_at: form.technical_inspection_due_at.value ? String(form.technical_inspection_due_at.value) : null,
+	        insurance_expires_at: form.insurance_expires_at.value ? String(form.insurance_expires_at.value) : null,
+	        next_service_due_at: form.next_service_due_at.value ? String(form.next_service_due_at.value) : null,
+	        next_service_due_km: form.next_service_due_km.value ? Number(form.next_service_due_km.value) : null,
+	        is_active: Boolean(form.is_active.checked),
+	      };
 
       const bm = String(form.brand_model.value || "").trim();
       if (bm) {
@@ -1281,37 +1478,53 @@ window.Webflow.push(async function () {
     const d = (state.drivers || []).find((x) => String(x.id) === String(id)) || null;
     openModal(els, {
       title: d ? "Modifier chauffeur" : "Nouveau chauffeur",
-      bodyHtml: `
-        <form class="tr-form" data-form="driver">
-          <div>
-            <label class="tr-label">Prenom</label>
-            <input class="tr-input" name="first_name" value="${escapeHTML(d?.first_name || "")}" />
-          </div>
-          <div>
-            <label class="tr-label">Nom</label>
-            <input class="tr-input" name="last_name" value="${escapeHTML(d?.last_name || "")}" />
-          </div>
-          <div>
-            <label class="tr-label">Email</label>
-            <input class="tr-input" name="email" type="email" value="${escapeHTML(d?.email || "")}" />
-          </div>
-          <div>
-            <label class="tr-label">Telephone</label>
-            <input class="tr-input" name="phone" value="${escapeHTML(d?.phone || "")}" />
-          </div>
-          <div>
-            <label class="tr-label">Permis</label>
-            <input class="tr-input" name="license_number" value="${escapeHTML(d?.license_number || "")}" />
-          </div>
-          <div>
-            <label class="tr-label">Expiration</label>
-            <input class="tr-input" name="license_expiry" type="date" value="${escapeHTML((d?.license_expiry || "").slice(0, 10))}" />
-          </div>
-          <div class="tr-full">
-            <label class="tr-label"><input type="checkbox" name="is_active" ${d?.is_active === false ? "" : "checked"} /> Actif</label>
-          </div>
-        </form>
-      `,
+	      bodyHtml: `
+	        <form class="tr-form" data-form="driver">
+	          <div>
+	            <label class="tr-label">Prenom</label>
+	            <input class="tr-input" name="first_name" value="${escapeHTML(d?.first_name || "")}" />
+	          </div>
+	          <div>
+	            <label class="tr-label">Nom</label>
+	            <input class="tr-input" name="last_name" value="${escapeHTML(d?.last_name || "")}" />
+	          </div>
+	          <div>
+	            <label class="tr-label">Email</label>
+	            <input class="tr-input" name="email" type="email" value="${escapeHTML(d?.email || "")}" />
+	          </div>
+	          <div>
+	            <label class="tr-label">Telephone</label>
+	            <input class="tr-input" name="phone" value="${escapeHTML(d?.phone || "")}" />
+	          </div>
+	          <div>
+	            <label class="tr-label">Permis</label>
+	            <input class="tr-input" name="license_number" value="${escapeHTML(d?.license_number || "")}" />
+	          </div>
+	          <div>
+	            <label class="tr-label">Expiration</label>
+	            <input class="tr-input" name="license_expiry" type="date" value="${escapeHTML((d?.license_expiry || "").slice(0, 10))}" />
+	          </div>
+	          <div>
+	            <label class="tr-label">Visite medicale (expiration)</label>
+	            <input class="tr-input" name="medical_visit_expires_at" type="date" value="${escapeHTML(String(d?.medical_visit_expires_at || "").slice(0, 10))}" />
+	          </div>
+	          <div>
+	            <label class="tr-label">FIMO (expiration)</label>
+	            <input class="tr-input" name="fimo_expires_at" type="date" value="${escapeHTML(String(d?.fimo_expires_at || "").slice(0, 10))}" />
+	          </div>
+	          <div>
+	            <label class="tr-label">FCO (expiration)</label>
+	            <input class="tr-input" name="fco_expires_at" type="date" value="${escapeHTML(String(d?.fco_expires_at || "").slice(0, 10))}" />
+	          </div>
+	          <div>
+	            <label class="tr-label">ADR (expiration)</label>
+	            <input class="tr-input" name="adr_expires_at" type="date" value="${escapeHTML(String(d?.adr_expires_at || "").slice(0, 10))}" />
+	          </div>
+	          <div class="tr-full">
+	            <label class="tr-label"><input type="checkbox" name="is_active" ${d?.is_active === false ? "" : "checked"} /> Actif</label>
+	          </div>
+	        </form>
+	      `,
       footHtml: `
         <button type="button" class="tr-btn" data-action="cancel">${escapeHTML(STR.btnCancel)}</button>
         <button type="button" class="tr-btn tr-btn--primary" data-action="save">${escapeHTML(STR.btnSave)}</button>
@@ -1321,16 +1534,20 @@ window.Webflow.push(async function () {
     els.modalFoot.querySelector('[data-action="cancel"]').addEventListener("click", () => closeModal(els));
     els.modalFoot.querySelector('[data-action="save"]').addEventListener("click", async () => {
       const form = els.modalBody.querySelector('[data-form="driver"]');
-      const payload = {
-        organization_id: state.organizationId,
-        first_name: String(form.first_name.value || "").trim() || null,
-        last_name: String(form.last_name.value || "").trim() || null,
-        email: String(form.email.value || "").trim() || null,
-        phone: String(form.phone.value || "").trim() || null,
-        license_number: String(form.license_number.value || "").trim() || null,
-        license_expiry: form.license_expiry.value ? String(form.license_expiry.value) : null,
-        is_active: Boolean(form.is_active.checked),
-      };
+	      const payload = {
+	        organization_id: state.organizationId,
+	        first_name: String(form.first_name.value || "").trim() || null,
+	        last_name: String(form.last_name.value || "").trim() || null,
+	        email: String(form.email.value || "").trim() || null,
+	        phone: String(form.phone.value || "").trim() || null,
+	        license_number: String(form.license_number.value || "").trim() || null,
+	        license_expiry: form.license_expiry.value ? String(form.license_expiry.value) : null,
+	        medical_visit_expires_at: form.medical_visit_expires_at.value ? String(form.medical_visit_expires_at.value) : null,
+	        fimo_expires_at: form.fimo_expires_at.value ? String(form.fimo_expires_at.value) : null,
+	        fco_expires_at: form.fco_expires_at.value ? String(form.fco_expires_at.value) : null,
+	        adr_expires_at: form.adr_expires_at.value ? String(form.adr_expires_at.value) : null,
+	        is_active: Boolean(form.is_active.checked),
+	      };
 
       showAlert(els, STR.saving, "");
       const res = d

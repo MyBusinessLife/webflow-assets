@@ -42,7 +42,8 @@
     "admin-crm": ["billing"],
 
     // Transport
-    "admin-transport": ["transport"],
+    // Fleet is available for all plans except Starter. Transport itself remains a separate module.
+    "admin-transport": ["fleet"],
 
     // Settings
     "admin-settings": [],

@@ -998,11 +998,13 @@
           entries: [
             {
               key: "admin-transport",
-              label: "Transport",
+              // Fleet (vehicles/drivers) is available for all plans except Starter.
+              // Transport (tours/courses/tarifs) remains a separate module; the page adapts its tabs accordingly.
+              label: modules && typeof modules === "object" && modules.transport ? "Transport" : "Véhicules",
               href: routeFor("admin-transport"),
               icon: ICONS.truck,
               roles: ["admin"],
-              requires: ["transport"],
+              requires: ["fleet"],
             },
           ],
         },
