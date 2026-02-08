@@ -1,7 +1,12 @@
-document.documentElement.setAttribute("data-page", "login");
+(() => {
+  const p = String(location.pathname || "");
+  const isLogin = p === "/applications/login" || p === "/applications/login/";
+  if (!isLogin) return;
 
-window.Webflow ||= [];
-window.Webflow.push(async function () {
+  document.documentElement.setAttribute("data-page", "login");
+
+  window.Webflow ||= [];
+  window.Webflow.push(async function () {
   if (window.__mblLoginLoaded) return;
   window.__mblLoginLoaded = true;
 
@@ -153,7 +158,24 @@ window.Webflow.push(async function () {
     }
   };
 
-  form.addEventListener("submit", handler, true);
-  if (submitBtn) submitBtn.addEventListener("click", handler, true);
-});
-
+  // Intercept at document level (capture) to run *before* Webflow's form handler
+  // that triggers "Passwords cannot be submitted." on password fields.
+  document.addEventListener(
+    "submit",
+    (event) => {
+      if (event.target === form) handler(event);
+    },
+    true
+  );
+  document.addEventListener(
+    "click",
+    (event) => {
+      const trigger = event.target?.closest?.('button[type="submit"], input[type="submit"]');
+      if (!trigger) return;
+      if (trigger.closest("form") !== form) return;
+      handler(event);
+    },
+    true
+  );
+  });
+})();
