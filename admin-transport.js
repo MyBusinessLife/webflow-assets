@@ -1804,6 +1804,18 @@ window.Webflow.push(async function () {
       form.dataset.distance_m = String(distance_m || "");
       form.dataset.duration_s = String(duration_s || "");
 
+      // Store geocoded coordinates to keep future routing consistent.
+      const wp0 = data?.waypoints?.[0];
+      const wp1 = data?.waypoints?.[1];
+      if (wp0 && Number.isFinite(Number(wp0.lat)) && Number.isFinite(Number(wp0.lng))) {
+        form.dataset.pickup_lat = String(wp0.lat);
+        form.dataset.pickup_lng = String(wp0.lng);
+      }
+      if (wp1 && Number.isFinite(Number(wp1.lat)) && Number.isFinite(Number(wp1.lng))) {
+        form.dataset.delivery_lat = String(wp1.lat);
+        form.dataset.delivery_lng = String(wp1.lng);
+      }
+
       showAlert(els, "Distance calculee.", "ok");
     });
 
@@ -1846,6 +1858,18 @@ window.Webflow.push(async function () {
       const dur = Number(form.dataset.duration_s || s?.duration_s || 0);
       if (dist) payload.distance_m = dist;
       if (dur) payload.duration_s = dur;
+      const plat = Number(form.dataset.pickup_lat || s?.pickup_lat || "");
+      const plng = Number(form.dataset.pickup_lng || s?.pickup_lng || "");
+      const dlat = Number(form.dataset.delivery_lat || s?.delivery_lat || "");
+      const dlng = Number(form.dataset.delivery_lng || s?.delivery_lng || "");
+      if (Number.isFinite(plat) && Number.isFinite(plng)) {
+        payload.pickup_lat = plat;
+        payload.pickup_lng = plng;
+      }
+      if (Number.isFinite(dlat) && Number.isFinite(dlng)) {
+        payload.delivery_lat = dlat;
+        payload.delivery_lng = dlng;
+      }
 
       showAlert(els, STR.saving, "");
       const res = s
