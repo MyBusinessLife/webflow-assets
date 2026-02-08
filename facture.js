@@ -180,7 +180,7 @@ window.Webflow.push(async function () {
 
     hydrateDraft();
     if (!state.invoiceId) {
-      applyAutoPrefillFromContext();
+      await applyAutoPrefillFromContext();
     }
     renderItems();
     updateTotals();
@@ -337,10 +337,88 @@ window.Webflow.push(async function () {
     }
   }
 
-  function applyAutoPrefillFromContext() {
+  async function applyAutoPrefillFromContext() {
     const params = new URLSearchParams(window.location.search || "");
+    const transportShipmentId =
+      params.get("transport_shipment_id") ||
+      params.get("transportShipmentId") ||
+      params.get("shipment_id") ||
+      params.get("shipmentId") ||
+      "";
     const interventionId = params.get("intervention_id") || params.get("interventionId") || "";
     const clientId = params.get("client_id") || params.get("clientId") || "";
+
+    if (transportShipmentId) {
+      try {
+        const ent = await supabase
+          .from("organization_entitlements")
+          .select("modules")
+          .eq("organization_id", state.organizationId)
+          .maybeSingle();
+
+        const mods = ent?.data?.modules && typeof ent.data.modules === "object" ? ent.data.modules : {};
+        if (mods?.transport) {
+          const shipRes = await supabase
+            .from("transport_shipments")
+            .select("id,reference,title,client_id,pickup_city,pickup_address,delivery_city,delivery_address,distance_m,price_cents,vat_rate,planned_pickup_at")
+            .eq("organization_id", state.organizationId)
+            .eq("id", transportShipmentId)
+            .maybeSingle();
+
+          if (!shipRes.error && shipRes.data?.id) {
+            const sh = shipRes.data;
+            const shClientId = String(sh.client_id || "");
+            if (shClientId) {
+              const foundClient = state.clients.find((c) => String(c.id) === shClientId);
+              if (foundClient) {
+                els.clientSelect.value = String(foundClient.id);
+                onClientSelect();
+              }
+            }
+
+            const ref = String(sh.reference || "").trim();
+            const title = String(sh.title || "").trim();
+            const from = String(sh.pickup_city || "").trim() || String(sh.pickup_address || "").trim();
+            const to = String(sh.delivery_city || "").trim() || String(sh.delivery_address || "").trim();
+            const km = Number(sh.distance_m || 0) > 0 ? (Number(sh.distance_m) / 1000).toFixed(1) : "";
+            const nameParts = ["Transport", ref].filter(Boolean);
+            let label = nameParts.join(" ");
+            if (title) label += ` - ${title}`;
+            if (from || to) label += ` (${from || "—"} -> ${to || "—"})`;
+            if (km) label += ` • ${km} km`;
+
+            const already = (state.draft.items || []).some(
+              (it) => it?.source?.kind === "transport_shipment" && String(it?.source?.id || "") === String(sh.id)
+            );
+            if (!already) {
+              state.draft.items = state.draft.items || [];
+              state.draft.items.unshift({
+                name: label,
+                qty: 1,
+                unit: "trajet",
+                unit_cents: Math.max(0, Number(sh.price_cents || 0)),
+                vat_rate: sanitizeVatRate(sh.vat_rate ?? state.draft.vat_rate ?? CONFIG.VAT_RATE),
+                source: { kind: "transport_shipment", id: String(sh.id) },
+              });
+            }
+
+            // Use the pickup date as service date when provided.
+            if (sh.planned_pickup_at) {
+              const d = new Date(sh.planned_pickup_at);
+              if (Number.isFinite(d.getTime())) {
+                const iso = d.toISOString().slice(0, 10);
+                state.draft.service_date = iso;
+                if (els.serviceDate) els.serviceDate.value = iso;
+              }
+            }
+
+            return;
+          }
+        }
+      } catch (e) {
+        if (DEBUG) console.warn("[FACTURE] transport prefill ignored:", e);
+      }
+    }
 
     if (interventionId) {
       const foundIntervention = state.interventions.find((i) => String(i.id) === String(interventionId));

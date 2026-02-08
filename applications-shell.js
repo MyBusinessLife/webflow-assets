@@ -74,6 +74,7 @@
       "admin-paiements": `${CONFIG.APP_ROOT}/admin/paiements`,
       "admin-crm": "/crm/crm",
       "admin-settings": `${CONFIG.APP_ROOT}/settings`,
+      "admin-transport": `${CONFIG.APP_ROOT}/transport`,
 
       // Billing (Facturation)
       clients: `${CONFIG.APP_ROOT}/facturation/clients`,
@@ -245,6 +246,7 @@
       const fixMap = new Map([
         // Old root-level slugs -> app folder slugs
         ["/settings", `${appRoot}/settings`],
+        ["/transport", `${appRoot}/transport`],
         ["/facturation/clients", `${appRoot}/facturation/clients`],
         ["/facturation/devis-list", `${appRoot}/facturation/devis-list`],
         ["/facturation/devis-add", `${appRoot}/facturation/devis-add`],
@@ -789,6 +791,7 @@
       invoices: `<svg class="mbl-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16l-2-1-2 1-2-1-2 1-2-1-2 1-2-1-2 1z"/><path d="M8 8h8"/><path d="M8 12h8"/><path d="M8 16h5"/></svg>`,
       products: `<svg class="mbl-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4a2 2 0 0 0 1-1.73z"/><path d="M3.29 7 12 12l8.71-5"/><path d="M12 22V12"/></svg>`,
       interventions: `<svg class="mbl-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3-3a2.1 2.1 0 0 0-3-3z"/><path d="M19 8l-7.5 7.5a2 2 0 0 1-1.2.6l-3.8.5.5-3.8a2 2 0 0 1 .6-1.2L15 4"/></svg>`,
+      truck: `<svg class="mbl-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h11v10H3z"/><path d="M14 10h4l3 3v4h-7z"/><path d="M7 17a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/><path d="M18 17a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg>`,
       settings: `<svg class="mbl-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V22a2 2 0 1 1-4 0v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H2a2 2 0 1 1 0-4h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3 1.7 1.7 0 0 0 1-1.5V2a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8 1.7 1.7 0 0 0 1.5 1H22a2 2 0 1 1 0 4h-.2a1.7 1.7 0 0 0-1.5 1z"/></svg>`,
       card: `<svg class="mbl-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>`,
       logout: `<svg class="mbl-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>`,
@@ -987,6 +990,19 @@
               icon: ICONS.settings,
               roles: ["tech", "admin"],
               requires: ["interventions"],
+            },
+          ],
+        },
+        {
+          section: "Transport",
+          entries: [
+            {
+              key: "admin-transport",
+              label: "Transport",
+              href: routeFor("admin-transport"),
+              icon: ICONS.truck,
+              roles: ["admin"],
+              requires: ["transport"],
             },
           ],
         },

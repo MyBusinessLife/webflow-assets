@@ -41,6 +41,9 @@
     // CRM (currently bundled with billing)
     "admin-crm": ["billing"],
 
+    // Transport
+    "admin-transport": ["transport"],
+
     // Settings
     "admin-settings": [],
 
