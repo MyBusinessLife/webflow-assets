@@ -3,9 +3,19 @@
   window.__mblApplicationsGateLoaded = true;
 
   const CFG = window.__MBL_CFG__ || {};
+
+  function inferAppRoot() {
+    const p = String(location.pathname || "");
+    const m = p.match(/^\/(applications|application)(?=\/|$)/);
+    if (m?.[1]) return `/${m[1]}`;
+    return "/applications";
+  }
+
+  const APP_ROOT = String(CFG.APP_ROOT || inferAppRoot()).trim() || "/applications";
+
   const CONFIG = {
-    // In this project the login is typically under /applications/login.
-    LOGIN_PATH: CFG.LOGIN_PATH || "/applications/login",
+    // In this project the login is typically under /applications/login (but we also support /application/login).
+    LOGIN_PATH: CFG.LOGIN_PATH || `${APP_ROOT}/login`,
     SUBSCRIBE_PATH: CFG.SUBSCRIBE_PATH || "/abonnement",
     OVERLAY_DELAY_MS: 40,
     MAX_WAIT_MS: 8000,
@@ -41,6 +51,7 @@
     const path = String(location.pathname || "");
     if (path === CONFIG.LOGIN_PATH) return true;
     if (path === CONFIG.SUBSCRIBE_PATH) return true;
+    if (/^\/(applications|application)\/login\/?$/.test(path)) return true;
 
     // Allow manual opt-out on any page (Webflow custom attribute).
     if (document.documentElement.hasAttribute("data-no-gate")) return true;
@@ -53,8 +64,8 @@
     if (isExcludedPage()) return false;
     const page = String(document.documentElement.dataset.page || "").trim();
     if (page && PAGE_REQUIRED_MODULES[page]) return true;
-    // Backstop: if you later move your app under /applications/, it will be gated automatically.
-    return location.pathname.startsWith("/applications");
+    // Backstop: if you later move your app under /application(s)/, it will be gated automatically.
+    return /^\/applications?(\/|$)/.test(location.pathname || "");
   }
 
   if (!shouldGatePage()) return;
