@@ -97,115 +97,118 @@ create index if not exists transport_drivers_org_medical_exp_idx
 
 do $$
 begin
-  -- Vehicles
-  if exists (
-    select 1 from pg_policies where schemaname='public' and tablename='transport_vehicles' and policyname='transport_vehicles_select'
-  ) then
-    alter policy transport_vehicles_select
-      on public.transport_vehicles
-      using (app.is_org_member(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')));
-  else
-    create policy transport_vehicles_select
-      on public.transport_vehicles
-      for select
-      using (app.is_org_member(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')));
+  if to_regclass('public.transport_vehicles') is not null then
+    -- Vehicles
+    if exists (
+      select 1 from pg_policies where schemaname='public' and tablename='transport_vehicles' and policyname='transport_vehicles_select'
+    ) then
+      alter policy transport_vehicles_select
+        on public.transport_vehicles
+        using (app.is_org_member(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')));
+    else
+      create policy transport_vehicles_select
+        on public.transport_vehicles
+        for select
+        using (app.is_org_member(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')));
+    end if;
+
+    if exists (
+      select 1 from pg_policies where schemaname='public' and tablename='transport_vehicles' and policyname='transport_vehicles_write'
+    ) then
+      alter policy transport_vehicles_write
+        on public.transport_vehicles
+        with check (app.is_org_member(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')));
+    else
+      create policy transport_vehicles_write
+        on public.transport_vehicles
+        for insert
+        with check (app.is_org_member(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')));
+    end if;
+
+    if exists (
+      select 1 from pg_policies where schemaname='public' and tablename='transport_vehicles' and policyname='transport_vehicles_update'
+    ) then
+      alter policy transport_vehicles_update
+        on public.transport_vehicles
+        using (app.is_org_member(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')))
+        with check (app.is_org_member(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')));
+    else
+      create policy transport_vehicles_update
+        on public.transport_vehicles
+        for update
+        using (app.is_org_member(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')))
+        with check (app.is_org_member(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')));
+    end if;
+
+    if exists (
+      select 1 from pg_policies where schemaname='public' and tablename='transport_vehicles' and policyname='transport_vehicles_delete_admin'
+    ) then
+      alter policy transport_vehicles_delete_admin
+        on public.transport_vehicles
+        using (app.is_org_admin(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')));
+    else
+      create policy transport_vehicles_delete_admin
+        on public.transport_vehicles
+        for delete
+        using (app.is_org_admin(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')));
+    end if;
   end if;
 
-  if exists (
-    select 1 from pg_policies where schemaname='public' and tablename='transport_vehicles' and policyname='transport_vehicles_write'
-  ) then
-    alter policy transport_vehicles_write
-      on public.transport_vehicles
-      with check (app.is_org_member(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')));
-  else
-    create policy transport_vehicles_write
-      on public.transport_vehicles
-      for insert
-      with check (app.is_org_member(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')));
-  end if;
+  if to_regclass('public.transport_drivers') is not null then
+    -- Drivers
+    if exists (
+      select 1 from pg_policies where schemaname='public' and tablename='transport_drivers' and policyname='transport_drivers_select'
+    ) then
+      alter policy transport_drivers_select
+        on public.transport_drivers
+        using (app.is_org_member(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')));
+    else
+      create policy transport_drivers_select
+        on public.transport_drivers
+        for select
+        using (app.is_org_member(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')));
+    end if;
 
-  if exists (
-    select 1 from pg_policies where schemaname='public' and tablename='transport_vehicles' and policyname='transport_vehicles_update'
-  ) then
-    alter policy transport_vehicles_update
-      on public.transport_vehicles
-      using (app.is_org_member(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')))
-      with check (app.is_org_member(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')));
-  else
-    create policy transport_vehicles_update
-      on public.transport_vehicles
-      for update
-      using (app.is_org_member(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')))
-      with check (app.is_org_member(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')));
-  end if;
+    if exists (
+      select 1 from pg_policies where schemaname='public' and tablename='transport_drivers' and policyname='transport_drivers_write'
+    ) then
+      alter policy transport_drivers_write
+        on public.transport_drivers
+        with check (app.is_org_member(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')));
+    else
+      create policy transport_drivers_write
+        on public.transport_drivers
+        for insert
+        with check (app.is_org_member(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')));
+    end if;
 
-  if exists (
-    select 1 from pg_policies where schemaname='public' and tablename='transport_vehicles' and policyname='transport_vehicles_delete_admin'
-  ) then
-    alter policy transport_vehicles_delete_admin
-      on public.transport_vehicles
-      using (app.is_org_admin(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')));
-  else
-    create policy transport_vehicles_delete_admin
-      on public.transport_vehicles
-      for delete
-      using (app.is_org_admin(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')));
-  end if;
+    if exists (
+      select 1 from pg_policies where schemaname='public' and tablename='transport_drivers' and policyname='transport_drivers_update'
+    ) then
+      alter policy transport_drivers_update
+        on public.transport_drivers
+        using (app.is_org_member(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')))
+        with check (app.is_org_member(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')));
+    else
+      create policy transport_drivers_update
+        on public.transport_drivers
+        for update
+        using (app.is_org_member(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')))
+        with check (app.is_org_member(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')));
+    end if;
 
-  -- Drivers
-  if exists (
-    select 1 from pg_policies where schemaname='public' and tablename='transport_drivers' and policyname='transport_drivers_select'
-  ) then
-    alter policy transport_drivers_select
-      on public.transport_drivers
-      using (app.is_org_member(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')));
-  else
-    create policy transport_drivers_select
-      on public.transport_drivers
-      for select
-      using (app.is_org_member(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')));
-  end if;
-
-  if exists (
-    select 1 from pg_policies where schemaname='public' and tablename='transport_drivers' and policyname='transport_drivers_write'
-  ) then
-    alter policy transport_drivers_write
-      on public.transport_drivers
-      with check (app.is_org_member(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')));
-  else
-    create policy transport_drivers_write
-      on public.transport_drivers
-      for insert
-      with check (app.is_org_member(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')));
-  end if;
-
-  if exists (
-    select 1 from pg_policies where schemaname='public' and tablename='transport_drivers' and policyname='transport_drivers_update'
-  ) then
-    alter policy transport_drivers_update
-      on public.transport_drivers
-      using (app.is_org_member(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')))
-      with check (app.is_org_member(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')));
-  else
-    create policy transport_drivers_update
-      on public.transport_drivers
-      for update
-      using (app.is_org_member(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')))
-      with check (app.is_org_member(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')));
-  end if;
-
-  if exists (
-    select 1 from pg_policies where schemaname='public' and tablename='transport_drivers' and policyname='transport_drivers_delete_admin'
-  ) then
-    alter policy transport_drivers_delete_admin
-      on public.transport_drivers
-      using (app.is_org_admin(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')));
-  else
-    create policy transport_drivers_delete_admin
-      on public.transport_drivers
-      for delete
-      using (app.is_org_admin(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')));
+    if exists (
+      select 1 from pg_policies where schemaname='public' and tablename='transport_drivers' and policyname='transport_drivers_delete_admin'
+    ) then
+      alter policy transport_drivers_delete_admin
+        on public.transport_drivers
+        using (app.is_org_admin(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')));
+    else
+      create policy transport_drivers_delete_admin
+        on public.transport_drivers
+        for delete
+        using (app.is_org_admin(organization_id) and (app.org_has_module(organization_id,'fleet') or app.org_has_module(organization_id,'transport')));
+    end if;
   end if;
 end
 $$;
-
