@@ -2,18 +2,22 @@ document.documentElement.setAttribute("data-page", "abonnement");
 
 window.Webflow ||= [];
 window.Webflow.push(async function () {
-  const supabase = window.__MBL_SUPABASE__;
   const CFG = window.__MBL_CFG__ || {};
-
-  if (!supabase) {
-    console.error("[ABONNEMENT] Supabase global introuvable. Vérifie que le protect global est bien chargé.");
-    return;
-  }
+  let supabase = null;
 
   const CONFIG = {
     ROOT_SELECTOR: "[data-abonnement]",
-    LOGIN_PATH: CFG.LOGIN_PATH || "/login",
-    AFTER_CHECKOUT_PATH: CFG.AFTER_CHECKOUT_PATH || "/applications",
+
+    SUPABASE_URL: CFG.SUPABASE_URL || "https://jrjdhdechcdlygpgaoes.supabase.co",
+    SUPABASE_ANON_KEY:
+      CFG.SUPABASE_ANON_KEY ||
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpyamRoZGVjaGNkbHlncGdhb2VzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc3NzczMzQsImV4cCI6MjA4MzM1MzMzNH0.E13XKKpIjB1auVtTmgBgV7jxmvS-EOv52t0mT1neKXE",
+    SUPABASE_CDN: CFG.SUPABASE_CDN || "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2",
+    AUTH_STORAGE_KEY: CFG.AUTH_STORAGE_KEY || "mbl-extranet-auth",
+
+    LOGIN_PATH: CFG.LOGIN_PATH || "",
+    AFTER_CHECKOUT_PATH: CFG.AFTER_CHECKOUT_PATH || "",
+
     EDGE_FN_CHECKOUT: CFG.EDGE_FN_CHECKOUT || "stripe-create-checkout-session",
   };
 
@@ -33,10 +37,107 @@ window.Webflow.push(async function () {
     billingAnnual: "Annuel",
     loading: "Chargement…",
     checkoutError: "Impossible de démarrer le paiement.",
+    supabaseError: "Erreur: Supabase non initialisé. Vérifie la configuration.",
+    loginCta: "Se connecter",
+  };
+
+  function getCached(key) {
+    try {
+      return String(localStorage.getItem(key) || "");
+    } catch {
+      return "";
+    }
+  }
+
+  function resolveLoginPath() {
+    const fromCfg = String(CONFIG.LOGIN_PATH || "").trim();
+    if (fromCfg) return fromCfg;
+    const cached = getCached("mbl-app-login-path").trim();
+    if (cached) return cached;
+    return "/application/login";
+  }
+
+  function resolveAfterCheckoutPath() {
+    const fromCfg = String(CONFIG.AFTER_CHECKOUT_PATH || "").trim();
+    if (fromCfg) return fromCfg;
+    const cachedRoot = getCached("mbl-app-root").trim();
+    if (cachedRoot) return cachedRoot;
+    return "/application";
+  }
+
+  const PATHS = {
+    login: resolveLoginPath(),
+    afterCheckout: resolveAfterCheckoutPath(),
   };
 
   function findRoot() {
     return document.querySelector(CONFIG.ROOT_SELECTOR) || document.querySelector("#abonnement-root") || document.body;
+  }
+
+  async function ensureScript(id, src, readyCheck) {
+    if (typeof readyCheck === "function" && readyCheck()) return;
+
+    let script = document.querySelector('script[data-mbl-lib="' + id + '"]');
+    if (!script) {
+      script = document.createElement("script");
+      script.src = src;
+      script.async = true;
+      script.dataset.mblLib = id;
+      document.head.appendChild(script);
+    }
+
+    await new Promise((resolve, reject) => {
+      let settled = false;
+      const done = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+      const fail = () => {
+        if (settled) return;
+        settled = true;
+        reject(new Error("Echec chargement script: " + src));
+      };
+
+      script.addEventListener("load", done, { once: true });
+      script.addEventListener("error", fail, { once: true });
+      setTimeout(() => {
+        if (typeof readyCheck === "function" && readyCheck()) done();
+      }, 500);
+    });
+
+    if (typeof readyCheck === "function" && !readyCheck()) {
+      throw new Error("Script charge mais global indisponible: " + src);
+    }
+  }
+
+  async function getSupabase() {
+    if (window.__MBL_SUPABASE__) return window.__MBL_SUPABASE__;
+    if (!window.supabase?.createClient) {
+      await ensureScript("supabase", CONFIG.SUPABASE_CDN, function () {
+        return Boolean(window.supabase && window.supabase.createClient);
+      });
+    }
+
+    if (!window.supabase?.createClient) throw new Error("Supabase non charge.");
+
+    const client = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        storageKey: CONFIG.AUTH_STORAGE_KEY,
+      },
+    });
+
+    window.__MBL_SUPABASE__ = client;
+    return client;
+  }
+
+  async function getSupabaseClient() {
+    if (supabase) return supabase;
+    supabase = await getSupabase();
+    return supabase;
   }
 
   function formatCents(cents) {
@@ -66,9 +167,10 @@ window.Webflow.push(async function () {
   }
 
   async function getCurrentUser() {
+    const client = await getSupabaseClient();
     const [{ data: sessionData }, { data: userData, error: userErr }] = await Promise.all([
-      supabase.auth.getSession(),
-      supabase.auth.getUser(),
+      client.auth.getSession(),
+      client.auth.getUser(),
     ]);
     if (userErr) return sessionData?.session?.user || null;
     return userData?.user || sessionData?.session?.user || null;
@@ -78,7 +180,8 @@ window.Webflow.push(async function () {
     const explicit = String(CFG.ORGANIZATION_ID || window.__MBL_ORG_ID__ || "").trim();
     if (explicit) return explicit;
 
-    const { data, error } = await supabase
+    const client = await getSupabaseClient();
+    const { data, error } = await client
       .from("organization_members")
       .select("organization_id, is_default, created_at")
       .eq("user_id", userId)
@@ -92,7 +195,8 @@ window.Webflow.push(async function () {
   }
 
   async function loadPlans() {
-    const { data, error } = await supabase
+    const client = await getSupabaseClient();
+    const { data, error } = await client
       .from("billing_plans")
       .select("id, code, name, description, monthly_price_cents, annual_price_cents, modules, is_active")
       .eq("is_active", true)
@@ -102,7 +206,8 @@ window.Webflow.push(async function () {
   }
 
   async function loadCurrentSubscription(orgId) {
-    const { data, error } = await supabase
+    const client = await getSupabaseClient();
+    const { data, error } = await client
       .from("organization_subscriptions")
       .select("id, organization_id, status, starts_at, ends_at, trial_ends_at, plan:plan_id(id, code, name, modules)")
       .eq("organization_id", orgId)
@@ -122,7 +227,7 @@ window.Webflow.push(async function () {
   }
 
   function buildSuccessUrl() {
-    const base = location.origin + String(CONFIG.AFTER_CHECKOUT_PATH || "/applications");
+    const base = location.origin + String(PATHS.afterCheckout || "/application");
     return base;
   }
 
@@ -139,6 +244,7 @@ window.Webflow.push(async function () {
       cancel_url: buildCancelUrl(),
     };
 
+    const supabase = await getSupabaseClient();
     const res = await supabase.functions.invoke(CONFIG.EDGE_FN_CHECKOUT, { body: payload });
     if (res.error) throw new Error(res.error.message);
     const url = res.data?.url || res.data?.checkout_url || "";
@@ -305,9 +411,35 @@ window.Webflow.push(async function () {
   try {
     showBanner(els, STR.loading, "");
 
+    try {
+      await getSupabaseClient();
+    } catch (e) {
+      console.error("[ABONNEMENT] supabase init error:", e);
+      showBanner(els, STR.supabaseError, "error");
+      els.grid.innerHTML = `
+        <div class="mbl-card">
+          <h3>${STR.supabaseError}</h3>
+          <div class="desc">Vérifie que l'URL et la clé anon Supabase sont bien configurées.</div>
+          <a class="mbl-btn" href="${PATHS.login}" style="text-align:center; text-decoration:none; display:inline-flex; align-items:center; justify-content:center;">
+            ${STR.loginCta}
+          </a>
+        </div>
+      `;
+      return;
+    }
+
     const user = await getCurrentUser();
     if (!user) {
       showBanner(els, STR.sessionExpired, "error");
+      els.grid.innerHTML = `
+        <div class="mbl-card">
+          <h3>${STR.sessionExpired}</h3>
+          <div class="desc">Tu dois être connecté pour gérer un abonnement.</div>
+          <a class="mbl-btn" href="${PATHS.login}" style="text-align:center; text-decoration:none; display:inline-flex; align-items:center; justify-content:center;">
+            ${STR.loginCta}
+          </a>
+        </div>
+      `;
       return;
     }
     state.userId = user.id;
@@ -342,4 +474,3 @@ window.Webflow.push(async function () {
     showBanner(els, STR.plansError, "error");
   }
 });
-
