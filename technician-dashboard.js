@@ -1,3 +1,5 @@
+document.documentElement.setAttribute("data-page", "technician-dashboard");
+
 (() => {
   if (window.__techDashboardLoaded) return;
   window.__techDashboardLoaded = true;

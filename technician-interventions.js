@@ -1,3 +1,5 @@
+document.documentElement.setAttribute("data-page", "technician-interventions");
+
 (() => {
   if (window.__techInterventionsLoaded) return;
   window.__techInterventionsLoaded = true;
@@ -169,7 +171,9 @@
   async function fetchAssignments(userId) {
     const res = await supabase
       .from("intervention_assignees")
-      .select("id, user_id, intervention_id, interventions:intervention_id(*)")
+      .select(
+        "id, user_id, intervention_id, interventions:intervention_id(*, intervention_type:intervention_type_id(id, key, name, metadata, default_billing_mode))"
+      )
       .eq("user_id", userId)
       .order("id", { ascending: false });
 
@@ -343,6 +347,9 @@
     const id = row.id;
     const requiresSignature = getFlag(row.requires_signature, CONFIG.REQUIRE_SIGNATURE_DEFAULT);
     const requiresPhotos = getFlag(row.requires_photos, CONFIG.REQUIRE_PHOTOS_DEFAULT);
+    const typeRow = row?.intervention_type || null;
+    const typeKey = String(typeRow?.key || "").toLowerCase().trim();
+    const typeMeta = typeRow?.metadata && typeof typeRow.metadata === "object" ? typeRow.metadata : {};
 
     state.checklist[id] = state.checklist[id] || getChecklist(row).map(() => false);
     state.notes[id] = state.notes[id] || "";
@@ -355,16 +362,64 @@
     state.resolution[id] = state.resolution[id] || "";
     state.observations[id] = state.observations[id] || "";
 
-    const steps = [
-      { key: "arrive", label: "Arrivee" },
-      { key: "diagnostic", label: "Diagnostic" },
-      { key: "resolution", label: "Resolution" },
-      { key: "photos", label: "Photos" },
-      { key: "products", label: "Produits" }
-    ];
-    if (requiresSignature) steps.push({ key: "signature", label: "Signature" });
-    steps.push({ key: "observations", label: "Observations" });
-    steps.push({ key: "validate", label: "Validation" });
+    const pickArray = (v) => (Array.isArray(v) ? v : null);
+    const allowed = new Set([
+      "arrive",
+      "diagnostic",
+      "resolution",
+      "photos",
+      "products",
+      "signature",
+      "observations",
+      "validate",
+    ]);
+
+    const metaSteps =
+      pickArray(typeMeta?.flow_steps) || pickArray(typeMeta?.flowSteps) || pickArray(typeMeta?.steps) || null;
+
+    let stepKeys = null;
+    if (metaSteps?.length) {
+      stepKeys = metaSteps.map((s) => String(s || "").toLowerCase().trim()).filter(Boolean);
+    } else if (typeKey === "formation") {
+      stepKeys = ["arrive", "photos", "products", "observations", "validate"];
+    } else {
+      stepKeys = ["arrive", "diagnostic", "resolution", "photos", "products", "observations", "validate"];
+    }
+
+    stepKeys = stepKeys.filter((k) => allowed.has(k));
+    if (!stepKeys.includes("arrive")) stepKeys.unshift("arrive");
+    if (!stepKeys.includes("observations")) {
+      const idx = stepKeys.indexOf("validate");
+      if (idx >= 0) stepKeys.splice(idx, 0, "observations");
+      else stepKeys.push("observations");
+    }
+    if (!stepKeys.includes("validate")) stepKeys.push("validate");
+
+    // Enforce required artifacts to keep the flow valid.
+    if (requiresPhotos && !stepKeys.includes("photos")) {
+      const idx = stepKeys.includes("resolution") ? stepKeys.indexOf("resolution") + 1 : 1;
+      stepKeys.splice(Math.min(Math.max(idx, 1), stepKeys.length), 0, "photos");
+    }
+
+    // Signature step: display only when required.
+    stepKeys = stepKeys.filter((k) => k !== "signature");
+    if (requiresSignature) {
+      const idx = stepKeys.includes("observations") ? stepKeys.indexOf("observations") : stepKeys.length - 1;
+      stepKeys.splice(Math.max(1, idx), 0, "signature");
+    }
+
+    const labelMap = {
+      arrive: "Arrivee",
+      diagnostic: "Diagnostic",
+      resolution: "Resolution",
+      photos: "Photos",
+      products: "Produits",
+      signature: "Signature",
+      observations: "Observations",
+      validate: "Validation",
+    };
+
+    const steps = stepKeys.map((k) => ({ key: k, label: labelMap[k] || k }));
 
     const step = getStep(id, steps.length);
     const pvUrl = getPvUrl(row);

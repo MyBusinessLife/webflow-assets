@@ -1,3 +1,5 @@
+document.documentElement.setAttribute("data-page", "technician-interventions-list");
+
 (() => {
   if (window.__techInterventionsLoaded) return;
   window.__techInterventionsLoaded = true;

@@ -1,3 +1,5 @@
+document.documentElement.setAttribute("data-page", "technician-interventions-run");
+
 (() => {
   if (window.__techInterventionRunLoaded || window.__techInterventionRunBooting) return;
   window.__techInterventionRunBooting = true;
@@ -136,6 +138,8 @@
     userId: "",
     organizationId: "",
     intervention: null,
+    interventionType: null,
+    typeConfig: null,
     steps: [],
     currentStepIndex: 0,
     requirements: {
@@ -270,7 +274,9 @@
         signature: resolveFlag(row.requires_signature, CONFIG.REQUIRE_SIGNATURE_DEFAULT),
       };
 
-      state.steps = buildSteps(state.requirements);
+      state.interventionType = row?.intervention_type || null;
+      state.typeConfig = resolveTypeConfig(state.interventionType);
+      state.steps = buildSteps(state.requirements, state.typeConfig);
 
       const catalog = await loadCatalog();
       hydrateCatalog(catalog);
@@ -312,7 +318,9 @@
   async function fetchIntervention(userId, interventionId) {
     const fromAssign = await supabase
       .from("intervention_assignees")
-      .select("intervention_id, interventions:intervention_id(*)")
+      .select(
+        "intervention_id, interventions:intervention_id(*, intervention_type:intervention_type_id(id, key, name, metadata, default_billing_mode))"
+      )
       .eq("user_id", userId)
       .eq("intervention_id", interventionId)
       .maybeSingle();
@@ -321,7 +329,7 @@
 
     const direct = await supabase
       .from("interventions")
-      .select("*")
+      .select("*, intervention_type:intervention_type_id(id, key, name, metadata, default_billing_mode)")
       .eq("id", interventionId)
       .maybeSingle();
 
@@ -2042,21 +2050,103 @@
     return "";
   }
 
-  function buildSteps(requirements) {
-    const steps = [
-      { key: "arrive", label: STR.stepArrive },
-      { key: "diagnostic", label: STR.stepDiagnostic },
-      { key: "resolution", label: STR.stepResolution },
-      { key: "photos", label: STR.stepPhotos },
-      { key: "products", label: STR.stepProducts },
-    ];
+  function resolveTypeConfig(typeRow) {
+    const key = String(typeRow?.key || "").toLowerCase().trim();
+    const name = String(typeRow?.name || "").trim();
+    const metadata = typeRow?.metadata && typeof typeRow.metadata === "object" ? typeRow.metadata : {};
 
-    if (requirements.signature) {
-      steps.push({ key: "signature", label: STR.stepSignature });
+    // Supported keys for the guided technician flow.
+    const allowed = new Set([
+      "arrive",
+      "diagnostic",
+      "resolution",
+      "photos",
+      "products",
+      "signature",
+      "observations",
+      "validate",
+    ]);
+
+    const pickArray = (value) => (Array.isArray(value) ? value : null);
+    const metaSteps =
+      pickArray(metadata?.flow_steps) ||
+      pickArray(metadata?.flowSteps) ||
+      pickArray(metadata?.steps) ||
+      null;
+
+    let flowSteps = null;
+    if (metaSteps?.length) {
+      flowSteps = metaSteps.map((s) => String(s || "").toLowerCase().trim()).filter(Boolean);
+    } else if (key === "formation") {
+      // Training sessions usually don't need diagnostic/resolution.
+      flowSteps = ["arrive", "photos", "products", "observations", "validate"];
+    } else {
+      flowSteps = ["arrive", "diagnostic", "resolution", "photos", "products", "observations", "validate"];
     }
 
-    steps.push({ key: "observations", label: STR.stepObservations });
-    steps.push({ key: "validate", label: STR.stepValidate });
+    flowSteps = flowSteps.filter((s) => allowed.has(s));
+    if (!flowSteps.includes("arrive")) flowSteps.unshift("arrive");
+    if (!flowSteps.includes("observations")) {
+      const idx = flowSteps.indexOf("validate");
+      if (idx >= 0) flowSteps.splice(idx, 0, "observations");
+      else flowSteps.push("observations");
+    }
+    if (!flowSteps.includes("validate")) flowSteps.push("validate");
+
+    const stepLabels = metadata?.step_labels && typeof metadata.step_labels === "object" ? metadata.step_labels : {};
+
+    return { key, name, metadata, flowSteps, stepLabels };
+  }
+
+  function stepDefaultLabel(stepKey) {
+    switch (stepKey) {
+      case "arrive":
+        return STR.stepArrive;
+      case "diagnostic":
+        return STR.stepDiagnostic;
+      case "resolution":
+        return STR.stepResolution;
+      case "photos":
+        return STR.stepPhotos;
+      case "products":
+        return STR.stepProducts;
+      case "signature":
+        return STR.stepSignature;
+      case "observations":
+        return STR.stepObservations;
+      case "validate":
+        return STR.stepValidate;
+      default:
+        return stepKey;
+    }
+  }
+
+  function buildSteps(requirements, typeConfig) {
+    const flowSteps = Array.isArray(typeConfig?.flowSteps) && typeConfig.flowSteps.length
+      ? typeConfig.flowSteps.slice()
+      : ["arrive", "diagnostic", "resolution", "photos", "products", "observations", "validate"];
+
+    // Ensure that required artifacts are still reachable in the UI.
+    if (requirements?.photos && !flowSteps.includes("photos")) {
+      const idx = flowSteps.includes("resolution") ? flowSteps.indexOf("resolution") + 1 : 1;
+      flowSteps.splice(Math.min(Math.max(idx, 1), flowSteps.length), 0, "photos");
+    }
+    if (requirements?.signature && !flowSteps.includes("signature")) {
+      const idx = flowSteps.includes("observations") ? flowSteps.indexOf("observations") : flowSteps.length - 1;
+      flowSteps.splice(Math.max(1, idx), 0, "signature");
+    }
+
+    const labels = typeConfig?.stepLabels || {};
+    const steps = [];
+    for (const key of flowSteps) {
+      if (key === "signature" && !requirements?.signature) continue;
+      steps.push({ key, label: String(labels?.[key] || stepDefaultLabel(key)) });
+    }
+
+    // Safety: always finish with validate.
+    if (!steps.some((s) => s.key === "validate")) {
+      steps.push({ key: "validate", label: String(labels?.validate || STR.stepValidate) });
+    }
 
     return steps;
   }

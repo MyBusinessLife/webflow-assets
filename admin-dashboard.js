@@ -1,3 +1,5 @@
+document.documentElement.setAttribute("data-page", "admin-dashboard");
+
 (() => {
   "use strict";
 

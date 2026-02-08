@@ -1015,6 +1015,15 @@ window.Webflow.push(async function () {
   let techsCache = null;
   let productsCache = null;
   let productPriceById = new Map();
+  let interventionTypesCache = null;
+  let interventionTypeById = new Map();
+  let interventionTypesTableMissing = false;
+
+  function isTableMissing(error) {
+    const code = String(error?.code || "");
+    const msg = String(error?.message || "").toLowerCase();
+    return code === "42P01" || msg.includes("does not exist") || msg.includes("relation") && msg.includes("does not exist");
+  }
 
   async function loadTechs() {
     if (techsCache) return techsCache;
@@ -1096,6 +1105,124 @@ window.Webflow.push(async function () {
     return list.map(p => `<option value="${p.id}">${p.name}</option>`).join("");
   }
 
+  async function loadInterventionTypes(opts = {}) {
+    const force = Boolean(opts.force);
+    if (!force && interventionTypesCache) return interventionTypesCache;
+    if (interventionTypesTableMissing) return [];
+
+    let q = supabase
+      .from("intervention_types")
+      .select("id, organization_id, key, name, description, default_billing_mode, metadata, is_active")
+      .eq("is_active", true)
+      .order("name", { ascending: true });
+
+    if (ORG_ID) q = q.eq("organization_id", ORG_ID);
+
+    const { data, error } = await q;
+    if (error) {
+      if (isTableMissing(error)) {
+        interventionTypesTableMissing = true;
+        interventionTypesCache = [];
+        interventionTypeById = new Map();
+        return [];
+      }
+      console.warn("[ADMIN INTERVENTIONS] intervention_types load warning:", error.message);
+      interventionTypesCache = [];
+      interventionTypeById = new Map();
+      return [];
+    }
+
+    interventionTypesCache = data || [];
+    interventionTypeById = new Map();
+    interventionTypesCache.forEach((t) => interventionTypeById.set(String(t.id), t));
+    return interventionTypesCache;
+  }
+
+  async function populateTypeSelect(selectEl) {
+    if (!selectEl) return;
+    const types = await loadInterventionTypes();
+    selectEl.innerHTML = "";
+
+    const blank = document.createElement("option");
+    blank.value = "";
+    blank.textContent = "— Aucun type —";
+    selectEl.appendChild(blank);
+
+    if (!types.length) {
+      return;
+    }
+
+    types.forEach((t) => {
+      const opt = document.createElement("option");
+      opt.value = String(t.id);
+      opt.textContent = `${t.name} (${t.key})`;
+      selectEl.appendChild(opt);
+    });
+  }
+
+  function getDefaultInterventionTypesSeed() {
+    return [
+      {
+        key: "sav",
+        name: "SAV / Dépannage",
+        description: "Dépannage et SAV (diagnostic, résolution, photos, produits).",
+        default_billing_mode: "time_and_material",
+        metadata: {
+          flow_steps: ["arrive", "diagnostic", "resolution", "photos", "products", "observations", "validate"],
+          defaults: { requires_checklist: false, requires_photos: false, requires_signature: false },
+          require_client: true,
+        },
+      },
+      {
+        key: "informatique",
+        name: "Informatique",
+        description: "Interventions IT (diagnostic, résolution, photos, produits).",
+        default_billing_mode: "time_and_material",
+        metadata: {
+          flow_steps: ["arrive", "diagnostic", "resolution", "photos", "products", "observations", "validate"],
+          defaults: { requires_checklist: false, requires_photos: false, requires_signature: false },
+          require_client: true,
+        },
+      },
+      {
+        key: "btp",
+        name: "BTP / Chantier",
+        description: "Chantiers (photos + signature recommandées, checklist possible).",
+        default_billing_mode: "milestone",
+        metadata: {
+          flow_steps: ["arrive", "diagnostic", "resolution", "photos", "products", "signature", "observations", "validate"],
+          defaults: { requires_checklist: true, requires_photos: true, requires_signature: true },
+          require_client: true,
+        },
+      },
+      {
+        key: "formation",
+        name: "Formation",
+        description: "Sessions de formation (sans diagnostic/résolution).",
+        default_billing_mode: "fixed",
+        metadata: {
+          flow_steps: ["arrive", "photos", "products", "signature", "observations", "validate"],
+          admin_hidden_fields: ["monday_item_id", "support_phone"],
+          defaults: { requires_checklist: false, requires_photos: false, requires_signature: true },
+          require_client: true,
+        },
+      },
+    ];
+  }
+
+  async function seedDefaultInterventionTypes() {
+    const types = await loadInterventionTypes();
+    if (types.length) return { ok: true, created: 0 };
+    const rows = getDefaultInterventionTypesSeed();
+    const { error } = await insertWithOrgFallback("intervention_types", rows, ORG_ID);
+    if (error) return { ok: false, error };
+    interventionTypesCache = null;
+    interventionTypeById = new Map();
+    interventionTypesTableMissing = false;
+    await loadInterventionTypes({ force: true });
+    return { ok: true, created: rows.length };
+  }
+
   // =========================
   // LOAD FULL INTERVENTION
   // =========================
@@ -1109,7 +1236,7 @@ window.Webflow.push(async function () {
       pvRes
     ] = await Promise.all([
       supabase.from("interventions")
-        .select("id, organization_id, internal_ref, monday_item_id, title, client_name, client_ref, address, support_phone, status, start_at, end_at, equipment_needed, infos, observations, tarif, pv_status, pv_source, created_at, updated_at")
+        .select("id, organization_id, internal_ref, monday_item_id, intervention_type_id, billing_mode, title, client_name, client_ref, address, support_phone, status, start_at, end_at, equipment_needed, infos, observations, tarif, requires_checklist, requires_photos, requires_signature, pv_status, pv_source, created_at, updated_at")
         .eq("id", id)
         .single(),
       supabase.from("intervention_assignees").select("intervention_id, user_id").eq("intervention_id", id),
@@ -1574,6 +1701,25 @@ window.Webflow.push(async function () {
           background: linear-gradient(180deg, rgba(247,251,255,0), rgba(247,251,255,.94) 40%, rgba(247,251,255,1));
         }
         .itv-muted { color:#5a7490; font-size:12px; }
+        .itv-field.is-hidden { display:none !important; }
+        .itv-flags {
+          display:flex;
+          gap:12px;
+          flex-wrap:wrap;
+          padding:10px 12px;
+          border:1px dashed #c9d8e6;
+          border-radius:12px;
+          background:#ffffff;
+        }
+        .itv-flag {
+          display:flex;
+          gap:8px;
+          align-items:center;
+          font-weight:700;
+          color:#143a61;
+          font-size:13px;
+        }
+        .itv-flag input { width:18px; height:18px; }
 
         .tech-toolbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
         .tech-grid { display:grid; grid-template-columns: repeat(auto-fill,minmax(210px,1fr)); gap:10px; margin-top:10px; }
@@ -1720,6 +1866,14 @@ window.Webflow.push(async function () {
               <input class="f-title" type="text" />
             </div>
             <div class="itv-field">
+              <label>Type d’intervention</label>
+              <select class="f-type"></select>
+              <div class="itv-muted f-type-hint">—</div>
+              <button type="button" class="itv-btn secondary itv-types-defaults" style="margin-top:8px; display:none;">
+                Créer types par défaut
+              </button>
+            </div>
+            <div class="itv-field">
               <label>Monday item id</label>
               <input class="f-monday" type="text" />
             </div>
@@ -1754,6 +1908,16 @@ window.Webflow.push(async function () {
             <div class="itv-field">
               <label>Fin</label>
               <input class="f-end" type="datetime-local" />
+            </div>
+
+            <div class="itv-field" style="grid-column:1/-1;">
+              <label>Parcours technicien</label>
+              <div class="itv-flags">
+                <label class="itv-flag"><input type="checkbox" class="f-requires-checklist" /> Checklist requise</label>
+                <label class="itv-flag"><input type="checkbox" class="f-requires-photos" /> Photos requises</label>
+                <label class="itv-flag"><input type="checkbox" class="f-requires-signature" /> Signature requise</label>
+              </div>
+              <div class="itv-muted">Ces options pilotent le parcours technicien (checklist / photos / signature).</div>
             </div>
 
             <div class="itv-field" style="grid-column:1/-1;">
@@ -1938,6 +2102,47 @@ window.Webflow.push(async function () {
       renderTechChecklist(e.target.value);
     });
 
+    const typeSelect = modal.querySelector(".f-type");
+    if (typeSelect) {
+      typeSelect.addEventListener("change", () => {
+        applyTypeToModal(typeSelect.value, { applyDefaults: modalState.mode === "add" });
+        updateSummaryView();
+        saveDraft();
+        refreshDirtyFlag();
+      });
+    }
+
+    const seedBtn = modal.querySelector(".itv-types-defaults");
+    if (seedBtn) {
+      seedBtn.addEventListener("click", async () => {
+        if (modalState.mode === "view") return;
+        seedBtn.disabled = true;
+        const prev = seedBtn.textContent;
+        seedBtn.textContent = "Création...";
+        try {
+          const res = await seedDefaultInterventionTypes();
+          if (!res.ok) throw new Error(res.error?.message || "Impossible de créer les types.");
+          await populateTypeSelect(modal.querySelector(".f-type"));
+          seedBtn.style.display = "none";
+
+          // Auto-select first type after seeding in add mode.
+          if (modalState.mode === "add" && (interventionTypesCache || []).length) {
+            const first = interventionTypesCache[0];
+            if (typeSelect) typeSelect.value = String(first.id);
+            applyTypeToModal(typeSelect?.value || "", { applyDefaults: true });
+          } else {
+            applyTypeToModal(typeSelect?.value || "", { applyDefaults: false });
+          }
+        } catch (e) {
+          console.error(e);
+          showError(e?.message || "Erreur création types.");
+        } finally {
+          seedBtn.disabled = false;
+          seedBtn.textContent = prev || "Créer types par défaut";
+        }
+      });
+    }
+
     modal.querySelectorAll(".f-tarif, .c-amount, .e-unit").forEach((el) => {
       el.addEventListener("blur", () => {
         const v = String(el.value || "").trim();
@@ -2087,6 +2292,133 @@ window.Webflow.push(async function () {
     if (el) el.textContent = `${count} sélectionné${count > 1 ? "s" : ""}`;
   }
 
+  const TYPE_PRESETS = {
+    formation: {
+      admin_hidden_fields: ["monday_item_id", "support_phone"],
+      defaults: { requires_signature: true, requires_photos: false, requires_checklist: false },
+      require_client: true,
+    },
+    btp: {
+      admin_hidden_fields: [],
+      defaults: { requires_signature: true, requires_photos: true, requires_checklist: true },
+      require_client: true,
+    },
+    sav: {
+      admin_hidden_fields: [],
+      defaults: { requires_signature: false, requires_photos: false, requires_checklist: false },
+      require_client: true,
+    },
+    informatique: {
+      admin_hidden_fields: [],
+      defaults: { requires_signature: false, requires_photos: false, requires_checklist: false },
+      require_client: true,
+    },
+  };
+
+  function getSelectedTypeRow() {
+    const modal = ensureModalExists();
+    const typeId = String(modal.querySelector(".f-type")?.value || "").trim();
+    if (!typeId) return null;
+    return interventionTypeById.get(typeId) || null;
+  }
+
+  function getTypeMeta(typeRow) {
+    if (!typeRow?.metadata || typeof typeRow.metadata !== "object") return {};
+    return typeRow.metadata;
+  }
+
+  function resolveTypePreset(typeRow) {
+    const key = String(typeRow?.key || "").toLowerCase().trim();
+    return TYPE_PRESETS[key] || null;
+  }
+
+  function setFieldVisible(modal, selector, visible) {
+    const el = modal.querySelector(selector);
+    const field = el?.closest(".itv-field");
+    if (!field) return;
+    field.classList.toggle("is-hidden", !visible);
+  }
+
+  function applyTypeToModal(typeId, opts = {}) {
+    const modal = ensureModalExists();
+    const applyDefaults = Boolean(opts.applyDefaults);
+
+    // Reset visibility first (type can change).
+    const fieldKeys = [
+      ".f-title",
+      ".f-monday",
+      ".f-client",
+      ".f-client-ref",
+      ".f-phone",
+      ".f-tarif",
+      ".f-address",
+      ".f-start",
+      ".f-end",
+      ".f-equipment",
+      ".f-infos",
+      ".f-observations",
+      ".f-requires-checklist",
+    ];
+    fieldKeys.forEach((sel) => setFieldVisible(modal, sel, true));
+
+    const typeRow = typeId ? interventionTypeById.get(String(typeId)) : null;
+    const meta = getTypeMeta(typeRow);
+    const preset = resolveTypePreset(typeRow);
+
+    const hidden = Array.isArray(meta?.admin_hidden_fields)
+      ? meta.admin_hidden_fields
+      : Array.isArray(preset?.admin_hidden_fields)
+      ? preset.admin_hidden_fields
+      : [];
+
+    const map = {
+      monday_item_id: ".f-monday",
+      support_phone: ".f-phone",
+      address: ".f-address",
+      equipment_needed: ".f-equipment",
+      infos: ".f-infos",
+      observations: ".f-observations",
+      client_ref: ".f-client-ref",
+      client_name: ".f-client",
+      title: ".f-title",
+      start_at: ".f-start",
+      end_at: ".f-end",
+      tarif: ".f-tarif",
+      requirements: ".f-requires-checklist",
+    };
+
+    hidden.forEach((k) => {
+      const sel = map[String(k || "").trim()];
+      if (sel) setFieldVisible(modal, sel, false);
+    });
+
+    const hintEl = modal.querySelector(".f-type-hint");
+    if (hintEl) {
+      if (interventionTypesTableMissing) hintEl.textContent = "Types d’intervention indisponibles (table manquante).";
+      else if (!interventionTypesCache?.length) hintEl.textContent = "Aucun type configure. Tu peux creer des types par defaut.";
+      else if (typeRow?.description) hintEl.textContent = String(typeRow.description);
+      else if (typeRow?.key) hintEl.textContent = `Clé: ${typeRow.key}`;
+      else hintEl.textContent = "—";
+    }
+
+    if (applyDefaults && typeRow) {
+      const defaults =
+        (meta?.defaults && typeof meta.defaults === "object" ? meta.defaults : null) ||
+        (preset?.defaults && typeof preset.defaults === "object" ? preset.defaults : null) ||
+        null;
+
+      if (defaults) {
+        const chkChecklist = modal.querySelector(".f-requires-checklist");
+        const chkPhotos = modal.querySelector(".f-requires-photos");
+        const chkSignature = modal.querySelector(".f-requires-signature");
+
+        if (chkChecklist && defaults.requires_checklist !== undefined) chkChecklist.checked = Boolean(defaults.requires_checklist);
+        if (chkPhotos && defaults.requires_photos !== undefined) chkPhotos.checked = Boolean(defaults.requires_photos);
+        if (chkSignature && defaults.requires_signature !== undefined) chkSignature.checked = Boolean(defaults.requires_signature);
+      }
+    }
+  }
+
   function validateStep(step) {
     const modal = ensureModalExists();
     clearFieldErrors();
@@ -2098,6 +2430,15 @@ window.Webflow.push(async function () {
       const tarif = parseEurosToCents(modal.querySelector(".f-tarif").value);
       const start = modal.querySelector(".f-start").value;
       const end = modal.querySelector(".f-end").value;
+      const typeRow = getSelectedTypeRow();
+      const meta = getTypeMeta(typeRow);
+      const preset = resolveTypePreset(typeRow);
+      const requireClient =
+        meta?.require_client !== undefined
+          ? Boolean(meta.require_client)
+          : preset?.require_client !== undefined
+          ? Boolean(preset.require_client)
+          : true;
 
       if (!ref) {
         assignNextReferenceCandidate(true);
@@ -2107,7 +2448,7 @@ window.Webflow.push(async function () {
         markInvalid([".f-ref"]);
         return "La reference auto doit etre au format MBL-123.";
       }
-      if (!client) {
+      if (requireClient && !client) {
         markInvalid([".f-client"]);
         return "Le client est obligatoire.";
       }
@@ -2193,6 +2534,7 @@ window.Webflow.push(async function () {
     const data = {
       status: modal.querySelector(".f-status").value,
       title: modal.querySelector(".f-title").value,
+      type_id: modal.querySelector(".f-type")?.value || "",
       monday: modal.querySelector(".f-monday").value,
       client: modal.querySelector(".f-client").value,
       client_ref: modal.querySelector(".f-client-ref").value,
@@ -2201,6 +2543,9 @@ window.Webflow.push(async function () {
       address: modal.querySelector(".f-address").value,
       start: modal.querySelector(".f-start").value,
       end: modal.querySelector(".f-end").value,
+      requires_checklist: Boolean(modal.querySelector(".f-requires-checklist")?.checked),
+      requires_photos: Boolean(modal.querySelector(".f-requires-photos")?.checked),
+      requires_signature: Boolean(modal.querySelector(".f-requires-signature")?.checked),
       equipment: modal.querySelector(".f-equipment").value,
       infos: modal.querySelector(".f-infos").value,
       observations: modal.querySelector(".f-observations").value,
@@ -2217,6 +2562,7 @@ window.Webflow.push(async function () {
       const d = JSON.parse(raw);
       modal.querySelector(".f-status").value = d.status || "";
       modal.querySelector(".f-title").value = d.title || "";
+      if (modal.querySelector(".f-type")) modal.querySelector(".f-type").value = d.type_id || "";
       modal.querySelector(".f-monday").value = d.monday || "";
       modal.querySelector(".f-client").value = d.client || "";
       modal.querySelector(".f-client-ref").value = d.client_ref || "";
@@ -2225,9 +2571,13 @@ window.Webflow.push(async function () {
       modal.querySelector(".f-address").value = d.address || "";
       modal.querySelector(".f-start").value = d.start || "";
       modal.querySelector(".f-end").value = d.end || "";
+      if (modal.querySelector(".f-requires-checklist")) modal.querySelector(".f-requires-checklist").checked = Boolean(d.requires_checklist);
+      if (modal.querySelector(".f-requires-photos")) modal.querySelector(".f-requires-photos").checked = Boolean(d.requires_photos);
+      if (modal.querySelector(".f-requires-signature")) modal.querySelector(".f-requires-signature").checked = Boolean(d.requires_signature);
       modal.querySelector(".f-equipment").value = d.equipment || "";
       modal.querySelector(".f-infos").value = d.infos || "";
       modal.querySelector(".f-observations").value = d.observations || "";
+      applyTypeToModal(modal.querySelector(".f-type")?.value || "", { applyDefaults: false });
     } catch {}
   }
 
@@ -2245,6 +2595,7 @@ window.Webflow.push(async function () {
     modal.querySelector(".f-ref").value = "";
     modal.querySelector(".f-status").value = "Planifiée";
     modal.querySelector(".f-title").value = "";
+    if (modal.querySelector(".f-type")) modal.querySelector(".f-type").value = "";
     modal.querySelector(".f-monday").value = "";
     modal.querySelector(".f-client").value = "";
     modal.querySelector(".f-client-ref").value = "";
@@ -2253,10 +2604,14 @@ window.Webflow.push(async function () {
     modal.querySelector(".f-address").value = "";
     modal.querySelector(".f-start").value = "";
     modal.querySelector(".f-end").value = "";
+    if (modal.querySelector(".f-requires-checklist")) modal.querySelector(".f-requires-checklist").checked = false;
+    if (modal.querySelector(".f-requires-photos")) modal.querySelector(".f-requires-photos").checked = false;
+    if (modal.querySelector(".f-requires-signature")) modal.querySelector(".f-requires-signature").checked = false;
     modal.querySelector(".f-equipment").value = "";
     modal.querySelector(".f-infos").value = "";
     modal.querySelector(".f-observations").value = "";
     modal.querySelector(".f-file-type").value = "";
+    applyTypeToModal("", { applyDefaults: false });
 
     const techSelect = modal.querySelector(".f-techs");
     Array.from(techSelect.options || []).forEach(o => (o.selected = false));
@@ -2283,6 +2638,7 @@ window.Webflow.push(async function () {
     modal.querySelector(".f-ref").value = intervention.internal_ref || "";
     modal.querySelector(".f-status").value = statusLabel(intervention.status);
     modal.querySelector(".f-title").value = intervention.title || "";
+    if (modal.querySelector(".f-type")) modal.querySelector(".f-type").value = intervention.intervention_type_id || "";
     modal.querySelector(".f-monday").value = intervention.monday_item_id || "";
     modal.querySelector(".f-client").value = intervention.client_name || "";
     modal.querySelector(".f-client-ref").value = intervention.client_ref || "";
@@ -2291,9 +2647,13 @@ window.Webflow.push(async function () {
     modal.querySelector(".f-address").value = intervention.address || "";
     modal.querySelector(".f-start").value = toLocalInputValue(intervention.start_at);
     modal.querySelector(".f-end").value = toLocalInputValue(intervention.end_at);
+    if (modal.querySelector(".f-requires-checklist")) modal.querySelector(".f-requires-checklist").checked = Boolean(intervention.requires_checklist);
+    if (modal.querySelector(".f-requires-photos")) modal.querySelector(".f-requires-photos").checked = Boolean(intervention.requires_photos);
+    if (modal.querySelector(".f-requires-signature")) modal.querySelector(".f-requires-signature").checked = Boolean(intervention.requires_signature);
     modal.querySelector(".f-equipment").value = intervention.equipment_needed || "";
     modal.querySelector(".f-infos").value = intervention.infos || "";
     modal.querySelector(".f-observations").value = intervention.observations || "";
+    applyTypeToModal(modal.querySelector(".f-type")?.value || "", { applyDefaults: false });
 
     const techSelect = modal.querySelector(".f-techs");
     const assignIds = (assigns || []).map(a => a.user_id);
@@ -2692,6 +3052,7 @@ window.Webflow.push(async function () {
       status: toDbStatus(modal.querySelector(".f-status").value),
 
       title: modal.querySelector(".f-title").value.trim() || null,
+      intervention_type_id: cleanNullableText(modal.querySelector(".f-type")?.value),
       monday_item_id: modal.querySelector(".f-monday").value.trim() || null,
       client_name: modal.querySelector(".f-client").value.trim() || null,
       client_ref: modal.querySelector(".f-client-ref").value.trim() || null,
@@ -2699,6 +3060,9 @@ window.Webflow.push(async function () {
       address: modal.querySelector(".f-address").value.trim() || null,
       start_at: modal.querySelector(".f-start").value ? new Date(modal.querySelector(".f-start").value).toISOString() : null,
       end_at: modal.querySelector(".f-end").value ? new Date(modal.querySelector(".f-end").value).toISOString() : null,
+      requires_checklist: Boolean(modal.querySelector(".f-requires-checklist")?.checked),
+      requires_photos: Boolean(modal.querySelector(".f-requires-photos")?.checked),
+      requires_signature: Boolean(modal.querySelector(".f-requires-signature")?.checked),
       equipment_needed: modal.querySelector(".f-equipment").value.trim() || null,
       infos: modal.querySelector(".f-infos").value.trim() || null,
       observations: modal.querySelector(".f-observations").value.trim() || null,
@@ -3111,6 +3475,13 @@ window.Webflow.push(async function () {
     await loadTechs();
     await loadProducts();
     await populateTechSelect(modal.querySelector(".f-techs"));
+    await loadInterventionTypes();
+    await populateTypeSelect(modal.querySelector(".f-type"));
+    const seedBtn = modal.querySelector(".itv-types-defaults");
+    if (seedBtn) {
+      const canSeed = !interventionTypesTableMissing && !(interventionTypesCache || []).length;
+      seedBtn.style.display = canSeed ? "inline-flex" : "none";
+    }
 
     clearModalFields();
 
@@ -3119,6 +3490,11 @@ window.Webflow.push(async function () {
     if (mode === "add") {
       modalState.organization_id = ORG_ID || null;
       restoreDraft();
+      const typeSelect = modal.querySelector(".f-type");
+      if (typeSelect && !String(typeSelect.value || "").trim() && (interventionTypesCache || []).length) {
+        typeSelect.value = String(interventionTypesCache[0].id);
+        applyTypeToModal(typeSelect.value, { applyDefaults: true });
+      }
       assignNextReferenceCandidate(true);
       renderCompRows([]);
       renderExpenseRows([]);
