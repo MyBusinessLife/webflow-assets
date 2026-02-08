@@ -16,7 +16,7 @@
   const CONFIG = {
     // In this project the login is typically under /applications/login (but we also support /application/login).
     LOGIN_PATH: CFG.LOGIN_PATH || `${APP_ROOT}/login`,
-    SUBSCRIBE_PATH: CFG.SUBSCRIBE_PATH || "/subscribtions",
+    SUBSCRIBE_PATH: CFG.SUBSCRIBE_PATH || "/subscriptions",
     OVERLAY_DELAY_MS: 40,
     MAX_WAIT_MS: 8000,
   };
