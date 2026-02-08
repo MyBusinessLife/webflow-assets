@@ -17,11 +17,22 @@ async function waitSupabaseSingleton(timeoutMs = 8000) {
   return window.__MBL_SUPABASE__;
 }
 
+function getLoginPath() {
+  const cfg = window.__MBL_CFG__ || {};
+  const fromCfg = String(cfg.LOGIN_PATH || "").trim();
+  if (fromCfg && /\/login\/?$/.test(fromCfg)) return fromCfg;
+  try {
+    const learned = String(localStorage.getItem("mbl-app-login-path") || "").trim();
+    if (learned && /\/login\/?$/.test(learned)) return learned;
+  } catch (_) {}
+  return "/applications/login";
+}
+
 async function requireSessionOrRedirect(supabase) {
   const { data } = await supabase.auth.getSession();
   const session = data?.session;
   if (!session?.user) {
-    location.replace("/extranet/login");
+    location.replace(getLoginPath());
     return null;
   }
   return session;
@@ -33,7 +44,7 @@ window.Webflow.push(async function () {
 
   if (!supabase) {
     console.error("[ADMIN PRODUCTS] Supabase global introuvable.");
-    location.replace("/extranet/login");
+    location.replace(getLoginPath());
     return;
   }
 

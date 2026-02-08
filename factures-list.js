@@ -18,9 +18,9 @@ window.Webflow.push(async function () {
     // Webflow page slug used to be "/facture". Keep backward compatibility but prefer "/invoice".
     return raw.replace(/\/facture(?=([/?#]|$))/i, "/invoice");
   };
-  const RAW_ADD_URL = root.dataset.addUrl || root.dataset.editUrl || "/extranet/facturation/invoice";
+  const RAW_ADD_URL = root.dataset.addUrl || root.dataset.editUrl || "/facturation/invoice";
   const RAW_EDIT_URL =
-    root.dataset.editUrl || root.dataset.invoiceUrl || root.dataset.factureUrl || "/extranet/facturation/invoice";
+    root.dataset.editUrl || root.dataset.invoiceUrl || root.dataset.factureUrl || "/facturation/invoice";
   const CONFIG = {
     SUPABASE_URL: GLOBAL_CFG.SUPABASE_URL || "https://jrjdhdechcdlygpgaoes.supabase.co",
     SUPABASE_ANON_KEY:
@@ -429,7 +429,7 @@ window.Webflow.push(async function () {
   }
 
   function openInvoice(invoiceId) {
-    const base = String(CONFIG.EDIT_URL || "").trim() || "/extranet/facturation/invoice";
+    const base = String(CONFIG.EDIT_URL || "").trim() || "/facturation/invoice";
     const sep = base.includes("?") ? "&" : "?";
     window.location.href = `${base}${sep}id=${encodeURIComponent(String(invoiceId || "").trim())}`;
   }

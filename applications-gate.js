@@ -21,6 +21,12 @@
   }
 
   const CONFIG = {
+    SUPABASE_URL: CFG.SUPABASE_URL || "https://jrjdhdechcdlygpgaoes.supabase.co",
+    SUPABASE_ANON_KEY:
+      CFG.SUPABASE_ANON_KEY ||
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJqcmpkaGRlY2hjZGx5Z3BnYW9lcyIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzY3Nzc3MzM0LCJleHAiOjIwODMzNTMzMzR9.E13XKKpIjB1auVtTmgBgV7jxmvS-EOv52t0mT1neKXE",
+    SUPABASE_CDN: CFG.SUPABASE_CDN || "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2",
+    AUTH_STORAGE_KEY: CFG.AUTH_STORAGE_KEY || "mbl-extranet-auth",
     // In this project the login is typically under /applications/login (but we also support /application/login).
     LOGIN_PATH: sanitizeLoginPath(CFG.LOGIN_PATH) || `${APP_ROOT}/login`,
     SUBSCRIBE_PATH: CFG.SUBSCRIBE_PATH || "/subscriptions",
@@ -45,6 +51,9 @@
     facture: ["billing"],
     "factures-list": ["billing"],
 
+    // Payments (billing)
+    "admin-paiements": ["billing"],
+
     // Inventory (shared for billing/interventions in the future, for now attach to billing)
     "admin-products": ["billing"],
     "admin-categories": ["billing"],
@@ -55,6 +64,8 @@
     "technician-interventions": ["interventions"],
     "technician-interventions-list": ["interventions"],
     "technician-interventions-run": ["interventions"],
+    "technician-earn": ["interventions"],
+    "technician-profile": ["interventions"],
   };
 
   function isExcludedPage() {
@@ -220,13 +231,86 @@
     return true;
   }
 
-  async function waitForSupabase() {
+  async function ensureSupabaseJs() {
+    if (window.supabase && window.supabase.createClient) return;
+    const existing = document.querySelector('script[data-mbl-lib="supabase"]');
+    if (existing) {
+      await new Promise((resolve, reject) => {
+        const t = setTimeout(() => reject(new Error("Timeout supabase-js")), 8000);
+        existing.addEventListener(
+          "load",
+          () => {
+            clearTimeout(t);
+            resolve();
+          },
+          { once: true }
+        );
+        existing.addEventListener(
+          "error",
+          () => {
+            clearTimeout(t);
+            reject(new Error("Echec chargement supabase-js"));
+          },
+          { once: true }
+        );
+      });
+      return;
+    }
+
+    const s = document.createElement("script");
+    s.src = CONFIG.SUPABASE_CDN;
+    s.async = true;
+    s.dataset.mblLib = "supabase";
+    (document.head || document.documentElement).appendChild(s);
+    await new Promise((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error("Timeout supabase-js")), 8000);
+      s.addEventListener(
+        "load",
+        () => {
+          clearTimeout(t);
+          resolve();
+        },
+        { once: true }
+      );
+      s.addEventListener(
+        "error",
+        () => {
+          clearTimeout(t);
+          reject(new Error("Echec chargement supabase-js"));
+        },
+        { once: true }
+      );
+    });
+  }
+
+  async function getOrCreateSupabase() {
+    // Prefer the singleton created by applications-protect.js when available.
     const start = Date.now();
-    while (!window.__MBL_SUPABASE__ && Date.now() - start < CONFIG.MAX_WAIT_MS) {
+    while (!window.__MBL_SUPABASE__ && Date.now() - start < Math.min(CONFIG.MAX_WAIT_MS, 600)) {
       // eslint-disable-next-line no-await-in-loop
       await new Promise((r) => setTimeout(r, 80));
     }
-    return window.__MBL_SUPABASE__ || null;
+    if (window.__MBL_SUPABASE__) return window.__MBL_SUPABASE__;
+
+    try {
+      await ensureSupabaseJs();
+    } catch (_) {
+      // ignore, handled below
+    }
+
+    if (window.__MBL_SUPABASE__) return window.__MBL_SUPABASE__;
+    if (!window.supabase?.createClient) return null;
+
+    const client = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        storageKey: CONFIG.AUTH_STORAGE_KEY,
+      },
+    });
+    window.__MBL_SUPABASE__ = client;
+    return client;
   }
 
   async function getCurrentUser(supabase) {
@@ -274,11 +358,11 @@
     // Let the page mount a little, then show overlay to avoid a hard flash.
     setTimeout(() => ensureOverlay(), CONFIG.OVERLAY_DELAY_MS);
 
-    const supabase = await waitForSupabase();
+    const supabase = await getOrCreateSupabase();
     if (!supabase) {
       setOverlayState({
         title: "Erreur de chargement",
-        body: "Supabase n’est pas chargé. Vérifie le script global (protect).",
+        body: "Supabase n’est pas chargé. Vérifie le script global (protect) ou le chargement Supabase v2.",
         spinning: false,
       });
       return;

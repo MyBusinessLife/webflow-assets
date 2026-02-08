@@ -27,8 +27,8 @@ window.Webflow.push(async function () {
       window.__MBL_ORG_ID__ ||
       "",
     CURRENCY: root.dataset.currency || "EUR",
-    ADD_URL: root.dataset.addUrl || "/extranet/facturation/devis-add",
-    INVOICE_URL: root.dataset.invoiceUrl || root.dataset.factureUrl || "/extranet/facturation/facture",
+    ADD_URL: root.dataset.addUrl || "/facturation/devis-add",
+    INVOICE_URL: root.dataset.invoiceUrl || root.dataset.factureUrl || "/facturation/invoice",
     PDF_SIGNED_URL_TTL: Number(root.dataset.pdfSignedUrlTtl || 300),
     MAX_ROWS: Number(root.dataset.maxRows || 300),
   };
@@ -404,7 +404,7 @@ window.Webflow.push(async function () {
   }
 
   function openInvoice(invoiceId) {
-    const base = String(CONFIG.INVOICE_URL || "").trim() || "/extranet/facturation/facture";
+    const base = String(CONFIG.INVOICE_URL || "").trim() || "/facturation/invoice";
     const sep = base.includes("?") ? "&" : "?";
     window.location.href = `${base}${sep}id=${encodeURIComponent(String(invoiceId || "").trim())}`;
   }

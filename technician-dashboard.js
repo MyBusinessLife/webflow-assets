@@ -4,6 +4,8 @@ document.documentElement.setAttribute("data-page", "technician-dashboard");
   if (window.__techDashboardLoaded) return;
   window.__techDashboardLoaded = true;
 
+  const APP_ROOT = (String(location.pathname || "").match(/^\/(applications|application)(?=\/|$)/) || [])[0] || "/applications";
+
   const CONFIG = {
     SUPABASE_URL: "https://jrjdhdechcdlygpgaoes.supabase.co",
     SUPABASE_ANON_KEY:
@@ -19,8 +21,8 @@ document.documentElement.setAttribute("data-page", "technician-dashboard");
     PROFILES_TABLE: "profiles",
     STORAGE_BUCKET: "interventions-files",
 
-    RUN_PAGE_PATH: "/extranet/technician/intervention-realisation",
-    LIST_PAGE_PATH: "/extranet/technician/interventions",
+    RUN_PAGE_PATH: `${APP_ROOT}/technician/intervention-realisation`,
+    LIST_PAGE_PATH: `${APP_ROOT}/technician/interventions`,
     ACTIVE_STORAGE_KEY: "mbl-active-intervention",
 
     REQUIRE_CHECKLIST_DEFAULT: false,

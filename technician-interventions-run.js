@@ -5,6 +5,7 @@ document.documentElement.setAttribute("data-page", "technician-interventions-run
   window.__techInterventionRunBooting = true;
 
   const GLOBAL_CFG = window.__MBL_CFG__ || {};
+  const APP_ROOT = (String(location.pathname || "").match(/^\/(applications|application)(?=\/|$)/) || [])[0] || "/applications";
 
   const CONFIG = {
     SUPABASE_URL: "https://jrjdhdechcdlygpgaoes.supabase.co",
@@ -19,7 +20,7 @@ document.documentElement.setAttribute("data-page", "technician-interventions-run
     PV_TABLE: "intervention_pv",
     ORGANIZATION_ID: GLOBAL_CFG.ORGANIZATION_ID || window.__MBL_ORG_ID__ || "",
 
-    LIST_PAGE_PATH: "/extranet/technician/interventions",
+    LIST_PAGE_PATH: `${APP_ROOT}/technician/interventions`,
 
     STATUS_IN_PROGRESS: "in_progress",
     STATUS_DONE: "done",

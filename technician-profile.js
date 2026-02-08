@@ -1,6 +1,10 @@
 (() => {
+  document.documentElement.setAttribute("data-page", "technician-profile");
+
   if (window.__techProfileLoaded) return;
   window.__techProfileLoaded = true;
+
+  const APP_ROOT = (String(location.pathname || "").match(/^\/(applications|application)(?=\/|$)/) || [])[0] || "/applications";
 
   const CONFIG = {
     SUPABASE_URL: "https://jrjdhdechcdlygpgaoes.supabase.co",
@@ -11,9 +15,9 @@
     ASSIGNEES_TABLE: "intervention_assignees",
     ORGANIZATION_ID: (window.__MBL_CFG__?.ORGANIZATION_ID || window.__MBL_ORG_ID__ || ""),
 
-    LIST_PAGE_PATH: "/extranet/technician/interventions",
-    RUN_PAGE_PATH: "/extranet/technician/intervention-realisation",
-    LOGIN_PAGE_PATH: "/extranet/login",
+    LIST_PAGE_PATH: `${APP_ROOT}/technician/interventions`,
+    RUN_PAGE_PATH: `${APP_ROOT}/technician/intervention-realisation`,
+    LOGIN_PAGE_PATH: `${APP_ROOT}/login`,
 
     MIN_PASSWORD_LEN: 8,
   };

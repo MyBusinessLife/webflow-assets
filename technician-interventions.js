@@ -4,11 +4,13 @@ document.documentElement.setAttribute("data-page", "technician-interventions");
   if (window.__techInterventionsLoaded) return;
   window.__techInterventionsLoaded = true;
 
+  const APP_ROOT = (String(location.pathname || "").match(/^\/(applications|application)(?=\/|$)/) || [])[0] || "/applications";
+
   const CONFIG = {
     SUPABASE_URL: "https://jrjdhdechcdlygpgaoes.supabase.co",
     SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpyamRoZGVjaGNkbHlncGdhb2VzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc3NzczMzQsImV4cCI6MjA4MzM1MzMzNH0.E13XKKpIjB1auVtTmgBgV7jxmvS-EOv52t0mT1neKXE",
 
-    DETAIL_PAGE_PATH: "/extranet/intervention",
+    DETAIL_PAGE_PATH: `${APP_ROOT}/intervention`,
     STORAGE_BUCKET: "interventions-files",
     REPORTS_TABLE: "",
     EXPENSES_TABLE: "intervention_expenses",

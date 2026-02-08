@@ -4,11 +4,13 @@ document.documentElement.setAttribute("data-page", "technician-interventions-lis
   if (window.__techInterventionsLoaded) return;
   window.__techInterventionsLoaded = true;
 
+  const APP_ROOT = (String(location.pathname || "").match(/^\/(applications|application)(?=\/|$)/) || [])[0] || "/applications";
+
   const CONFIG = {
     SUPABASE_URL: "https://jrjdhdechcdlygpgaoes.supabase.co",
     SUPABASE_ANON_KEY:
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJqcmpkaGRlY2hjZGx5Z3BnYW9lcyIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzY3Nzc3MzM0LCJleHAiOjIwODMzNTMzMzR9.E13XKKpIjB1auVtTmgBgV7jxmvS-EOv52t0mT1neKXE",
-    RUN_PAGE_PATH: "/extranet/technician/intervention-realisation",
+    RUN_PAGE_PATH: `${APP_ROOT}/technician/intervention-realisation`,
     STORAGE_BUCKET: "interventions-files",
     ACTIVE_STORAGE_KEY: "mbl-active-intervention",
   };

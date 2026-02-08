@@ -38,8 +38,8 @@ window.Webflow.push(async function () {
       window.__MBL_ORG_ID__ ||
       "",
     CURRENCY: root.dataset.currency || "EUR",
-    INVOICE_URL: normalizeInvoiceUrl(root.dataset.invoiceUrl || root.dataset.factureUrl || "/extranet/facturation/invoice"),
-    QUOTE_URL: root.dataset.quoteUrl || root.dataset.devisUrl || "/extranet/facturation/devis-add",
+    INVOICE_URL: normalizeInvoiceUrl(root.dataset.invoiceUrl || root.dataset.factureUrl || "/facturation/invoice"),
+    QUOTE_URL: root.dataset.quoteUrl || root.dataset.devisUrl || "/facturation/devis-add",
     MAX_ROWS: Number(root.dataset.maxRows || 800),
     THEME_PRIMARY: String(root.dataset.themePrimary || GLOBAL_CFG.THEME_PRIMARY || "#0ea5e9").trim() || "#0ea5e9",
   };
@@ -876,7 +876,7 @@ window.Webflow.push(async function () {
     if (!confirmDiscardIfNeeded()) return;
     const safe = asUuid(id);
     if (!safe) return;
-    const base = String(CONFIG.INVOICE_URL || "").trim() || "/extranet/facturation/invoice";
+    const base = String(CONFIG.INVOICE_URL || "").trim() || "/facturation/invoice";
     const sep = base.includes("?") ? "&" : "?";
     window.location.href = `${base}${sep}client_id=${encodeURIComponent(safe)}`;
   }
@@ -885,7 +885,7 @@ window.Webflow.push(async function () {
     if (!confirmDiscardIfNeeded()) return;
     const safe = asUuid(id);
     if (!safe) return;
-    const base = String(CONFIG.QUOTE_URL || "").trim() || "/extranet/facturation/devis-add";
+    const base = String(CONFIG.QUOTE_URL || "").trim() || "/facturation/devis-add";
     const sep = base.includes("?") ? "&" : "?";
     window.location.href = `${base}${sep}client_id=${encodeURIComponent(safe)}`;
   }

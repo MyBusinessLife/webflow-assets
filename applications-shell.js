@@ -6,12 +6,18 @@
 
   const path = String(location.pathname || "");
   const match = path.match(/^\/(applications|application)(?=\/|$)/);
-  if (!match) return;
+  const APP_ROOT_MATCH = match ? `/${match[1]}` : "";
 
-  const APP_ROOT = `/${match[1]}`;
-  const isLogin = new RegExp(`^\\/${match[1]}\\/login\\/?$`).test(path);
-  const isSignup = new RegExp(`^\\/${match[1]}\\/signup\\/?$`).test(path);
-  if (isLogin || isSignup) return;
+  const isAuthPage = /^(\/applications|\/application)\/(login|signup)\/?$/.test(path);
+  if (isAuthPage) return;
+
+  const isAppArea =
+    Boolean(match) ||
+    /^\/facturation(\/|$)/.test(path) ||
+    /^\/crm(\/|$)/.test(path) ||
+    /^\/settings\/?$/.test(path) ||
+    /^\/subscriptions\/?$/.test(path);
+  if (!isAppArea) return;
 
   if (document.documentElement.hasAttribute("data-no-shell")) return;
   if (document.querySelector("[data-no-shell]")) return;
@@ -45,6 +51,9 @@
       return /\/login\/?$/.test(v) ? v : "";
     }
 
+    const INFERRED_APP_ROOT = String(CFG.APP_ROOT || localStorage.getItem("mbl-app-root") || APP_ROOT_MATCH || "/applications").trim() ||
+      "/applications";
+
     const CONFIG = {
       SUPABASE_URL: CFG.SUPABASE_URL || "https://jrjdhdechcdlygpgaoes.supabase.co",
       SUPABASE_ANON_KEY:
@@ -52,22 +61,27 @@
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpyamRoZGVjaGNkbHlncGdhb2VzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc3NzczMzQsImV4cCI6MjA4MzM1MzMzNH0.E13XKKpIjB1auVtTmgBgV7jxmvS-EOv52t0mT1neKXE",
       SUPABASE_CDN: CFG.SUPABASE_CDN || "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2",
       AUTH_STORAGE_KEY: CFG.AUTH_STORAGE_KEY || "mbl-extranet-auth",
-      APP_ROOT: String(CFG.APP_ROOT || APP_ROOT).trim() || APP_ROOT,
-      LOGIN_PATH: sanitizeLoginPath(CFG.LOGIN_PATH) || `${APP_ROOT}/login`,
+      APP_ROOT: INFERRED_APP_ROOT,
+      LOGIN_PATH: sanitizeLoginPath(CFG.LOGIN_PATH) || `${INFERRED_APP_ROOT}/login`,
       SUBSCRIBE_PATH: sanitizePath(CFG.SUBSCRIBE_PATH) || "/subscriptions",
-      SHOW_LOCKED: String(CFG.SHELL_SHOW_LOCKED || "").trim() === "1",
+      // Default: show locked modules (the user asked for it). Set to "0" to hide locked items.
+      SHOW_LOCKED: String(CFG.SHELL_SHOW_LOCKED ?? "1").trim() !== "0",
     };
 
     const FALLBACK_ROUTES = {
       // Admin
       "admin-dashboard": sanitizePath(CFG.ADMIN_DASH) || `${CONFIG.APP_ROOT}/admin/dashboard`,
-      "admin-crm": `${CONFIG.APP_ROOT}/admin/crm`,
-      "admin-settings": `${CONFIG.APP_ROOT}/admin/settings`,
-      clients: `${CONFIG.APP_ROOT}/admin/clients`,
-      "devis-list": `${CONFIG.APP_ROOT}/admin/devis`,
-      devis: `${CONFIG.APP_ROOT}/admin/devis-add`,
-      "factures-list": `${CONFIG.APP_ROOT}/admin/invoices`,
-      facture: `${CONFIG.APP_ROOT}/admin/invoice`,
+      "admin-paiements": `${CONFIG.APP_ROOT}/admin/paiements`,
+      "admin-crm": "/crm/crm",
+      "admin-settings": "/settings",
+
+      // Billing (Facturation)
+      clients: "/facturation/clients",
+      "devis-list": "/facturation/devis-list",
+      devis: "/facturation/devis-add",
+      "factures-list": "/facturation/invoices-list",
+      facture: "/facturation/invoice",
+
       "admin-products": `${CONFIG.APP_ROOT}/admin/products`,
       "admin-categories": `${CONFIG.APP_ROOT}/admin/categories`,
       "admin-interventions": `${CONFIG.APP_ROOT}/admin/interventions`,
@@ -76,8 +90,9 @@
       "technician-dashboard": sanitizePath(CFG.TECH_DASH) || `${CONFIG.APP_ROOT}/technician/dashboard`,
       "technician-interventions": `${CONFIG.APP_ROOT}/technician/interventions`,
       "technician-interventions-list": `${CONFIG.APP_ROOT}/technician/interventions`,
-      "technician-interventions-run": `${CONFIG.APP_ROOT}/technician/intervention`,
+      "technician-interventions-run": `${CONFIG.APP_ROOT}/technician/intervention-realisation`,
       "technician-profile": `${CONFIG.APP_ROOT}/technician/profile`,
+      "technician-earn": `${CONFIG.APP_ROOT}/technician/earn`,
 
       // Shared
       subscriptions: CONFIG.SUBSCRIBE_PATH,
@@ -178,12 +193,12 @@
     }
 
     function injectStyles() {
-      if (document.getElementById("mbl-shell-style")) return;
+      if (document.getElementById("mbl-appshell-style")) return;
       ensurePrimaryRgbCssVar();
       const st = document.createElement("style");
-      st.id = "mbl-shell-style";
+      st.id = "mbl-appshell-style";
       st.textContent = `
-        html[data-mbl-shell="1"] {
+        html[data-mbl-appshell="1"] {
           --mbl-shell-w: 282px;
           --mbl-shell-wc: 86px;
           --mbl-shell-radius: 18px;
@@ -195,23 +210,24 @@
           --mbl-shell-shadow-sm: 0 10px 24px rgba(2, 6, 23, 0.12);
         }
 
-        html[data-mbl-shell="1"] body {
+        html[data-mbl-appshell="1"] body {
           padding-left: var(--mbl-shell-w);
           transition: padding-left 220ms ease;
+          overflow-x: hidden;
         }
 
-        html[data-mbl-shell="1"][data-mbl-shell-collapsed="1"] body {
+        html[data-mbl-appshell="1"][data-mbl-appshell-collapsed="1"] body {
           padding-left: var(--mbl-shell-wc);
         }
 
         @media (max-width: 991px) {
-          html[data-mbl-shell="1"] body,
-          html[data-mbl-shell="1"][data-mbl-shell-collapsed="1"] body {
+          html[data-mbl-appshell="1"] body,
+          html[data-mbl-appshell="1"][data-mbl-appshell-collapsed="1"] body {
             padding-left: 0 !important;
           }
         }
 
-        .mbl-shell {
+        .mbl-app-shell {
           position: fixed;
           inset: 0 auto 0 0;
           width: var(--mbl-shell-w);
@@ -230,33 +246,33 @@
           transition: width 220ms ease, transform 220ms ease;
         }
 
-        html[data-mbl-shell="1"][data-mbl-shell-collapsed="1"] .mbl-shell {
+        html[data-mbl-appshell="1"][data-mbl-appshell-collapsed="1"] .mbl-app-shell {
           width: var(--mbl-shell-wc);
         }
 
         @media (max-width: 991px) {
-          .mbl-shell {
+          .mbl-app-shell {
             transform: translateX(-110%);
             box-shadow: var(--mbl-shell-shadow);
             border-right: 1px solid rgba(15, 23, 42, 0.10);
           }
-          html[data-mbl-shell="1"][data-mbl-shell-open="1"] .mbl-shell {
+          html[data-mbl-appshell="1"][data-mbl-appshell-open="1"] .mbl-app-shell {
             transform: translateX(0);
           }
         }
 
-        .mbl-shell__overlay {
+        .mbl-app-shell__overlay {
           position: fixed;
           inset: 0;
           z-index: 2147483643;
           background: rgba(2, 6, 23, 0.45);
           display: none;
         }
-        html[data-mbl-shell="1"][data-mbl-shell-open="1"] .mbl-shell__overlay {
+        html[data-mbl-appshell="1"][data-mbl-appshell-open="1"] .mbl-app-shell__overlay {
           display: block;
         }
 
-        .mbl-shell__top {
+        .mbl-app-shell__top {
           display: flex;
           align-items: center;
           justify-content: space-between;
@@ -310,11 +326,11 @@
           text-overflow: ellipsis;
         }
 
-        html[data-mbl-shell="1"][data-mbl-shell-collapsed="1"] .mbl-org__txt {
+        html[data-mbl-appshell="1"][data-mbl-appshell-collapsed="1"] .mbl-org__txt {
           display: none;
         }
 
-        .mbl-shell__toggle {
+        .mbl-app-shell__toggle {
           width: 38px;
           height: 38px;
           border-radius: 14px;
@@ -327,16 +343,23 @@
           transition: transform 160ms ease, box-shadow 180ms ease, border-color 180ms ease;
           flex: 0 0 auto;
         }
-        .mbl-shell__toggle:hover {
+        .mbl-app-shell__toggle:hover {
           transform: translateY(-1px);
           border-color: rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.30);
           box-shadow: var(--mbl-shell-shadow-sm);
         }
+        .mbl-app-shell__toggle svg {
+          transform: rotate(180deg);
+          transition: transform 200ms ease;
+        }
+        html[data-mbl-appshell="1"][data-mbl-appshell-collapsed="1"] .mbl-app-shell__toggle svg {
+          transform: rotate(0deg);
+        }
         @media (max-width: 991px) {
-          .mbl-shell__toggle { display: none; }
+          .mbl-app-shell__toggle { display: none; }
         }
 
-        .mbl-shell__nav {
+        .mbl-app-shell__nav {
           margin-top: 12px;
           display: flex;
           flex-direction: column;
@@ -355,7 +378,7 @@
           margin: 10px 6px 8px;
         }
 
-        html[data-mbl-shell="1"][data-mbl-shell-collapsed="1"] .mbl-nav__label {
+        html[data-mbl-appshell="1"][data-mbl-appshell-collapsed="1"] .mbl-nav__label {
           display: none;
         }
 
@@ -393,6 +416,21 @@
           box-shadow: 0 18px 44px rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.14);
         }
 
+        .mbl-nav__item.is-locked {
+          opacity: 0.62;
+        }
+        .mbl-nav__item.is-locked:hover {
+          transform: none;
+          box-shadow: none;
+          border-color: rgba(239, 68, 68, 0.30);
+          background: rgba(255,255,255,0.86);
+        }
+        .mbl-nav__item.is-locked .mbl-nav__badge {
+          border-color: rgba(239, 68, 68, 0.30);
+          background: rgba(254, 242, 242, 0.92);
+          color: #991b1b;
+        }
+
         .mbl-nav__left {
           display: inline-flex;
           align-items: center;
@@ -413,7 +451,7 @@
           text-overflow: ellipsis;
         }
 
-        html[data-mbl-shell="1"][data-mbl-shell-collapsed="1"] .mbl-nav__text {
+        html[data-mbl-appshell="1"][data-mbl-appshell-collapsed="1"] .mbl-nav__text {
           display: none;
         }
 
@@ -427,14 +465,14 @@
           color: rgba(2, 6, 23, 0.60);
           flex: 0 0 auto;
         }
-        html[data-mbl-shell="1"][data-mbl-shell-collapsed="1"] .mbl-nav__badge { display: none; }
+        html[data-mbl-appshell="1"][data-mbl-appshell-collapsed="1"] .mbl-nav__badge { display: none; }
 
-        .mbl-shell__bottom {
+        .mbl-app-shell__bottom {
           margin-top: auto;
           padding: 10px 2px 0;
         }
 
-        .mbl-shell__burger {
+        .mbl-app-shell__burger {
           position: fixed;
           z-index: 2147483645;
           left: 12px;
@@ -450,7 +488,7 @@
           cursor: pointer;
         }
         @media (max-width: 991px) {
-          .mbl-shell__burger { display: grid; }
+          .mbl-app-shell__burger { display: grid; }
         }
 
         .mbl-tooltip {
@@ -471,13 +509,13 @@
           pointer-events: none;
           transition: opacity 140ms ease;
         }
-        html[data-mbl-shell="1"][data-mbl-shell-collapsed="1"] .mbl-nav__item:hover .mbl-tooltip { opacity: 1; }
+        html[data-mbl-appshell="1"][data-mbl-appshell-collapsed="1"] .mbl-nav__item:hover .mbl-tooltip { opacity: 1; }
 
         @media (prefers-reduced-motion: reduce) {
-          html[data-mbl-shell="1"] body,
-          .mbl-shell,
+          html[data-mbl-appshell="1"] body,
+          .mbl-app-shell,
           .mbl-nav__item,
-          .mbl-shell__toggle { transition: none !important; }
+          .mbl-app-shell__toggle { transition: none !important; }
         }
       `;
       document.head.appendChild(st);
@@ -617,18 +655,18 @@
     };
 
     function buildShellDOM() {
-      if (document.querySelector(".mbl-shell")) return null;
-      document.documentElement.setAttribute("data-mbl-shell", "1");
+      if (document.querySelector(".mbl-app-shell")) return null;
+      document.documentElement.setAttribute("data-mbl-appshell", "1");
 
       const overlay = document.createElement("div");
-      overlay.className = "mbl-shell__overlay";
+      overlay.className = "mbl-app-shell__overlay";
       overlay.setAttribute("data-shell-overlay", "1");
 
       const aside = document.createElement("aside");
-      aside.className = "mbl-shell";
+      aside.className = "mbl-app-shell";
       aside.setAttribute("aria-label", "Menu");
       aside.innerHTML = `
-        <div class="mbl-shell__top">
+        <div class="mbl-app-shell__top">
           <div class="mbl-org">
             <div class="mbl-org__mark" data-org-mark>MB</div>
             <div class="mbl-org__txt">
@@ -636,19 +674,19 @@
               <p class="mbl-org__meta" data-org-meta></p>
             </div>
           </div>
-          <button type="button" class="mbl-shell__toggle" data-shell-toggle aria-label="Réduire le menu">
+          <button type="button" class="mbl-app-shell__toggle" data-shell-toggle aria-label="Réduire le menu">
             ${ICONS.chevron}
           </button>
         </div>
 
-        <nav class="mbl-shell__nav" data-shell-nav></nav>
+        <nav class="mbl-app-shell__nav" data-shell-nav></nav>
 
-        <div class="mbl-shell__bottom" data-shell-bottom></div>
+        <div class="mbl-app-shell__bottom" data-shell-bottom></div>
       `;
 
       const burger = document.createElement("button");
       burger.type = "button";
-      burger.className = "mbl-shell__burger";
+      burger.className = "mbl-app-shell__burger";
       burger.setAttribute("data-shell-burger", "1");
       burger.setAttribute("aria-label", "Ouvrir le menu");
       burger.innerHTML = ICONS.menu;
@@ -670,19 +708,21 @@
 
     function setCollapsed(collapsed) {
       const v = collapsed ? "1" : "0";
-      document.documentElement.toggleAttribute("data-mbl-shell-collapsed", collapsed);
+      if (collapsed) document.documentElement.setAttribute("data-mbl-appshell-collapsed", "1");
+      else document.documentElement.removeAttribute("data-mbl-appshell-collapsed");
       try {
         localStorage.setItem("mbl-shell-collapsed", v);
       } catch (_) {}
     }
 
     function openMobile(open) {
-      document.documentElement.toggleAttribute("data-mbl-shell-open", open);
+      if (open) document.documentElement.setAttribute("data-mbl-appshell-open", "1");
+      else document.documentElement.removeAttribute("data-mbl-appshell-open");
     }
 
     function itemTemplate({ href, label, icon, badge, active, locked }) {
       const a = document.createElement(href ? "a" : "button");
-      a.className = "mbl-nav__item" + (active ? " is-active" : "");
+      a.className = "mbl-nav__item" + (active ? " is-active" : "") + (locked ? " is-locked" : "");
       if (href) {
         a.href = href;
       } else {
@@ -706,6 +746,14 @@
       if (!req.length) return true;
       return req.every((m) => Boolean(mods?.[m]));
     }
+
+    function cleanPath(value) {
+      const v = sanitizePath(value) || "";
+      const pathOnly = String(v).split("?")[0].split("#")[0];
+      return pathOnly.replace(/\/+$/, "") || "/";
+    }
+
+    const CURRENT_PATH = cleanPath(location.pathname);
 
     function buildNav({ isAdmin, isTech, modules, activePage }) {
       const items = [
@@ -736,6 +784,7 @@
             { key: "clients", label: "Clients", href: routeFor("clients"), icon: ICONS.clients, roles: ["admin"], requires: ["billing"] },
             { key: "devis-list", label: "Devis", href: routeFor("devis-list"), icon: ICONS.quotes, roles: ["admin"], requires: ["billing"] },
             { key: "factures-list", label: "Factures", href: routeFor("factures-list"), icon: ICONS.invoices, roles: ["admin"], requires: ["billing"] },
+            { key: "admin-paiements", label: "Paiements", href: routeFor("admin-paiements"), icon: ICONS.card, roles: ["admin"], requires: ["billing"] },
             {
               key: "admin-products",
               label: "Produits",
@@ -766,10 +815,26 @@
               requires: ["interventions"],
             },
             {
+              key: "technician-interventions",
+              label: "Mes interventions",
+              href: routeFor("technician-interventions"),
+              icon: ICONS.interventions,
+              roles: ["tech", "admin"],
+              requires: ["interventions"],
+            },
+            {
               key: "technician-dashboard",
               label: "Espace technicien",
               href: routeFor("technician-dashboard"),
               icon: ICONS.interventions,
+              roles: ["tech", "admin"],
+              requires: ["interventions"],
+            },
+            {
+              key: "technician-earn",
+              label: "Gains",
+              href: routeFor("technician-earn"),
+              icon: ICONS.card,
               roles: ["tech", "admin"],
               requires: ["interventions"],
             },
@@ -807,7 +872,9 @@
       // Active marker by data-page when possible.
       allowedItems.forEach((sec) => {
         sec.entries.forEach((it) => {
-          it.active = String(activePage || "").trim() === it.key;
+          it.active =
+            String(activePage || "").trim() === it.key ||
+            (it.href ? cleanPath(it.href) === CURRENT_PATH : false);
         });
       });
 
@@ -825,7 +892,7 @@
             href: it.locked ? "" : it.href,
             label: it.label,
             icon: it.icon,
-            badge: it.locked ? "LOCK" : "",
+            badge: it.locked ? "Verrouillé" : "",
             active: it.active,
             locked: it.locked,
           });
@@ -849,10 +916,10 @@
         bottomEl.appendChild(
           itemTemplate({
             href: routeFor("admin-settings"),
-            label: "Settings",
+            label: "Paramètres",
             icon: ICONS.settings,
             badge: "",
-            active: String(document.documentElement.dataset.page || "") === "admin-settings",
+            active: cleanPath(routeFor("admin-settings")) === CURRENT_PATH,
             locked: false,
           })
         );
@@ -864,7 +931,7 @@
           label: "Abonnement",
           icon: ICONS.card,
           badge: planName ? String(planName) : "",
-          active: false,
+          active: cleanPath(CONFIG.SUBSCRIBE_PATH) === CURRENT_PATH,
           locked: false,
         })
       );
@@ -909,7 +976,7 @@
       overlay.addEventListener("click", () => openMobile(false));
 
       toggle?.addEventListener("click", () => {
-        const collapsed = document.documentElement.hasAttribute("data-mbl-shell-collapsed");
+        const collapsed = document.documentElement.hasAttribute("data-mbl-appshell-collapsed");
         setCollapsed(!collapsed);
       });
 
@@ -1027,4 +1094,3 @@
     log("mounted");
   });
 })();
-
