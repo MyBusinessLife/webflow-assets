@@ -121,11 +121,144 @@
       // 2) Learned from localStorage (the first time you visit each page)
       try {
         const learned = sanitizePath(localStorage.getItem(`mbl-route:${key}`));
-        if (learned) return learned;
+        if (learned) {
+          // Defensive cleanup: older versions could "learn" routes wrongly prefixed with APP_ROOT
+          // (ex: /applications/facturation/clients) even though the real Webflow folder is /facturation/*.
+          const fallback = FALLBACK_ROUTES[key] || "";
+          const normalize = (p) => String(p || "").replace(/\/+$/, "");
+          const learnedNorm = normalize(learned);
+          const fallbackNorm = normalize(fallback);
+          const roots = new Set([normalize(CONFIG.APP_ROOT), "/applications", "/application"]);
+
+          let stale = false;
+          if (fallbackNorm && fallbackNorm.startsWith("/") && !fallbackNorm.startsWith(normalize(CONFIG.APP_ROOT) + "/")) {
+            for (const r of roots) {
+              if (!r) continue;
+              if (learnedNorm === normalize(r + fallbackNorm)) {
+                stale = true;
+                break;
+              }
+            }
+          }
+
+          if (!stale) return learned;
+
+          try {
+            localStorage.removeItem(`mbl-route:${key}`);
+          } catch (_) {}
+        }
       } catch (_) {}
 
       // 3) Fallback map (requires your Webflow slugs to follow the standard)
       return FALLBACK_ROUTES[key] || "";
+    }
+
+    function resolveAssetsBase() {
+      const fromCfg = String(CFG.ASSETS_BASE || CFG.assetsBase || "").trim();
+      if (fromCfg) return fromCfg.endsWith("/") ? fromCfg : fromCfg + "/";
+
+      try {
+        const scripts = Array.from(document.scripts || []);
+        const self = scripts.find((s) => {
+          const src = String(s?.src || "");
+          return src.includes("applications-shell.js") && src.includes("webflow-assets");
+        });
+        if (self?.src) return new URL(".", self.src).href;
+      } catch (_) {}
+
+      return "https://mybusinesslife.github.io/webflow-assets/";
+    }
+
+    function loadScriptOnce(id, src) {
+      const cache = (window.__MBL_SCRIPT_LOADS__ = window.__MBL_SCRIPT_LOADS__ || {});
+      if (cache[id]) return cache[id];
+
+      cache[id] = new Promise((resolve, reject) => {
+        const existing = document.querySelector(`script[data-mbl-lib="${id}"]`);
+        if (existing) {
+          if (existing.dataset.loaded === "1") return resolve();
+          existing.addEventListener("load", () => resolve(), { once: true });
+          existing.addEventListener("error", () => reject(new Error(`Failed to load ${id}`)), { once: true });
+          return;
+        }
+
+        const s = document.createElement("script");
+        s.src = src;
+        s.async = true;
+        s.dataset.mblLib = id;
+        s.addEventListener(
+          "load",
+          () => {
+            s.dataset.loaded = "1";
+            resolve();
+          },
+          { once: true }
+        );
+        s.addEventListener("error", () => reject(new Error(`Failed to load ${src}`)), { once: true });
+        document.head.appendChild(s);
+      });
+
+      return cache[id];
+    }
+
+    async function openSubscriptionsModal(opts = {}) {
+      const source = String(opts?.source || "").trim();
+      try {
+        if (window.MBLSubscriptions && typeof window.MBLSubscriptions.open === "function") {
+          return await window.MBLSubscriptions.open({ source });
+        }
+      } catch (_) {}
+
+      const base = resolveAssetsBase();
+      const src = base + "abonnement.js" + `?nocache=${Date.now()}`;
+      try {
+        await loadScriptOnce("abonnement", src);
+      } catch (e) {
+        warn("abonnement.js load failed", e);
+        location.href = CONFIG.SUBSCRIBE_PATH;
+        return;
+      }
+
+      try {
+        if (window.MBLSubscriptions && typeof window.MBLSubscriptions.open === "function") {
+          return await window.MBLSubscriptions.open({ source });
+        }
+      } catch (_) {}
+
+      location.href = CONFIG.SUBSCRIBE_PATH;
+    }
+
+    window.MBL = window.MBL || {};
+    if (typeof window.MBL.openSubscriptionsModal !== "function") window.MBL.openSubscriptionsModal = openSubscriptionsModal;
+
+    function rewriteKnownBadLinks() {
+      // Webflow buttons can keep stale slugs after refactors.
+      // Fix them defensively so navigation stays consistent.
+      const fixMap = new Map([
+        ["/applications/settings", "/settings"],
+        ["/application/settings", "/settings"],
+        ["/applications/facturation/devis-list", "/facturation/devis-list"],
+        ["/application/facturation/devis-list", "/facturation/devis-list"],
+        ["/applications/facturation/clients", "/facturation/clients"],
+        ["/application/facturation/clients", "/facturation/clients"],
+      ]);
+
+      const normalizePath = (p) => String(p || "").trim().replace(/\/+$/, "") || "/";
+
+      document.querySelectorAll("a[href]").forEach((a) => {
+        const raw = String(a.getAttribute("href") || "").trim();
+        if (!raw) return;
+        if (raw.startsWith("mailto:") || raw.startsWith("tel:") || raw.startsWith("#")) return;
+
+        try {
+          const u = new URL(raw, location.origin);
+          if (u.origin !== location.origin) return;
+          const key = normalizePath(u.pathname);
+          const fixed = fixMap.get(key);
+          if (!fixed) return;
+          a.setAttribute("href", fixed + u.search + u.hash);
+        } catch (_) {}
+      });
     }
 
     function escapeHTML(input) {
@@ -900,7 +1033,8 @@
             node.addEventListener("click", (e) => {
               e.preventDefault();
               e.stopPropagation();
-              location.href = CONFIG.SUBSCRIBE_PATH;
+              openSubscriptionsModal({ source: `locked:${it.key}` });
+              openMobile(false);
             });
           }
           wrap.appendChild(node);
@@ -909,7 +1043,7 @@
       });
     }
 
-    function renderBottom(bottomEl, { isAdmin, isTech, planName }) {
+    function renderBottom(bottomEl, { isAdmin, isTech, planName, isLogged }) {
       bottomEl.innerHTML = "";
 
       if (isAdmin) {
@@ -925,16 +1059,23 @@
         );
       }
 
-      bottomEl.appendChild(
-        itemTemplate({
-          href: CONFIG.SUBSCRIBE_PATH,
-          label: "Abonnement",
-          icon: ICONS.card,
-          badge: planName ? String(planName) : "",
-          active: cleanPath(CONFIG.SUBSCRIBE_PATH) === CURRENT_PATH,
-          locked: false,
-        })
-      );
+      const subItem = itemTemplate({
+        href: CONFIG.SUBSCRIBE_PATH,
+        label: "Abonnement",
+        icon: ICONS.card,
+        badge: planName ? String(planName) : "",
+        active: cleanPath(CONFIG.SUBSCRIBE_PATH) === CURRENT_PATH,
+        locked: false,
+      });
+      if (isLogged) {
+        subItem.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          openSubscriptionsModal({ source: "menu" });
+          openMobile(false);
+        });
+      }
+      bottomEl.appendChild(subItem);
 
       const logoutBtn = itemTemplate({
         href: "",
@@ -995,6 +1136,7 @@
     // ==== boot ====
     rememberCurrentRoute();
     injectStyles();
+    rewriteKnownBadLinks();
 
     const dom = buildShellDOM();
     if (!dom) return;
@@ -1030,7 +1172,7 @@
           },
         ];
         renderNav(navEl, nav);
-        renderBottom(bottomEl, { isAdmin: false, isTech: false, planName: "" });
+        renderBottom(bottomEl, { isAdmin: false, isTech: false, planName: "", isLogged: false });
         return;
       }
 
@@ -1077,7 +1219,7 @@
       const activePage = String(document.documentElement.dataset.page || "").trim();
       const nav = buildNav({ isAdmin, isTech, modules: subActive ? modules : {}, activePage });
       renderNav(navEl, nav);
-      renderBottom(bottomEl, { isAdmin, isTech, planName });
+      renderBottom(bottomEl, { isAdmin, isTech, planName, isLogged: true });
     } catch (e) {
       warn("boot error", e);
       // Still show something usable
@@ -1088,7 +1230,7 @@
       sec.appendChild(itemTemplate({ href: CONFIG.SUBSCRIBE_PATH, label: "Abonnement", icon: ICONS.card, badge: "", active: false }));
       sec.appendChild(itemTemplate({ href: CONFIG.LOGIN_PATH, label: "Connexion", icon: ICONS.settings, badge: "", active: false }));
       navEl.appendChild(sec);
-      renderBottom(bottomEl, { isAdmin: false, isTech: false, planName: "" });
+      renderBottom(bottomEl, { isAdmin: false, isTech: false, planName: "", isLogged: false });
     }
 
     log("mounted");

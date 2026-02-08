@@ -1,7 +1,11 @@
-document.documentElement.setAttribute("data-page", "abonnement");
+(() => {
+  "use strict";
 
-window.Webflow ||= [];
-window.Webflow.push(async function () {
+  if (window.__mblAbonnementLoaded) return;
+  window.__mblAbonnementLoaded = true;
+
+  window.Webflow ||= [];
+  window.Webflow.push(async function () {
   const CFG = window.__MBL_CFG__ || {};
   let supabase = null;
 
@@ -1117,6 +1121,96 @@ window.Webflow.push(async function () {
         html[data-page="abonnement"] .sb-pill { white-space: normal; }
       }
     `;
+
+    // Scope the whole block so we can safely reuse it inside a modal without
+    // touching the current page's `data-page`.
+    style.textContent = String(style.textContent || "")
+      .split('html[data-page="abonnement"]')
+      .join('[data-mbl-subscriptions="1"]');
+
+    style.textContent += `
+      [data-mbl-subscriptions="1"][data-variant="modal"] .sb-shell {
+        max-width: 100%;
+        margin: 0;
+        border-radius: 16px;
+        padding: 18px;
+      }
+
+      [data-mbl-subscriptions="1"][data-variant="modal"] [data-compare],
+      [data-mbl-subscriptions="1"][data-variant="modal"] [data-faq],
+      [data-mbl-subscriptions="1"][data-variant="modal"] .sb-foot {
+        display: none !important;
+      }
+
+      /* Modal wrapper */
+      .mbl-sub-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483646;
+        display: none;
+      }
+      .mbl-sub-modal.is-open { display: block; }
+
+      .mbl-sub-modal__backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(2, 6, 23, 0.58);
+        backdrop-filter: blur(10px);
+      }
+
+      .mbl-sub-modal__panel {
+        position: absolute;
+        inset: 5vh 3vw auto 3vw;
+        max-width: 1180px;
+        margin: 0 auto;
+        left: 0;
+        right: 0;
+        max-height: 90vh;
+        overflow: auto;
+        padding: 0;
+        border-radius: 18px;
+        box-shadow: 0 28px 90px rgba(2, 6, 23, 0.28);
+      }
+
+      .mbl-sub-modal__close {
+        position: sticky;
+        top: 0;
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        padding: 10px 10px 0 10px;
+        z-index: 2;
+        pointer-events: none;
+      }
+
+      .mbl-sub-modal__close button {
+        pointer-events: auto;
+        border: 1px solid rgba(15, 23, 42, 0.16);
+        background: rgba(255, 255, 255, 0.92);
+        color: rgba(2, 6, 23, 0.86);
+        height: 40px;
+        width: 40px;
+        border-radius: 999px;
+        display: grid;
+        place-items: center;
+        cursor: pointer;
+        box-shadow: 0 10px 24px rgba(2, 6, 23, 0.14);
+      }
+
+      .mbl-sub-modal__close button:focus {
+        outline: 2px solid rgba(var(--sb-primary-rgb, 14, 165, 233), 0.55);
+        outline-offset: 2px;
+      }
+
+      .mbl-sub-modal__body { padding: 0 10px 14px 10px; }
+
+      html[data-mbl-sub-modal="1"] body { overflow: hidden !important; }
+
+      @media (max-width: 520px) {
+        .mbl-sub-modal__panel { inset: 4vh 3vw auto 3vw; max-height: 92vh; }
+        .mbl-sub-modal__body { padding: 0 8px 12px 8px; }
+      }
+    `;
     document.head.appendChild(style);
   }
 
@@ -1499,6 +1593,8 @@ window.Webflow.push(async function () {
   }
 
   function wireLogout() {
+    if (window.__mblAbonnementLogoutBound) return;
+    window.__mblAbonnementLogoutBound = true;
     let lock = false;
     document.addEventListener(
       "click",
@@ -1536,138 +1632,242 @@ window.Webflow.push(async function () {
     );
   }
 
-  const root = findRoot();
-  if (!root) return;
+  let modalDom = null;
+  let modalInstance = null;
 
-  injectStyles();
-  const themePrimary = resolveThemePrimary(root);
-  const els = renderShell(root, themePrimary);
-  kickoffAnimations(els);
-  renderSkeleton(els);
-  renderFaq(els);
-  wireLogout();
+  async function mountInto(root, opts = {}) {
+    if (!root) return null;
 
-  const state = {
-    interval: "monthly",
-    orgId: "",
-    userId: "",
-    plans: [],
-    subscription: null,
-    loading: true,
-    recommended: null,
-    isLogged: false,
-  };
+    root.setAttribute("data-mbl-subscriptions", "1");
+    root.setAttribute("data-variant", opts.variant === "modal" ? "modal" : "page");
 
-  const handleSubscribe = async (plan, btn) => {
-    if (!plan) return;
-    if (!state.orgId) {
-      showBanner(els, STR.orgMissing, "error");
-      return;
-    }
-    btn.disabled = true;
-    const prev = btn.textContent;
-    btn.textContent = "Redirection…";
-    try {
-      await startCheckout(state.orgId, plan.code, state.interval);
-    } catch (e) {
-      console.error(e);
-      showBanner(els, `${STR.checkoutError} ${e?.message || ""}`.trim(), "error");
-      btn.disabled = false;
-      btn.textContent = prev || STR.subscribeCta;
-    }
-  };
-
-  els.intervalBtns.forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const next = btn.dataset.interval || "monthly";
-      state.interval = next;
-      els.intervalBtns.forEach((b) => {
-        const active = b === btn;
-        b.classList.toggle("is-active", active);
-        b.setAttribute("aria-selected", active ? "true" : "false");
-      });
-      if (els.toggle) els.toggle.setAttribute("data-interval", next);
-      renderCurrent(els, state.subscription, { isLogged: state.isLogged });
-      if (state.loading) return;
-      if (els.saveHint) els.saveHint.textContent = computeAnnualSavings(state.plans);
-      renderPlans(els, state.plans, state.interval, state.subscription, handleSubscribe, state.recommended);
-    });
-  });
-
-  try {
-    showBanner(els, STR.loading, "");
-
-    try {
-      await getSupabaseClient();
-    } catch (e) {
-      console.error("[ABONNEMENT] supabase init error:", e);
-      showBanner(els, STR.supabaseError, "error");
-      return;
+    if (opts.setPageData) {
+      try {
+        document.documentElement.setAttribute("data-page", "abonnement");
+      } catch (_) {}
     }
 
-    const user = await getCurrentUser();
-    if (!user) {
-      showBanner(els, STR.sessionExpired, "error");
-      state.isLogged = false;
-      renderCurrent(els, null, { isLogged: false });
-      if (els.grid) {
-        els.grid.innerHTML = `
-          <article class="sb-card" data-featured="1">
-            <div>
-              <h3 class="sb-plan-title">Connexion requise</h3>
-              <p class="sb-plan-desc">Connecte-toi pour afficher les offres et gerer l'abonnement de ton organisation.</p>
-            </div>
-            <div>
-              <div class="sb-price">
-                <div class="sb-price-main">
-                  <div class="sb-price-value">—</div>
-                  <div class="sb-price-suffix"></div>
-                </div>
-              </div>
-              <div class="sb-price-meta">Acces aux offres apres connexion.</div>
-            </div>
-            <ul class="sb-feats">
-              <li>Voir les offres et modules</li>
-              <li>Gerer ton abonnement Stripe</li>
-              <li>Activer la facturation et les interventions</li>
-              <li>Acces instantane apres paiement</li>
-              <li>Support et mises a jour incluses</li>
-              <li>Annulation simple</li>
-            </ul>
-            <a class="sb-btn sb-btn--primary" href="${escapeHTML(PATHS.login)}">${escapeHTML(STR.loginCta)}</a>
-          </article>
-        `;
+    injectStyles();
+    const themePrimary = resolveThemePrimary(root);
+    const els = renderShell(root, themePrimary);
+    kickoffAnimations(els);
+    renderSkeleton(els);
+    if (opts.variant !== "modal") renderFaq(els);
+    wireLogout();
+
+    const state = {
+      interval: "monthly",
+      orgId: "",
+      userId: "",
+      plans: [],
+      subscription: null,
+      loading: true,
+      recommended: null,
+      isLogged: false,
+    };
+
+    const handleSubscribe = async (plan, btn) => {
+      if (!plan) return;
+      if (!state.orgId) {
+        showBanner(els, STR.orgMissing, "error");
+        return;
       }
-      return;
-    }
-    state.userId = user.id;
-    state.isLogged = true;
+      btn.disabled = true;
+      const prev = btn.textContent;
+      btn.textContent = "Redirection…";
+      try {
+        await startCheckout(state.orgId, plan.code, state.interval);
+      } catch (e) {
+        console.error(e);
+        showBanner(els, `${STR.checkoutError} ${e?.message || ""}`.trim(), "error");
+        btn.disabled = false;
+        btn.textContent = prev || STR.subscribeCta;
+      }
+    };
 
-    state.orgId = await resolveOrgId(user.id);
-    if (!state.orgId) {
-      showBanner(els, STR.orgMissing, "error");
-      return;
-    }
+    els.intervalBtns.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const next = btn.dataset.interval || "monthly";
+        state.interval = next;
+        els.intervalBtns.forEach((b) => {
+          const active = b === btn;
+          b.classList.toggle("is-active", active);
+          b.setAttribute("aria-selected", active ? "true" : "false");
+        });
+        if (els.toggle) els.toggle.setAttribute("data-interval", next);
+        renderCurrent(els, state.subscription, { isLogged: state.isLogged });
+        if (state.loading) return;
+        if (els.saveHint) els.saveHint.textContent = computeAnnualSavings(state.plans);
+        renderPlans(els, state.plans, state.interval, state.subscription, handleSubscribe, state.recommended);
+      });
+    });
 
-    const [plans, sub] = await Promise.all([loadPlans(), loadCurrentSubscription(state.orgId)]);
-    state.plans = plans;
-    state.subscription = sub;
-    state.recommended = pickRecommendedPlan(plans);
+    const refresh = async () => {
+      try {
+        showBanner(els, STR.loading, "");
+        state.loading = true;
 
-    if (!plans || !plans.length) {
-      showBanner(els, STR.missingPlans, "error");
-      return;
-    }
+        try {
+          await getSupabaseClient();
+        } catch (e) {
+          console.error("[ABONNEMENT] supabase init error:", e);
+          showBanner(els, STR.supabaseError, "error");
+          return;
+        }
 
-    showBanner(els, "", "");
-    state.loading = false;
-    renderCurrent(els, state.subscription, { isLogged: true });
-    if (els.saveHint) els.saveHint.textContent = computeAnnualSavings(state.plans);
-    renderPlans(els, state.plans, state.interval, state.subscription, handleSubscribe, state.recommended);
-    renderCompare(els, state.plans, state.recommended);
+        const user = await getCurrentUser();
+        if (!user) {
+          showBanner(els, STR.sessionExpired, "error");
+          state.isLogged = false;
+          state.loading = false;
+          renderCurrent(els, null, { isLogged: false });
+          if (els.grid) {
+            els.grid.innerHTML = `
+              <article class="sb-card" data-featured="1">
+                <div>
+                  <h3 class="sb-plan-title">Connexion requise</h3>
+                  <p class="sb-plan-desc">Connecte-toi pour afficher les offres et gerer l'abonnement de ton organisation.</p>
+                </div>
+                <div>
+                  <div class="sb-price">
+                    <div class="sb-price-main">
+                      <div class="sb-price-value">—</div>
+                      <div class="sb-price-suffix"></div>
+                    </div>
+                  </div>
+                  <div class="sb-price-meta">Acces aux offres apres connexion.</div>
+                </div>
+                <ul class="sb-feats">
+                  <li>Voir les offres et modules</li>
+                  <li>Gerer ton abonnement Stripe</li>
+                  <li>Activer la facturation et les interventions</li>
+                  <li>Acces instantane apres paiement</li>
+                  <li>Support et mises a jour incluses</li>
+                  <li>Annulation simple</li>
+                </ul>
+                <a class="sb-btn sb-btn--primary" href="${escapeHTML(PATHS.login)}">${escapeHTML(STR.loginCta)}</a>
+              </article>
+            `;
+          }
+          return;
+        }
 
-  } catch (e) {
-    console.error("[ABONNEMENT] init error:", e);
-    showBanner(els, STR.plansError, "error");
+        state.userId = user.id;
+        state.isLogged = true;
+
+        state.orgId = await resolveOrgId(user.id);
+        if (!state.orgId) {
+          showBanner(els, STR.orgMissing, "error");
+          return;
+        }
+
+        const [plans, sub] = await Promise.all([loadPlans(), loadCurrentSubscription(state.orgId)]);
+        state.plans = plans;
+        state.subscription = sub;
+        state.recommended = pickRecommendedPlan(plans);
+
+        if (!plans || !plans.length) {
+          showBanner(els, STR.missingPlans, "error");
+          return;
+        }
+
+        showBanner(els, "", "");
+        state.loading = false;
+        renderCurrent(els, state.subscription, { isLogged: true });
+        if (els.saveHint) els.saveHint.textContent = computeAnnualSavings(state.plans);
+        renderPlans(els, state.plans, state.interval, state.subscription, handleSubscribe, state.recommended);
+        renderCompare(els, state.plans, state.recommended);
+      } catch (e) {
+        console.error("[ABONNEMENT] refresh error:", e);
+        showBanner(els, STR.plansError, "error");
+      }
+    };
+
+    await refresh();
+
+    return { refresh };
   }
-});
+
+  function closeModal() {
+    if (!modalDom) return;
+    modalDom.modal.classList.remove("is-open");
+    try {
+      document.documentElement.removeAttribute("data-mbl-sub-modal");
+    } catch (_) {}
+  }
+
+  function ensureModalDom() {
+    if (modalDom?.modal) return modalDom;
+
+    const modal = document.createElement("div");
+    modal.id = "mbl-sub-modal";
+    modal.className = "mbl-sub-modal";
+    modal.innerHTML = `
+      <div class="mbl-sub-modal__backdrop" data-sub-backdrop></div>
+      <div class="mbl-sub-modal__panel" role="dialog" aria-modal="true" aria-label="Abonnement">
+        <div class="mbl-sub-modal__close"><button type="button" aria-label="Fermer">×</button></div>
+        <div class="mbl-sub-modal__body" data-sub-root></div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    const backdrop = modal.querySelector("[data-sub-backdrop]");
+    const closeBtn = modal.querySelector(".mbl-sub-modal__close button");
+    const body = modal.querySelector("[data-sub-root]");
+
+    backdrop?.addEventListener("click", closeModal);
+    closeBtn?.addEventListener("click", closeModal);
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      if (!modal.classList.contains("is-open")) return;
+      closeModal();
+    });
+
+    modalDom = { modal, body, closeBtn };
+    return modalDom;
+  }
+
+  async function openModal(_opts = {}) {
+    injectStyles();
+    const dom = ensureModalDom();
+    dom.modal.classList.add("is-open");
+    try {
+      document.documentElement.setAttribute("data-mbl-sub-modal", "1");
+    } catch (_) {}
+
+    try {
+      dom.closeBtn?.focus?.();
+    } catch (_) {}
+
+    if (!modalInstance) {
+      modalInstance = await mountInto(dom.body, { variant: "modal", setPageData: false });
+      return;
+    }
+
+    try {
+      await modalInstance.refresh?.();
+    } catch (_) {}
+  }
+
+  window.MBLSubscriptions = window.MBLSubscriptions || {};
+  window.MBLSubscriptions.open = openModal;
+  window.MBLSubscriptions.close = closeModal;
+
+  const pageRoot = document.querySelector(CONFIG.ROOT_SELECTOR) || document.querySelector("#abonnement-root");
+  const isSubscriptionsPage = /^\/subscriptions\/?$/.test(String(location.pathname || ""));
+
+  if (pageRoot || isSubscriptionsPage) {
+    const targetRoot =
+      pageRoot ||
+      (() => {
+        const wrap = document.createElement("div");
+        wrap.setAttribute("data-abonnement", "");
+        document.body.prepend(wrap);
+        return wrap;
+      })();
+
+    await mountInto(targetRoot, { variant: "page", setPageData: true });
+  }
+  });
+})();
