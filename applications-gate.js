@@ -32,6 +32,12 @@
     // Common
     "admin-dashboard": [],
 
+    // CRM (currently bundled with billing)
+    "admin-crm": ["billing"],
+
+    // Settings
+    "admin-settings": [],
+
     // Billing
     clients: ["billing"],
     devis: ["billing"],
