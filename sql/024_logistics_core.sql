@@ -31,6 +31,13 @@ begin
       updated_at = now()
   where code in ('starter','growth','transport')
     and not (coalesce(modules, '{}'::jsonb) ? 'logistics');
+
+  -- Refresh entitlements for existing subscriptions so the new module flag is applied immediately.
+  if to_regclass('public.organization_subscriptions') is not null then
+    update public.organization_subscriptions
+    set status = status
+    where id is not null;
+  end if;
 end
 $$;
 
