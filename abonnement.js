@@ -63,7 +63,7 @@ window.Webflow.push(async function () {
 
   function resolveLoginPath() {
     const fromCfg = String(CONFIG.LOGIN_PATH || "").trim();
-    if (fromCfg) return fromCfg;
+    if (fromCfg && /\/login\/?$/.test(fromCfg)) return fromCfg;
     const cached = getCached("mbl-app-login-path").trim();
     if (cached) return cached;
     return "/application/login";
@@ -1498,6 +1498,44 @@ window.Webflow.push(async function () {
     requestAnimationFrame(() => shell.classList.add("is-ready"));
   }
 
+  function wireLogout() {
+    let lock = false;
+    document.addEventListener(
+      "click",
+      async (e) => {
+        const btn = e.target.closest(".btnLogout, #btnLogout, a.btnLogout, [data-logout]");
+        if (!btn) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (lock) return;
+        lock = true;
+
+        try {
+          const client = await getSupabaseClient();
+          await client.auth.signOut({ scope: "global" });
+        } catch (_) {}
+
+        try {
+          localStorage.removeItem(CONFIG.AUTH_STORAGE_KEY);
+        } catch (_) {}
+        try {
+          Object.keys(localStorage || {}).forEach((k) => {
+            if (k.startsWith("sb-") && k.includes("-auth-token")) localStorage.removeItem(k);
+          });
+        } catch (_) {}
+
+        try {
+          const target = new URL(PATHS.login, location.origin);
+          target.searchParams.set("logout", "1");
+          location.href = target.href;
+        } catch (_) {
+          location.href = String(PATHS.login || "/application/login") + "?logout=1";
+        }
+      },
+      true
+    );
+  }
+
   const root = findRoot();
   if (!root) return;
 
@@ -1507,6 +1545,7 @@ window.Webflow.push(async function () {
   kickoffAnimations(els);
   renderSkeleton(els);
   renderFaq(els);
+  wireLogout();
 
   const state = {
     interval: "monthly",

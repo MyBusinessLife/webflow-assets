@@ -13,9 +13,16 @@
 
   const APP_ROOT = String(CFG.APP_ROOT || inferAppRoot()).trim() || "/applications";
 
+  function sanitizeLoginPath(value) {
+    const v = String(value || "").trim();
+    if (!v) return "";
+    if (v.startsWith("/") && /\/login\/?$/.test(v)) return v;
+    return "";
+  }
+
   const CONFIG = {
     // In this project the login is typically under /applications/login (but we also support /application/login).
-    LOGIN_PATH: CFG.LOGIN_PATH || `${APP_ROOT}/login`,
+    LOGIN_PATH: sanitizeLoginPath(CFG.LOGIN_PATH) || `${APP_ROOT}/login`,
     SUBSCRIBE_PATH: CFG.SUBSCRIBE_PATH || "/subscriptions",
     OVERLAY_DELAY_MS: 40,
     MAX_WAIT_MS: 8000,

@@ -20,6 +20,13 @@
 
     const APP_ROOT = String(CFG.APP_ROOT || inferAppRoot()).trim() || "/applications";
 
+    function sanitizeLoginPath(value) {
+      const v = String(value || "").trim();
+      if (!v) return "";
+      if (v.startsWith("/") && /\/login\/?$/.test(v)) return v;
+      return "";
+    }
+
     const CONFIG = {
       SUPABASE_URL: CFG.SUPABASE_URL || "https://jrjdhdechcdlygpgaoes.supabase.co",
       SUPABASE_ANON_KEY:
@@ -29,7 +36,7 @@
 
       AUTH_STORAGE_KEY: CFG.AUTH_STORAGE_KEY || "mbl-extranet-auth",
 
-      LOGIN_PATH: CFG.LOGIN_PATH || `${APP_ROOT}/login`,
+      LOGIN_PATH: sanitizeLoginPath(CFG.LOGIN_PATH) || `${APP_ROOT}/login`,
       AFTER_SIGNUP_PATH: CFG.AFTER_SIGNUP_PATH || "/subscriptions",
     };
 
@@ -353,4 +360,3 @@
     );
   });
 })();
-

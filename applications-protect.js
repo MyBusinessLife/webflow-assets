@@ -18,6 +18,19 @@
 
   const CFG = (window.__MBL_CFG__ = window.__MBL_CFG__ || {});
 
+  function sanitizeLoginPath(value) {
+    const v = String(value || "").trim();
+    if (!v) return "";
+    if (v.startsWith("/") && /\/login\/?$/.test(v)) return v;
+    try {
+      const u = new URL(v, location.origin);
+      if (u.origin === location.origin && /\/login\/?$/.test(u.pathname)) return u.pathname;
+    } catch (_) {}
+    return "";
+  }
+
+  const LOGIN_URL = sanitizeLoginPath(CFG.LOGIN_PATH) || `${APP_ROOT}/login`;
+
   const CONFIG = {
     SUPABASE_URL: CFG.SUPABASE_URL || "https://jrjdhdechcdlygpgaoes.supabase.co",
     SUPABASE_ANON_KEY:
@@ -28,7 +41,7 @@
     PROFILES_TABLE: CFG.PROFILES_TABLE || "profiles",
 
     APP_ROOT,
-    LOGIN_URL: CFG.LOGIN_PATH || `${APP_ROOT}/login`,
+    LOGIN_URL,
     ADMIN_DASH: CFG.ADMIN_DASH || `${APP_ROOT}/admin/dashboard`,
     TECH_DASH: CFG.TECH_DASH || `${APP_ROOT}/technician/dashboard`,
 
@@ -232,6 +245,14 @@
     try {
       localStorage.removeItem(CONFIG.AUTH_STORAGE_KEY);
     } catch (_) {}
+
+    // Cleanup legacy supabase auth tokens from previous implementations.
+    try {
+      Object.keys(localStorage || {}).forEach((k) => {
+        if (k.startsWith("sb-") && k.includes("-auth-token")) localStorage.removeItem(k);
+      });
+    } catch (_) {}
+
     safeReplace(CONFIG.LOGIN_URL + "?logout=1", "logout");
   }
 
