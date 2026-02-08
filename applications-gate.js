@@ -41,6 +41,9 @@
     // CRM (currently bundled with billing)
     "admin-crm": ["billing"],
 
+    // Logistics / WMS
+    "admin-logistics": ["logistics"],
+
     // Transport
     // Fleet is available for all plans except Starter. Transport itself remains a separate module.
     "admin-transport": ["fleet"],

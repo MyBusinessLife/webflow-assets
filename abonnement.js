@@ -1402,6 +1402,7 @@
     rows.push(m.billing ? "Facturation: devis, factures et clients" : "Facturation (en option)");
     rows.push(m.interventions ? "Interventions: planning et suivi terrain" : "Interventions (en option)");
     rows.push(m.fleet ? "Flotte: vehicules, chauffeurs et alertes" : "Flotte (en option)");
+    rows.push(m.logistics ? "Logistique: entrepots, emplacements, stock" : "Logistique (en option)");
     rows.push(m.transport ? "Transport: flotte, tournees et courses" : "Transport (en option)");
     rows.push("PDF pro, numerotation automatique, export");
     rows.push("TVA, mentions legales et conformite FR");
@@ -1519,6 +1520,7 @@
       { label: "Facturation", type: "module", key: "billing" },
       { label: "Interventions", type: "module", key: "interventions" },
       { label: "Flotte (vehicules)", type: "module", key: "fleet" },
+      { label: "Logistique", type: "module", key: "logistics" },
       { label: "Transport", type: "module", key: "transport" },
       { label: "Utilisateurs", type: "limit", key: "max_users" },
       { label: "Support & MAJ", type: "static", value: true },
