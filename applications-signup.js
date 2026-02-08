@@ -51,6 +51,203 @@
       checkEmail: "Compte cree. Verifie tes emails pour confirmer, puis connecte-toi.",
     };
 
+    function escapeHTML(input) {
+      return String(input || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function readCssVar(name) {
+      try {
+        return String(getComputedStyle(document.documentElement).getPropertyValue(name) || "").trim();
+      } catch {
+        return "";
+      }
+    }
+
+    function parseRgb(color) {
+      const s = String(color || "").trim();
+      if (!s) return null;
+
+      const rgb = s.match(/rgba?\(\s*([0-9]+)[, ]+([0-9]+)[, ]+([0-9]+)(?:[\/, ]+([0-9.]+))?\s*\)/i);
+      if (rgb) {
+        const r = Number(rgb[1]);
+        const g = Number(rgb[2]);
+        const b = Number(rgb[3]);
+        if ([r, g, b].every((n) => Number.isFinite(n))) return { r, g, b };
+      }
+
+      if (s[0] === "#") {
+        const hex = s.slice(1);
+        if (hex.length === 3) {
+          const r = parseInt(hex[0] + hex[0], 16);
+          const g = parseInt(hex[1] + hex[1], 16);
+          const b = parseInt(hex[2] + hex[2], 16);
+          if ([r, g, b].every((n) => Number.isFinite(n))) return { r, g, b };
+        }
+        if (hex.length === 6) {
+          const r = parseInt(hex.slice(0, 2), 16);
+          const g = parseInt(hex.slice(2, 4), 16);
+          const b = parseInt(hex.slice(4, 6), 16);
+          if ([r, g, b].every((n) => Number.isFinite(n))) return { r, g, b };
+        }
+      }
+
+      return null;
+    }
+
+    function ensureThemeRgbVars() {
+      try {
+        const existing = readCssVar("--mbl-primary-rgb");
+        if (existing) return;
+
+        const candidates = ["--mbl-primary", "--primary", "--brand", "--color-primary", "--color-brand"];
+        let primary = "";
+        for (const c of candidates) {
+          const v = readCssVar(c);
+          if (v) {
+            primary = v;
+            break;
+          }
+        }
+        if (!primary) primary = "#0ea5e9";
+        const rgb = parseRgb(primary) || { r: 14, g: 165, b: 233 };
+        document.documentElement.style.setProperty("--mbl-primary-rgb", `${rgb.r}, ${rgb.g}, ${rgb.b}`);
+      } catch (_) {}
+    }
+
+    function injectGoogleStyles() {
+      if (document.getElementById("mbl-google-btn-style")) return;
+      ensureThemeRgbVars();
+      const st = document.createElement("style");
+      st.id = "mbl-google-btn-style";
+      st.textContent = `
+        @keyframes mblGSpin { to { transform: rotate(360deg); } }
+
+        html[data-page="login"] .mbl-google-btn,
+        html[data-page="signup"] .mbl-google-btn {
+          position: relative;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+          min-height: 50px;
+          padding: 12px 14px;
+          border-radius: 14px;
+          border: 1px solid rgba(15, 23, 42, 0.14);
+          background: rgba(255, 255, 255, 0.92);
+          color: rgba(2, 6, 23, 0.88);
+          font-weight: 850;
+          letter-spacing: 0.01em;
+          text-decoration: none;
+          cursor: pointer;
+          user-select: none;
+          -webkit-tap-highlight-color: transparent;
+          box-shadow:
+            0 16px 36px rgba(2, 6, 23, 0.10),
+            0 1px 0 rgba(255, 255, 255, 0.70) inset;
+          transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, background 180ms ease;
+        }
+
+        html[data-page="login"] .mbl-google-btn:hover,
+        html[data-page="signup"] .mbl-google-btn:hover {
+          transform: translateY(-1px);
+          border-color: rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.40);
+          background: rgba(255, 255, 255, 0.98);
+          box-shadow:
+            0 22px 52px rgba(2, 6, 23, 0.14),
+            0 0 0 4px rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.14);
+        }
+
+        html[data-page="login"] .mbl-google-btn:active,
+        html[data-page="signup"] .mbl-google-btn:active {
+          transform: translateY(0px) scale(0.996);
+          box-shadow: 0 14px 34px rgba(2, 6, 23, 0.12);
+        }
+
+        html[data-page="login"] .mbl-google-btn:focus-visible,
+        html[data-page="signup"] .mbl-google-btn:focus-visible {
+          outline: none;
+          box-shadow:
+            0 22px 52px rgba(2, 6, 23, 0.14),
+            0 0 0 4px rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.18);
+        }
+
+        html[data-page="login"] .mbl-google-btn[aria-disabled="true"],
+        html[data-page="signup"] .mbl-google-btn[aria-disabled="true"],
+        html[data-page="login"] .mbl-google-btn:disabled,
+        html[data-page="signup"] .mbl-google-btn:disabled {
+          opacity: 0.66;
+          transform: none;
+          cursor: not-allowed;
+          box-shadow: 0 10px 24px rgba(2, 6, 23, 0.10);
+        }
+
+        .mbl-google-btn__inner {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+        }
+        .mbl-google-btn__icon {
+          width: 18px;
+          height: 18px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          flex: 0 0 auto;
+        }
+        .mbl-google-btn__icon svg { width: 18px; height: 18px; display: block; }
+        .mbl-google-btn__text { font-size: 15px; line-height: 1.1; }
+        .mbl-google-btn__spinner {
+          width: 18px;
+          height: 18px;
+          border-radius: 999px;
+          border: 2px solid rgba(2, 6, 23, 0.18);
+          border-top-color: rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.92);
+          animation: mblGSpin 900ms linear infinite;
+          display: none;
+        }
+        .mbl-google-btn[data-loading="1"] .mbl-google-btn__icon { display: none; }
+        .mbl-google-btn[data-loading="1"] .mbl-google-btn__spinner { display: inline-flex; }
+      `;
+      document.head.appendChild(st);
+    }
+
+    function googleIconSvg() {
+      return `
+        <svg viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+          <path fill="#EA4335" d="M24 9.5c3.54 0 6.72 1.22 9.23 3.61l6.88-6.88C35.93 2.47 30.35 0 24 0 14.62 0 6.51 5.38 2.56 13.22l8.05 6.25C12.6 13.11 17.87 9.5 24 9.5z"/>
+          <path fill="#4285F4" d="M46.5 24.5c0-1.64-.15-3.22-.43-4.75H24v9h12.7c-.55 2.98-2.2 5.5-4.68 7.2l7.19 5.58C43.79 37.29 46.5 31.4 46.5 24.5z"/>
+          <path fill="#FBBC05" d="M10.61 28.47A14.5 14.5 0 0 1 9.5 24c0-1.55.25-3.05.71-4.47l-8.05-6.25A23.93 23.93 0 0 0 0 24c0 3.84.9 7.48 2.5 10.72l8.11-6.25z"/>
+          <path fill="#34A853" d="M24 48c6.35 0 11.69-2.1 15.59-5.7l-7.19-5.58c-2 1.35-4.56 2.15-8.4 2.15-6.13 0-11.4-3.61-13.39-8.75l-8.11 6.25C6.51 42.62 14.62 48 24 48z"/>
+        </svg>
+      `;
+    }
+
+    function enhanceGoogleButton(btn) {
+      if (!btn) return;
+      injectGoogleStyles();
+
+      const label = String(btn.dataset.googleLabel || btn.textContent || "").trim() || "Continuer avec Google";
+      btn.dataset.googleLabel = label;
+      btn.classList.add("mbl-google-btn");
+      btn.setAttribute("aria-label", label);
+
+      if (!btn.querySelector(".mbl-google-btn__inner")) {
+        btn.innerHTML = `
+          <span class="mbl-google-btn__inner">
+            <span class="mbl-google-btn__icon">${googleIconSvg()}</span>
+            <span class="mbl-google-btn__text">${escapeHTML(label)}</span>
+          </span>
+          <span class="mbl-google-btn__spinner" aria-hidden="true"></span>
+        `;
+      }
+    }
+
     function ensureSupabaseJs() {
       if (window.supabase && window.supabase.createClient) return Promise.resolve();
 
@@ -273,6 +470,7 @@
       try {
         if (googleBtn.tagName === "BUTTON" && !googleBtn.getAttribute("type")) googleBtn.setAttribute("type", "button");
       } catch (_) {}
+      enhanceGoogleButton(googleBtn);
       googleBtn.addEventListener("click", async (e) => {
         e.preventDefault();
         e.stopPropagation();
