@@ -155,6 +155,85 @@ window.Webflow.push(async function () {
     return null;
   }
 
+  function clamp(n, min, max) {
+    const x = Number(n);
+    if (!Number.isFinite(x)) return min;
+    return Math.max(min, Math.min(max, x));
+  }
+
+  function rgbToHsl(rgb) {
+    const r = clamp(rgb?.r, 0, 255) / 255;
+    const g = clamp(rgb?.g, 0, 255) / 255;
+    const b = clamp(rgb?.b, 0, 255) / 255;
+
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const d = max - min;
+
+    let h = 0;
+    if (d !== 0) {
+      if (max === r) h = ((g - b) / d) % 6;
+      else if (max === g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h *= 60;
+      if (h < 0) h += 360;
+    }
+
+    const l = (max + min) / 2;
+    const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+
+    return {
+      h,
+      s: s * 100,
+      l: l * 100,
+    };
+  }
+
+  function hslToRgb(hsl) {
+    const h = ((Number(hsl?.h) % 360) + 360) % 360;
+    const s = clamp(hsl?.s, 0, 100) / 100;
+    const l = clamp(hsl?.l, 0, 100) / 100;
+
+    const c = (1 - Math.abs(2 * l - 1)) * s;
+    const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+    const m = l - c / 2;
+
+    let r1 = 0;
+    let g1 = 0;
+    let b1 = 0;
+
+    if (h < 60) [r1, g1, b1] = [c, x, 0];
+    else if (h < 120) [r1, g1, b1] = [x, c, 0];
+    else if (h < 180) [r1, g1, b1] = [0, c, x];
+    else if (h < 240) [r1, g1, b1] = [0, x, c];
+    else if (h < 300) [r1, g1, b1] = [x, 0, c];
+    else [r1, g1, b1] = [c, 0, x];
+
+    return {
+      r: Math.round((r1 + m) * 255),
+      g: Math.round((g1 + m) * 255),
+      b: Math.round((b1 + m) * 255),
+    };
+  }
+
+  function derivePalette(primaryRgb) {
+    const hsl = rgbToHsl(primaryRgb);
+
+    const primary2 = hslToRgb({
+      h: hsl.h,
+      s: clamp(hsl.s + 6, 0, 100),
+      l: clamp(hsl.l - 12, 12, 78),
+    });
+
+    const primary3 = hslToRgb({
+      h: (hsl.h + 38) % 360,
+      s: clamp(hsl.s, 0, 100),
+      l: clamp(hsl.l - 10, 12, 78),
+    });
+
+    return { primary: primaryRgb, primary2, primary3 };
+  }
+
   function pickRecommendedPlan(plans) {
     const byCode = (code) => plans.find((p) => String(p?.code || "").toLowerCase() === code);
     return (
@@ -372,20 +451,35 @@ window.Webflow.push(async function () {
         color: var(--sb-ink);
         position: relative;
         overflow: hidden;
+        width: 100%;
+        max-width: 1140px;
+        margin: 0 auto;
         border-radius: var(--sb-radius);
         border: 1px solid #d3e2ff;
-        padding: 18px;
+        padding: 22px;
+        box-shadow: var(--sb-shadow);
         background:
           radial-gradient(1100px 520px at -6% -18%, rgba(var(--sb-primary-rgb), 0.18), transparent 60%),
           radial-gradient(980px 520px at 106% 0, rgba(var(--sb-primary2-rgb), 0.12), transparent 62%),
           linear-gradient(180deg, #f4f8ff 0%, #eef3fb 100%);
       }
 
+      html[data-page="abonnement"] .sb-shell::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 0;
+        background-image: radial-gradient(rgba(255,255,255,0.72) 1px, transparent 1px);
+        background-size: 18px 18px;
+        opacity: 0.14;
+      }
+
       html[data-page="abonnement"] .sb-bg {
         position: absolute;
         inset: -120px;
         pointer-events: none;
-        z-index: 0;
+        z-index: -1;
       }
 
       html[data-page="abonnement"] .sb-orb {
@@ -474,6 +568,9 @@ window.Webflow.push(async function () {
         color: #1e293b;
         font-weight: 700;
         font-size: 12px;
+        line-height: 1.2;
+        min-height: 34px;
+        white-space: nowrap;
         box-shadow: 0 10px 20px rgba(15, 23, 42, 0.04);
       }
 
@@ -488,7 +585,7 @@ window.Webflow.push(async function () {
       html[data-page="abonnement"] .sb-right {
         display: grid;
         gap: 10px;
-        background: rgba(255,255,255,0.76);
+        background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.78));
         border: 1px solid rgba(210,225,255,0.95);
         border-radius: var(--sb-radius);
         padding: 12px;
@@ -631,22 +728,184 @@ window.Webflow.push(async function () {
       html[data-page="abonnement"] .sb-plans {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+        align-items: stretch;
+      }
+
+      html[data-page="abonnement"] .sb-section {
+        margin-top: 14px;
+        border: 1px solid rgba(210,225,255,0.95);
+        border-radius: var(--sb-radius);
+        background: linear-gradient(180deg, rgba(255,255,255,0.90), rgba(255,255,255,0.74));
+        box-shadow: var(--sb-shadow-soft);
+        padding: 14px;
+        backdrop-filter: blur(6px);
+      }
+
+      html[data-page="abonnement"] .sb-section-head {
+        display: grid;
+        gap: 4px;
+        margin-bottom: 12px;
+      }
+      html[data-page="abonnement"] .sb-section-kicker {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.10em;
+        color: var(--sb-soft);
+        font-weight: 800;
+      }
+      html[data-page="abonnement"] .sb-section-title {
+        font-family: \"Space Grotesk\", sans-serif;
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: 0.01em;
+        color: var(--sb-ink);
+      }
+      html[data-page="abonnement"] .sb-section-sub {
+        color: var(--sb-soft);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      html[data-page="abonnement"] .sb-table-wrap {
+        overflow: auto;
+        border-radius: 14px;
+        border: 1px solid rgba(210,225,255,0.95);
+        background: rgba(255,255,255,0.86);
+      }
+      html[data-page="abonnement"] .sb-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+        min-width: 760px;
+      }
+      html[data-page="abonnement"] .sb-table thead th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        background: linear-gradient(180deg, rgba(244,248,255,0.95), rgba(236,243,251,0.95));
+        color: #516c86;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-size: 11px;
+        font-weight: 900;
+        padding: 10px 10px;
+        border-bottom: 1px solid rgba(210,225,255,0.95);
+        text-align: center;
+        white-space: nowrap;
+      }
+      html[data-page="abonnement"] .sb-table thead th:first-child { text-align: left; }
+      html[data-page="abonnement"] .sb-table thead th.is-featured {
+        color: #0f2945;
+        background: rgba(var(--sb-primary-rgb), 0.12);
+      }
+      html[data-page="abonnement"] .sb-table tbody td {
+        padding: 10px 10px;
+        border-bottom: 1px solid rgba(226,235,243,0.95);
+        color: #1f3a56;
+        text-align: center;
+        vertical-align: middle;
+      }
+      html[data-page="abonnement"] .sb-table tbody td:first-child {
+        text-align: left;
+        font-weight: 800;
+        color: #0f2945;
+        white-space: nowrap;
+      }
+      html[data-page="abonnement"] .sb-table tbody td.is-featured {
+        background: rgba(var(--sb-primary-rgb), 0.06);
+      }
+      html[data-page="abonnement"] .sb-table tbody tr:hover td {
+        background: rgba(246, 251, 255, 0.75);
+      }
+
+      html[data-page="abonnement"] .sb-icon {
+        display: inline-block;
+        width: 22px;
+        height: 22px;
+        border-radius: 10px;
+      }
+      html[data-page="abonnement"] .sb-icon--yes {
+        background: linear-gradient(180deg, var(--sb-primary), var(--sb-primary-2));
+        box-shadow: 0 10px 20px rgba(15, 23, 42, 0.08);
+        -webkit-mask-image: url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M20.285 6.709a1 1 0 0 1 0 1.414l-9.192 9.192a1 1 0 0 1-1.414 0L3.715 11.35a1 1 0 1 1 1.414-1.414l4.257 4.257 8.485-8.485a1 1 0 0 1 1.414 0Z'/%3E%3C/svg%3E\");
+        -webkit-mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+        -webkit-mask-size: 14px 14px;
+        mask-image: url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M20.285 6.709a1 1 0 0 1 0 1.414l-9.192 9.192a1 1 0 0 1-1.414 0L3.715 11.35a1 1 0 1 1 1.414-1.414l4.257 4.257 8.485-8.485a1 1 0 0 1 1.414 0Z'/%3E%3C/svg%3E\");
+        mask-repeat: no-repeat;
+        mask-position: center;
+        mask-size: 14px 14px;
+      }
+      html[data-page="abonnement"] .sb-icon--no {
+        background: rgba(239, 68, 68, 0.16);
+        border: 1px solid rgba(239, 68, 68, 0.32);
+        -webkit-mask-image: url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M18.3 5.71a1 1 0 0 1 0 1.41L13.41 12l4.89 4.88a1 1 0 1 1-1.41 1.42L12 13.41l-4.88 4.89a1 1 0 0 1-1.42-1.41L10.59 12 5.7 7.12A1 1 0 0 1 7.11 5.7L12 10.59l4.88-4.89a1 1 0 0 1 1.42.01Z'/%3E%3C/svg%3E\");
+        -webkit-mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+        -webkit-mask-size: 14px 14px;
+        mask-image: url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M18.3 5.71a1 1 0 0 1 0 1.41L13.41 12l4.89 4.88a1 1 0 1 1-1.41 1.42L12 13.41l-4.88 4.89a1 1 0 0 1-1.42-1.41L10.59 12 5.7 7.12A1 1 0 0 1 7.11 5.7L12 10.59l4.88-4.89a1 1 0 0 1 1.42.01Z'/%3E%3C/svg%3E\");
+        mask-repeat: no-repeat;
+        mask-position: center;
+        mask-size: 14px 14px;
+      }
+
+      html[data-page="abonnement"] .sb-qa-list { display: grid; gap: 10px; }
+      html[data-page="abonnement"] .sb-qa {
+        border: 1px solid rgba(210,225,255,0.95);
+        border-radius: 14px;
+        background: rgba(255,255,255,0.82);
+        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+        overflow: hidden;
+      }
+      html[data-page="abonnement"] .sb-qa summary {
+        list-style: none;
+        cursor: pointer;
+        padding: 12px 12px;
+        font-weight: 900;
+        color: #0f2945;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
         gap: 12px;
+      }
+      html[data-page="abonnement"] .sb-qa summary::-webkit-details-marker { display: none; }
+      html[data-page="abonnement"] .sb-qa summary::after {
+        content: \"+\";
+        font-size: 18px;
+        font-weight: 900;
+        color: rgba(15, 41, 69, 0.8);
+        width: 24px;
+        height: 24px;
+        display: grid;
+        place-items: center;
+        border-radius: 10px;
+        background: rgba(var(--sb-primary-rgb), 0.10);
+        border: 1px solid rgba(var(--sb-primary-rgb), 0.18);
+        transition: transform .18s ease;
+      }
+      html[data-page="abonnement"] .sb-qa[open] summary::after { transform: rotate(45deg); }
+      html[data-page="abonnement"] .sb-qa-body {
+        padding: 0 12px 12px;
+        color: var(--sb-soft);
+        line-height: 1.65;
+        font-size: 13px;
       }
 
       html[data-page="abonnement"] .sb-card {
         position: relative;
         border: 1px solid rgba(210,225,255,0.95);
         border-radius: var(--sb-radius);
-        background: rgba(255,255,255,0.86);
+        background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.78));
         box-shadow: var(--sb-shadow-soft);
-        padding: 14px;
+        padding: 16px;
         backdrop-filter: blur(6px);
         transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
-        min-height: 300px;
-        display: grid;
-        grid-template-rows: auto auto auto 1fr auto;
-        gap: 10px;
+        min-height: 368px;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
       }
 
       html[data-page="abonnement"] .sb-card:hover {
@@ -699,7 +958,11 @@ window.Webflow.push(async function () {
         color: var(--sb-soft);
         line-height: 1.55;
         font-size: 13px;
-        min-height: 44px;
+        min-height: 62px;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
       }
 
       html[data-page="abonnement"] .sb-price {
@@ -737,6 +1000,8 @@ window.Webflow.push(async function () {
         list-style: none;
         display: grid;
         gap: 8px;
+        flex: 1 1 auto;
+        min-height: 176px;
       }
       html[data-page="abonnement"] .sb-feats li {
         display: flex;
@@ -766,6 +1031,11 @@ window.Webflow.push(async function () {
       }
 
       html[data-page="abonnement"] .sb-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        text-decoration: none;
         width: 100%;
         border: 1px solid rgba(210,225,255,0.95);
         background: rgba(255,255,255,0.74);
@@ -773,6 +1043,7 @@ window.Webflow.push(async function () {
         border-radius: 14px;
         padding: 11px 12px;
         font-weight: 900;
+        min-height: 46px;
         cursor: pointer;
         transition: transform .16s ease, box-shadow .18s ease, border-color .18s ease, background .18s ease;
       }
@@ -839,13 +1110,30 @@ window.Webflow.push(async function () {
         html[data-page="abonnement"] .sb-title { font-size: 30px; }
         html[data-page="abonnement"] .sb-plans { grid-template-columns: 1fr; }
       }
+
+      @media (max-width: 520px) {
+        html[data-page="abonnement"] .sb-shell { padding: 16px; }
+        html[data-page="abonnement"] .sb-title { font-size: 26px; }
+        html[data-page="abonnement"] .sb-pill { white-space: normal; }
+      }
     `;
     document.head.appendChild(style);
   }
 
   function renderShell(root, themePrimary) {
     const rgb = parseColorToRgb(themePrimary) || { r: 14, g: 165, b: 233 };
-    const styleVars = `--sb-primary:${escapeHTML(themePrimary)};--sb-primary-rgb:${rgb.r},${rgb.g},${rgb.b};`;
+    const palette = derivePalette(rgb);
+    const rgb2 = palette.primary2;
+    const rgb3 = palette.primary3;
+
+    const styleVars = [
+      `--sb-primary:${escapeHTML(themePrimary)}`,
+      `--sb-primary-rgb:${rgb.r},${rgb.g},${rgb.b}`,
+      `--sb-primary-2:rgb(${rgb2.r},${rgb2.g},${rgb2.b})`,
+      `--sb-primary2-rgb:${rgb2.r},${rgb2.g},${rgb2.b}`,
+      `--sb-primary-3:rgb(${rgb3.r},${rgb3.g},${rgb3.b})`,
+      `--sb-primary3-rgb:${rgb3.r},${rgb3.g},${rgb3.b}`,
+    ].join(";");
     root.innerHTML = `
       <section class="sb-shell" style="${styleVars}">
         <div class="sb-bg" aria-hidden="true">
@@ -886,6 +1174,26 @@ window.Webflow.push(async function () {
           </header>
           <div class="sb-banner" data-banner></div>
           <div class="sb-plans" data-grid></div>
+          <section class="sb-section sb-anim" data-compare>
+            <div class="sb-section-head">
+              <div class="sb-section-kicker">Comparer</div>
+              <div class="sb-section-title">Comparer les offres</div>
+              <div class="sb-section-sub">Une vue rapide des modules et limites principales.</div>
+            </div>
+            <div class="sb-table-wrap">
+              <table class="sb-table" data-compare-table></table>
+            </div>
+          </section>
+
+          <section class="sb-section sb-anim" data-faq>
+            <div class="sb-section-head">
+              <div class="sb-section-kicker">FAQ</div>
+              <div class="sb-section-title">Questions frequentes</div>
+              <div class="sb-section-sub">Tu peux changer d'offre et faire evoluer tes modules au fil du temps.</div>
+            </div>
+            <div class="sb-qa-list" data-faq-list></div>
+          </section>
+
           <footer class="sb-foot sb-anim">${escapeHTML(STR.pricingFootnote)}</footer>
         </div>
       </section>
@@ -895,6 +1203,8 @@ window.Webflow.push(async function () {
       current: root.querySelector("[data-current]"),
       banner: root.querySelector("[data-banner]"),
       grid: root.querySelector("[data-grid]"),
+      compareTable: root.querySelector("[data-compare-table]"),
+      faqList: root.querySelector("[data-faq-list]"),
       toggle: root.querySelector("[data-toggle]"),
       intervalBtns: Array.from(root.querySelectorAll(".sb-toggle-btn[data-interval]")),
       saveHint: root.querySelector("[data-save]"),
@@ -994,22 +1304,18 @@ window.Webflow.push(async function () {
     const l = limits && typeof limits === "object" ? limits : {};
     const rows = [];
 
-    if (m.billing) {
-      rows.push("Devis & factures conformes (France)");
-      rows.push("Clients, catalogue produits, TVA et mentions");
-    }
-    if (m.interventions) {
-      rows.push("Gestion des interventions (planning, techniciens)");
-      rows.push("PV, photos, signature et suivi terrain");
+    // Keep a stable number of lines across plans so cards stay visually aligned.
+    rows.push(m.billing ? "Facturation: devis, factures et clients" : "Facturation (en option)");
+    rows.push(m.interventions ? "Interventions: planning et suivi terrain" : "Interventions (en option)");
+    rows.push("PDF pro, numerotation automatique, export");
+    rows.push("TVA, mentions legales et conformite FR");
+
+    if (Number.isFinite(Number(l.max_users)) && Number(l.max_users) > 0) {
+      rows.push(`Jusqu'a ${Number(l.max_users)} utilisateurs`);
+    } else {
+      rows.push("Utilisateurs & permissions (selon offre)");
     }
 
-    if (l && typeof l === "object") {
-      if (Number.isFinite(Number(l.max_users)) && Number(l.max_users) > 0) {
-        rows.push(`Jusqu'a ${Number(l.max_users)} utilisateurs`);
-      }
-    }
-
-    // Always add a trust baseline.
     rows.push("Support et mises a jour incluses");
 
     return rows;
@@ -1026,7 +1332,7 @@ window.Webflow.push(async function () {
             <div style="height:42px; width:100%; border-radius:12px; background:rgba(15,23,42,0.08);"></div>
             <div style="height:56px; width:100%; border-radius:12px; background:rgba(15,23,42,0.06);"></div>
             <div style="height:90px; width:100%; border-radius:12px; background:rgba(15,23,42,0.05);"></div>
-            <div style="height:44px; width:100%; border-radius:14px; background:rgba(14,165,233,0.22);"></div>
+            <div style="height:44px; width:100%; border-radius:14px; background:rgba(var(--sb-primary-rgb),0.22);"></div>
           </article>
         `
         )
@@ -1094,6 +1400,96 @@ window.Webflow.push(async function () {
     });
   }
 
+  function renderCompare(els, plans, recommendedPlan) {
+    const table = els?.compareTable;
+    if (!table) return;
+
+    if (!Array.isArray(plans) || !plans.length) {
+      table.innerHTML = "";
+      return;
+    }
+
+    const featuredCode = String(recommendedPlan?.code || "");
+    const cols = plans;
+
+    const head = cols
+      .map((p) => {
+        const isFeatured = featuredCode && String(p?.code || "") === featuredCode;
+        return `<th${isFeatured ? ' class="is-featured"' : ""}>${escapeHTML(p?.name || p?.code || "—")}</th>`;
+      })
+      .join("");
+
+    const rows = [
+      { label: "Facturation", type: "module", key: "billing" },
+      { label: "Interventions", type: "module", key: "interventions" },
+      { label: "Utilisateurs", type: "limit", key: "max_users" },
+      { label: "Support & MAJ", type: "static", value: true },
+    ];
+
+    const body = rows
+      .map((r) => {
+        const cells = cols
+          .map((p) => {
+            const isFeatured = featuredCode && String(p?.code || "") === featuredCode;
+            const cls = isFeatured ? ' class="is-featured"' : "";
+
+            if (r.type === "module") {
+              const has = Boolean(p?.modules && typeof p.modules === "object" && p.modules[r.key]);
+              return `<td${cls}>${has ? '<span class="sb-icon sb-icon--yes" aria-label="Inclus"></span>' : '<span class="sb-icon sb-icon--no" aria-label="Non inclus"></span>'}</td>`;
+            }
+
+            if (r.type === "limit") {
+              const v = p?.limits && typeof p.limits === "object" ? p.limits[r.key] : null;
+              const txt = Number.isFinite(Number(v)) && Number(v) > 0 ? String(Number(v)) : "—";
+              return `<td${cls}>${escapeHTML(txt)}</td>`;
+            }
+
+            return `<td${cls}><span class="sb-icon sb-icon--yes" aria-label="Inclus"></span></td>`;
+          })
+          .join("");
+
+        return `<tr><td>${escapeHTML(r.label)}</td>${cells}</tr>`;
+      })
+      .join("");
+
+    table.innerHTML = `<thead><tr><th>Fonctionnalite</th>${head}</tr></thead><tbody>${body}</tbody>`;
+  }
+
+  function renderFaq(els) {
+    const wrap = els?.faqList;
+    if (!wrap) return;
+
+    const items = [
+      {
+        q: "Puis-je changer d'offre a tout moment ?",
+        a: "Oui. Tu pourras passer a une offre superieure (ou ajuster) quand tu ajoutes de nouveaux modules et besoins.",
+      },
+      {
+        q: "Le paiement est-il securise ?",
+        a: "Oui. Le paiement est gere via Stripe. Aucune donnee bancaire n'est stockee dans l'application.",
+      },
+      {
+        q: "Puis-je resilier facilement ?",
+        a: "Oui. Tu peux stopper ton abonnement. Tes donnees restent dans la base et tu peux reprendre plus tard.",
+      },
+      {
+        q: "Est-ce compatible TVA / mentions legales (France) ?",
+        a: "Oui pour le module Facturation. Les mentions et parametres TVA sont adaptables a ton contexte (ex: TVA non applicable, export, etc.).",
+      },
+    ];
+
+    wrap.innerHTML = items
+      .map(
+        (it) => `
+          <details class="sb-qa">
+            <summary>${escapeHTML(it.q)}</summary>
+            <div class="sb-qa-body">${escapeHTML(it.a)}</div>
+          </details>
+        `
+      )
+      .join("");
+  }
+
   function kickoffAnimations(els) {
     const shell = els?.shell;
     if (!shell) return;
@@ -1110,6 +1506,7 @@ window.Webflow.push(async function () {
   const els = renderShell(root, themePrimary);
   kickoffAnimations(els);
   renderSkeleton(els);
+  renderFaq(els);
 
   const state = {
     interval: "monthly",
@@ -1174,6 +1571,34 @@ window.Webflow.push(async function () {
       showBanner(els, STR.sessionExpired, "error");
       state.isLogged = false;
       renderCurrent(els, null, { isLogged: false });
+      if (els.grid) {
+        els.grid.innerHTML = `
+          <article class="sb-card" data-featured="1">
+            <div>
+              <h3 class="sb-plan-title">Connexion requise</h3>
+              <p class="sb-plan-desc">Connecte-toi pour afficher les offres et gerer l'abonnement de ton organisation.</p>
+            </div>
+            <div>
+              <div class="sb-price">
+                <div class="sb-price-main">
+                  <div class="sb-price-value">—</div>
+                  <div class="sb-price-suffix"></div>
+                </div>
+              </div>
+              <div class="sb-price-meta">Acces aux offres apres connexion.</div>
+            </div>
+            <ul class="sb-feats">
+              <li>Voir les offres et modules</li>
+              <li>Gerer ton abonnement Stripe</li>
+              <li>Activer la facturation et les interventions</li>
+              <li>Acces instantane apres paiement</li>
+              <li>Support et mises a jour incluses</li>
+              <li>Annulation simple</li>
+            </ul>
+            <a class="sb-btn sb-btn--primary" href="${escapeHTML(PATHS.login)}">${escapeHTML(STR.loginCta)}</a>
+          </article>
+        `;
+      }
       return;
     }
     state.userId = user.id;
@@ -1200,6 +1625,7 @@ window.Webflow.push(async function () {
     renderCurrent(els, state.subscription, { isLogged: true });
     if (els.saveHint) els.saveHint.textContent = computeAnnualSavings(state.plans);
     renderPlans(els, state.plans, state.interval, state.subscription, handleSubscribe, state.recommended);
+    renderCompare(els, state.plans, state.recommended);
 
   } catch (e) {
     console.error("[ABONNEMENT] init error:", e);
