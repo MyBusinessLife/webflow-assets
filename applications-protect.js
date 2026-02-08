@@ -42,6 +42,12 @@
   CFG.SUPABASE_URL ||= CONFIG.SUPABASE_URL;
   CFG.SUPABASE_ANON_KEY ||= CONFIG.SUPABASE_ANON_KEY;
 
+  // Cache a couple of paths so non-app pages (e.g. /subscriptions) can still infer the right routes.
+  try {
+    localStorage.setItem("mbl-app-root", CONFIG.APP_ROOT);
+    localStorage.setItem("mbl-app-login-path", CONFIG.LOGIN_URL);
+  } catch (_) {}
+
   // Anti-flash guard (safe: auto-unhide after MAX_BOOT_MS).
   try {
     document.documentElement.setAttribute("data-mbl-app", "1");
@@ -301,4 +307,3 @@
     }
   })();
 })();
-
