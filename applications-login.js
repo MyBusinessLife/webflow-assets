@@ -1,6 +1,6 @@
 (() => {
   const p = String(location.pathname || "");
-  const isLogin = p === "/applications/login" || p === "/applications/login/";
+  const isLogin = /^\/(applications|application|extranet)\/login\/?$/.test(p);
   if (!isLogin) return;
 
   document.documentElement.setAttribute("data-page", "login");
@@ -12,6 +12,14 @@
 
   const CFG = window.__MBL_CFG__ || {};
 
+  function inferAppRoot() {
+    const match = p.match(/^\/(applications|application|extranet)(?=\/|$)/);
+    if (match?.[1]) return `/${match[1]}`;
+    return "/applications";
+  }
+
+  const APP_ROOT = String(CFG.APP_ROOT || inferAppRoot()).trim() || "/applications";
+
   const CONFIG = {
     SUPABASE_URL: CFG.SUPABASE_URL || "https://jrjdhdechcdlygpgaoes.supabase.co",
     SUPABASE_ANON_KEY:
@@ -19,7 +27,11 @@
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpyamRoZGVjaGNkbHlncGdhb2VzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc3NzczMzQsImV4cCI6MjA4MzM1MzMzNH0.E13XKKpIjB1auVtTmgBgV7jxmvS-EOv52t0mT1neKXE",
 
     AUTH_STORAGE_KEY: CFG.AUTH_STORAGE_KEY || "mbl-extranet-auth",
-    DEFAULT_AFTER_LOGIN: CFG.AFTER_LOGIN_PATH || "/applications",
+    DEFAULT_AFTER_LOGIN: CFG.AFTER_LOGIN_PATH || APP_ROOT,
+
+    PROFILES_TABLE: CFG.PROFILES_TABLE || "profiles",
+    ADMIN_DASH: CFG.ADMIN_DASH || `${APP_ROOT}/admin/dashboard`,
+    TECH_DASH: CFG.TECH_DASH || `${APP_ROOT}/technician/dashboard`,
   };
 
   const STR = {
@@ -104,6 +116,13 @@
       p.textContent = message || "";
       return;
     }
+
+    const fallback = document.querySelector("#loginMsg,[data-login-msg]") || null;
+    if (fallback) {
+      fallback.textContent = message || "";
+      return;
+    }
+
     alert(message || "");
   }
 
@@ -112,6 +131,20 @@
     if (!btn.dataset.prevText) btn.dataset.prevText = btn.textContent || "";
     btn.disabled = loading;
     btn.textContent = loading ? STR.signingIn : btn.dataset.prevText || "Connexion";
+  }
+
+  async function getRole(userId) {
+    try {
+      const { data, error } = await supabase
+        .from(CONFIG.PROFILES_TABLE)
+        .select("role")
+        .eq("id", userId)
+        .single();
+      if (error) return "";
+      return String(data?.role || "").trim().toLowerCase();
+    } catch {
+      return "";
+    }
   }
 
   const supabase = resolveSupabaseClient();
@@ -145,11 +178,32 @@
     setButtonLoading(submitBtn, true);
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
 
-      const next = getNextParam() || CONFIG.DEFAULT_AFTER_LOGIN;
-      window.location.href = next;
+      const next = getNextParam();
+      if (next) {
+        window.location.href = next;
+        return;
+      }
+
+      const userId =
+        data?.user?.id ||
+        data?.session?.user?.id ||
+        (await supabase.auth.getUser())?.data?.user?.id ||
+        "";
+      const role = userId ? await getRole(userId) : "";
+
+      if (role === "admin") {
+        window.location.href = CONFIG.ADMIN_DASH;
+        return;
+      }
+      if (role === "tech" || role === "technician") {
+        window.location.href = CONFIG.TECH_DASH;
+        return;
+      }
+
+      window.location.href = CONFIG.DEFAULT_AFTER_LOGIN;
     } catch (e) {
       console.error("[LOGIN] signIn error:", e);
       showWebflowError(form, e?.message || "Connexion impossible.");
