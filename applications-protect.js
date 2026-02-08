@@ -10,6 +10,8 @@
 
   const APP_ROOT = `/${match[1]}`;
   const isLogin = new RegExp(`^\\/${match[1]}\\/login\\/?$`).test(p);
+  const isSignup = new RegExp(`^\\/${match[1]}\\/signup\\/?$`).test(p);
+  const isPublicAuthPage = isLogin || isSignup;
 
   const url = new URL(location.href);
   const DEBUG = url.searchParams.get("mbl_debug") === "1" || location.hostname.includes("webflow.io");
@@ -52,6 +54,7 @@
   try {
     document.documentElement.setAttribute("data-mbl-app", "1");
     if (isLogin) document.documentElement.setAttribute("data-mbl-login", "1");
+    if (isPublicAuthPage) document.documentElement.setAttribute("data-mbl-public", "1");
 
     if (!document.getElementById("mbl-app-protect-style")) {
       const st = document.createElement("style");
@@ -60,6 +63,7 @@
         html[data-mbl-app="1"] body { visibility: hidden !important; }
         html[data-mbl-app="1"].mbl-auth-ready body { visibility: visible !important; }
         html[data-mbl-app="1"][data-mbl-login="1"] body { visibility: visible !important; }
+        html[data-mbl-app="1"][data-mbl-public="1"] body { visibility: visible !important; }
       `;
       document.head.appendChild(st);
     }
@@ -109,6 +113,19 @@
       location.replace(new URL(path, location.origin).href);
     } catch {
       location.href = path;
+    }
+  }
+
+  function getNextParam() {
+    try {
+      const sp = new URLSearchParams(location.search);
+      const next = String(sp.get("next") || "").trim();
+      if (!next) return "";
+      // same-origin path only (avoid open redirects)
+      if (next.startsWith("/") && !next.startsWith("//")) return next;
+      return "";
+    } catch {
+      return "";
     }
   }
 
@@ -243,7 +260,14 @@
       const session = data?.session || null;
       const userId = session?.user?.id || "";
 
-      log("run", { reason, path: p, isLogin, hasSession: Boolean(session), userId: userId ? userId.slice(0, 8) + "..." : "" });
+      log("run", {
+        reason,
+        path: p,
+        isLogin,
+        isSignup,
+        hasSession: Boolean(session),
+        userId: userId ? userId.slice(0, 8) + "..." : "",
+      });
 
       // --- LOGIN ---
       if (isLogin) {
@@ -256,12 +280,31 @@
           return;
         }
 
+        const next = getNextParam();
+        if (next) return safeReplace(next, "login_next");
+
         const role = await getRole(supabase, session.user.id);
         if (role === "admin") return safeReplace(CONFIG.ADMIN_DASH, "login_admin");
         if (role === "tech" || role === "technician") return safeReplace(CONFIG.TECH_DASH, "login_tech");
 
         ready();
         return;
+      }
+
+      // --- SIGNUP (public) ---
+      if (isSignup) {
+        if (!session?.user) {
+          ready();
+          return;
+        }
+
+        const next = getNextParam();
+        if (next) return safeReplace(next, "signup_next");
+
+        const role = await getRole(supabase, session.user.id);
+        if (role === "admin") return safeReplace(CONFIG.ADMIN_DASH, "signup_admin");
+        if (role === "tech" || role === "technician") return safeReplace(CONFIG.TECH_DASH, "signup_tech");
+        return safeReplace(CONFIG.APP_ROOT, "signup_default");
       }
 
       // --- PROTECTED ---

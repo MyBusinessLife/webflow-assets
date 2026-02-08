@@ -25,6 +25,7 @@
     SUPABASE_ANON_KEY:
       CFG.SUPABASE_ANON_KEY ||
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpyamRoZGVjaGNkbHlncGdhb2VzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc3NzczMzQsImV4cCI6MjA4MzM1MzMzNH0.E13XKKpIjB1auVtTmgBgV7jxmvS-EOv52t0mT1neKXE",
+    SUPABASE_CDN: CFG.SUPABASE_CDN || "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2",
 
     AUTH_STORAGE_KEY: CFG.AUTH_STORAGE_KEY || "mbl-extranet-auth",
     DEFAULT_AFTER_LOGIN: CFG.AFTER_LOGIN_PATH || APP_ROOT,
@@ -40,7 +41,61 @@
     missingEmail: "Renseigne ton email.",
     missingPassword: "Renseigne ton mot de passe.",
     signingIn: "Connexion…",
+    signingGoogle: "Redirection Google…",
   };
+
+  function ensureSupabaseJs() {
+    if (window.supabase && window.supabase.createClient) return Promise.resolve();
+
+    const existing = document.querySelector('script[data-mbl-lib="supabase"]');
+    if (existing) {
+      return new Promise((resolve, reject) => {
+        const t = setTimeout(() => reject(new Error("Timeout supabase-js")), 6000);
+        existing.addEventListener(
+          "load",
+          () => {
+            clearTimeout(t);
+            resolve();
+          },
+          { once: true }
+        );
+        existing.addEventListener(
+          "error",
+          () => {
+            clearTimeout(t);
+            reject(new Error("Echec chargement supabase-js"));
+          },
+          { once: true }
+        );
+      });
+    }
+
+    const s = document.createElement("script");
+    s.src = CONFIG.SUPABASE_CDN;
+    s.async = true;
+    s.dataset.mblLib = "supabase";
+    document.head.appendChild(s);
+
+    return new Promise((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error("Timeout supabase-js")), 6000);
+      s.addEventListener(
+        "load",
+        () => {
+          clearTimeout(t);
+          resolve();
+        },
+        { once: true }
+      );
+      s.addEventListener(
+        "error",
+        () => {
+          clearTimeout(t);
+          reject(new Error("Echec chargement supabase-js"));
+        },
+        { once: true }
+      );
+    });
+  }
 
   function resolveSupabaseClient() {
     if (window.__MBL_SUPABASE__) return window.__MBL_SUPABASE__;
@@ -105,6 +160,21 @@
     return "";
   }
 
+  function buildOAuthRedirectUrl() {
+    // Always route OAuth back to login so we only need to whitelist one redirect URL in Supabase.
+    const login = new URL(`${APP_ROOT}/login`, location.origin);
+    const next = getNextParam();
+    if (next) login.searchParams.set("next", next);
+    return login.href;
+  }
+
+  function setGoogleLoading(btn, loading) {
+    if (!btn) return;
+    if (!btn.dataset.prevText) btn.dataset.prevText = btn.textContent || "";
+    btn.disabled = loading;
+    btn.textContent = loading ? STR.signingGoogle : btn.dataset.prevText || "Continuer avec Google";
+  }
+
   function showWebflowError(form, message) {
     const wrap = form.closest(".w-form") || document;
     const fail = wrap.querySelector(".w-form-fail");
@@ -147,6 +217,7 @@
     }
   }
 
+  await ensureSupabaseJs();
   const supabase = resolveSupabaseClient();
   if (!supabase) {
     console.error("[LOGIN]", STR.missingSupabase);
@@ -157,6 +228,30 @@
   if (!form) {
     console.error("[LOGIN]", STR.missingForm);
     return;
+  }
+
+  // Optional Google OAuth button:
+  // Add a button/link with [data-auth-google] (recommended) or #btnGoogle or .btnGoogle.
+  const googleBtn = document.querySelector("[data-auth-google], #btnGoogle, .btnGoogle");
+  if (googleBtn) {
+    try {
+      if (googleBtn.tagName === "BUTTON" && !googleBtn.getAttribute("type")) googleBtn.setAttribute("type", "button");
+    } catch (_) {}
+    googleBtn.addEventListener("click", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setGoogleLoading(googleBtn, true);
+      try {
+        await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: { redirectTo: buildOAuthRedirectUrl() },
+        });
+      } catch (err) {
+        console.error("[LOGIN] oauth error:", err);
+        showWebflowError(form, err?.message || "Connexion Google impossible.");
+        setGoogleLoading(googleBtn, false);
+      }
+    });
   }
 
   const emailEl = findEmailInput(form);

@@ -20,6 +20,7 @@ Order to run in Supabase SQL Editor:
 16. `016_interventions_extensibility.sql`
 17. `017_saas_modules_and_subscription_gate.sql`
 18. `018_user_limits_max_users.sql`
+19. `019_auth_users_bootstrap.sql`
 
 ## Important
 - Run each file in full, then validate before the next file.
