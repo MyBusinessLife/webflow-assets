@@ -12,15 +12,25 @@ window.Webflow.push(async function () {
   }
 
   const GLOBAL_CFG = window.__MBL_CFG__ || {};
+
+  function inferBillingRoot() {
+    const p = String(location.pathname || "");
+    if (/^\/facturation(\/|$)/.test(p)) return "/facturation";
+    const m = p.match(/^\/(applications|application)(?=\/|$)/);
+    if (m?.[1]) return `/${m[1]}/facturation`;
+    return "/facturation";
+  }
+
   const normalizeInvoiceUrl = (value) => {
     const raw = String(value || "").trim();
     if (!raw) return "";
     // Webflow page slug used to be "/facture". Keep backward compatibility but prefer "/invoice".
     return raw.replace(/\/facture(?=([/?#]|$))/i, "/invoice");
   };
-  const RAW_ADD_URL = root.dataset.addUrl || root.dataset.editUrl || "/facturation/invoice";
+  const BILLING_ROOT = String(root.dataset.billingRoot || GLOBAL_CFG.BILLING_ROOT || inferBillingRoot()).replace(/\/+$/, "");
+  const RAW_ADD_URL = root.dataset.addUrl || root.dataset.editUrl || `${BILLING_ROOT}/invoice`;
   const RAW_EDIT_URL =
-    root.dataset.editUrl || root.dataset.invoiceUrl || root.dataset.factureUrl || "/facturation/invoice";
+    root.dataset.editUrl || root.dataset.invoiceUrl || root.dataset.factureUrl || `${BILLING_ROOT}/invoice`;
   const CONFIG = {
     SUPABASE_URL: GLOBAL_CFG.SUPABASE_URL || "https://jrjdhdechcdlygpgaoes.supabase.co",
     SUPABASE_ANON_KEY:

@@ -73,14 +73,14 @@
       "admin-dashboard": sanitizePath(CFG.ADMIN_DASH) || `${CONFIG.APP_ROOT}/admin/dashboard`,
       "admin-paiements": `${CONFIG.APP_ROOT}/admin/paiements`,
       "admin-crm": "/crm/crm",
-      "admin-settings": "/settings",
+      "admin-settings": `${CONFIG.APP_ROOT}/settings`,
 
       // Billing (Facturation)
-      clients: "/facturation/clients",
-      "devis-list": "/facturation/devis-list",
-      devis: "/facturation/devis-add",
-      "factures-list": "/facturation/invoices-list",
-      facture: "/facturation/invoice",
+      clients: `${CONFIG.APP_ROOT}/facturation/clients`,
+      "devis-list": `${CONFIG.APP_ROOT}/facturation/devis-list`,
+      devis: `${CONFIG.APP_ROOT}/facturation/devis-add`,
+      "factures-list": `${CONFIG.APP_ROOT}/facturation/invoices-list`,
+      facture: `${CONFIG.APP_ROOT}/facturation/invoice`,
 
       "admin-products": `${CONFIG.APP_ROOT}/admin/products`,
       "admin-categories": `${CONFIG.APP_ROOT}/admin/categories`,
@@ -128,10 +128,11 @@
           const normalize = (p) => String(p || "").replace(/\/+$/, "");
           const learnedNorm = normalize(learned);
           const fallbackNorm = normalize(fallback);
-          const roots = new Set([normalize(CONFIG.APP_ROOT), "/applications", "/application"]);
+          const appRootNorm = normalize(CONFIG.APP_ROOT);
+          const roots = new Set([appRootNorm, "/applications", "/application"]);
 
           let stale = false;
-          if (fallbackNorm && fallbackNorm.startsWith("/") && !fallbackNorm.startsWith(normalize(CONFIG.APP_ROOT) + "/")) {
+          if (fallbackNorm && fallbackNorm.startsWith("/") && appRootNorm && !fallbackNorm.startsWith(appRootNorm + "/")) {
             for (const r of roots) {
               if (!r) continue;
               if (learnedNorm === normalize(r + fallbackNorm)) {
@@ -139,6 +140,12 @@
                 break;
               }
             }
+          }
+
+          // Opposite case: fallback is under APP_ROOT but learned is the same route without APP_ROOT prefix.
+          if (!stale && fallbackNorm && appRootNorm && fallbackNorm.startsWith(appRootNorm + "/")) {
+            const without = normalize(fallbackNorm.slice(appRootNorm.length) || "/");
+            if (without && learnedNorm === without) stale = true;
           }
 
           if (!stale) return learned;
@@ -234,13 +241,15 @@
     function rewriteKnownBadLinks() {
       // Webflow buttons can keep stale slugs after refactors.
       // Fix them defensively so navigation stays consistent.
+      const appRoot = String(CONFIG.APP_ROOT || "/applications").trim() || "/applications";
       const fixMap = new Map([
-        ["/applications/settings", "/settings"],
-        ["/application/settings", "/settings"],
-        ["/applications/facturation/devis-list", "/facturation/devis-list"],
-        ["/application/facturation/devis-list", "/facturation/devis-list"],
-        ["/applications/facturation/clients", "/facturation/clients"],
-        ["/application/facturation/clients", "/facturation/clients"],
+        // Old root-level slugs -> app folder slugs
+        ["/settings", `${appRoot}/settings`],
+        ["/facturation/clients", `${appRoot}/facturation/clients`],
+        ["/facturation/devis-list", `${appRoot}/facturation/devis-list`],
+        ["/facturation/devis-add", `${appRoot}/facturation/devis-add`],
+        ["/facturation/invoices-list", `${appRoot}/facturation/invoices-list`],
+        ["/facturation/invoice", `${appRoot}/facturation/invoice`],
       ]);
 
       const normalizePath = (p) => String(p || "").trim().replace(/\/+$/, "") || "/";

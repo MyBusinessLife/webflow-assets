@@ -18,12 +18,22 @@ window.Webflow.push(async function () {
 
   const GLOBAL_CFG = window.__MBL_CFG__ || {};
 
+  function inferBillingRoot() {
+    const p = String(location.pathname || "");
+    if (/^\/facturation(\/|$)/.test(p)) return "/facturation";
+    const m = p.match(/^\/(applications|application)(?=\/|$)/);
+    if (m?.[1]) return `/${m[1]}/facturation`;
+    return "/facturation";
+  }
+
   const normalizeInvoiceUrl = (value) => {
     const raw = String(value || "").trim();
     if (!raw) return "";
     // Backward compatibility: "/facture" slug used to be used; prefer "/invoice".
     return raw.replace(/\/facture(?=([/?#]|$))/i, "/invoice");
   };
+
+  const BILLING_ROOT = String(root.dataset.billingRoot || GLOBAL_CFG.BILLING_ROOT || inferBillingRoot()).replace(/\/+$/, "");
 
   const CONFIG = {
     SUPABASE_URL: GLOBAL_CFG.SUPABASE_URL || "https://jrjdhdechcdlygpgaoes.supabase.co",
@@ -38,8 +48,8 @@ window.Webflow.push(async function () {
       window.__MBL_ORG_ID__ ||
       "",
     CURRENCY: root.dataset.currency || "EUR",
-    INVOICE_URL: normalizeInvoiceUrl(root.dataset.invoiceUrl || root.dataset.factureUrl || "/facturation/invoice"),
-    QUOTE_URL: root.dataset.quoteUrl || root.dataset.devisUrl || "/facturation/devis-add",
+    INVOICE_URL: normalizeInvoiceUrl(root.dataset.invoiceUrl || root.dataset.factureUrl || `${BILLING_ROOT}/invoice`),
+    QUOTE_URL: root.dataset.quoteUrl || root.dataset.devisUrl || `${BILLING_ROOT}/devis-add`,
     MAX_ROWS: Number(root.dataset.maxRows || 800),
     THEME_PRIMARY: String(root.dataset.themePrimary || GLOBAL_CFG.THEME_PRIMARY || "#0ea5e9").trim() || "#0ea5e9",
   };
