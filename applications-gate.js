@@ -73,6 +73,48 @@
     "technician-interventions-run": ["interventions"],
     "technician-earn": ["interventions"],
     "technician-profile": ["interventions"],
+    "technician-planning": ["interventions"],
+
+    // Driver
+    "driver-dashboard": ["transport"],
+  };
+
+  // Optional per-member permissions (organization_members.permissions)
+  // Used to hide/lock apps inside an organization even when the subscription includes the module.
+  const PAGE_REQUIRED_PERMS = {
+    // Admin / Settings
+    "admin-dashboard": "admin_dashboard",
+    "admin-settings": "settings",
+
+    // CRM
+    "admin-crm": "crm",
+
+    // Billing
+    clients: "billing_clients",
+    devis: "billing_quotes",
+    "devis-list": "billing_quotes",
+    facture: "billing_invoices",
+    "factures-list": "billing_invoices",
+    "admin-paiements": "billing_payments",
+    "admin-products": "inventory_products",
+    "admin-categories": "inventory_categories",
+
+    // Interventions
+    "admin-interventions": "interventions_admin",
+    "technician-dashboard": "interventions_tech",
+    "technician-interventions": "interventions_tech",
+    "technician-interventions-list": "interventions_tech",
+    "technician-interventions-run": "interventions_tech",
+    "technician-earn": "interventions_tech",
+    "technician-profile": "interventions_tech",
+    "technician-planning": "interventions_tech",
+
+    // Logistics
+    "admin-logistics": "logistics",
+
+    // Fleet / Transport
+    "admin-transport": "fleet",
+    "driver-dashboard": "transport_driver",
   };
 
   function isExcludedPage() {
@@ -222,6 +264,38 @@
     return [];
   }
 
+  function requiredPermForPage() {
+    const raw =
+      document.documentElement.dataset.requiredPerm ||
+      document.querySelector("[data-required-perm]")?.getAttribute("data-required-perm") ||
+      "";
+    const override = String(raw || "").trim();
+    if (override) return override;
+
+    const page = String(document.documentElement.dataset.page || "").trim();
+    if (page && PAGE_REQUIRED_PERMS[page]) return PAGE_REQUIRED_PERMS[page];
+    return "";
+  }
+
+  function normalizePermissions(member) {
+    const mode = String(member?.permissions_mode || "inherit").trim().toLowerCase();
+    const permissions = member?.permissions && typeof member.permissions === "object" ? member.permissions : {};
+    return { mode: mode === "custom" ? "custom" : "inherit", permissions };
+  }
+
+  function permissionAllow({ isAdmin, orgRole, permMode, permMap }, permKey) {
+    const key = String(permKey || "").trim();
+    if (!key) return true;
+    if (isAdmin) return true;
+
+    if (permMode === "custom") return permMap?.[key] === true;
+
+    // Inherit defaults (strict)
+    if (orgRole === "tech") return key === "interventions_tech";
+    if (orgRole === "driver") return key === "transport_driver";
+    return false;
+  }
+
   function isActiveSubscription(sub) {
     const status = String(sub?.status || "");
     if (!["trialing", "active", "past_due"].includes(status)) return false;
@@ -330,21 +404,63 @@
     return userData?.user || sessionData?.session?.user || null;
   }
 
-  async function resolveOrgId(supabase, userId) {
-    const explicit = String(CFG.ORGANIZATION_ID || window.__MBL_ORG_ID__ || "").trim();
-    if (explicit) return explicit;
+  function isMissingColumnError(err) {
+    const msg = String(err?.message || "").toLowerCase();
+    return msg.includes("does not exist") || msg.includes("column") || msg.includes("missing");
+  }
 
-    const { data, error } = await supabase
+  async function resolveMember(supabase, userId) {
+    const explicit = String(CFG.ORGANIZATION_ID || window.__MBL_ORG_ID__ || "").trim();
+
+    const baseSel = "organization_id, role, is_default, created_at";
+    const fullSel = baseSel + ", permissions_mode, permissions";
+
+    // If an org id is forced (rare), validate the membership row exists for it.
+    if (explicit) {
+      let res = await supabase
+        .from("organization_members")
+        .select(fullSel)
+        .eq("user_id", userId)
+        .eq("organization_id", explicit)
+        .eq("is_active", true)
+        .limit(1)
+        .maybeSingle();
+      if (res.error && isMissingColumnError(res.error)) {
+        res = await supabase
+          .from("organization_members")
+          .select(baseSel)
+          .eq("user_id", userId)
+          .eq("organization_id", explicit)
+          .eq("is_active", true)
+          .limit(1)
+          .maybeSingle();
+      }
+      return res.error ? null : res.data || null;
+    }
+
+    // Default org: prefer is_default
+    let res = await supabase
       .from("organization_members")
-      .select("organization_id, is_default, created_at")
+      .select(fullSel)
       .eq("user_id", userId)
       .eq("is_active", true)
       .order("is_default", { ascending: false })
       .order("created_at", { ascending: true })
       .limit(1);
 
-    if (error) return "";
-    return String(data?.[0]?.organization_id || "").trim();
+    if (res.error && isMissingColumnError(res.error)) {
+      res = await supabase
+        .from("organization_members")
+        .select(baseSel)
+        .eq("user_id", userId)
+        .eq("is_active", true)
+        .order("is_default", { ascending: false })
+        .order("created_at", { ascending: true })
+        .limit(1);
+    }
+
+    if (res.error) return null;
+    return res.data?.[0] || null;
   }
 
   function redirectTo(path) {
@@ -382,7 +498,8 @@
       return;
     }
 
-    const orgId = await resolveOrgId(supabase, user.id);
+    const member = await resolveMember(supabase, user.id);
+    const orgId = String(member?.organization_id || "").trim();
     if (!orgId) {
       setOverlayState({
         title: "Organisation introuvable",
@@ -433,6 +550,39 @@
       });
       redirectTo(withNextParam(CONFIG.SUBSCRIBE_PATH));
       return;
+    }
+
+    // Per-member permission (optional)
+    const requiredPerm = requiredPermForPage();
+    if (requiredPerm) {
+      const orgRole = String(member?.role || "").trim().toLowerCase();
+      const isAdmin = ["owner", "admin", "manager"].includes(orgRole);
+      const permState = normalizePermissions(member);
+      const accessRole = isAdmin ? "admin" : orgRole;
+
+      const ok = permissionAllow({
+        isAdmin,
+        orgRole: accessRole,
+        permMode: permState.mode,
+        permMap: permState.permissions,
+      }, requiredPerm);
+
+      if (!ok) {
+        const TECH_DASH = `${APP_ROOT}/technician/dashboard`;
+        const DRIVER_DASH = `${APP_ROOT}/driver/dashboard`;
+        const ADMIN_DASH = `${APP_ROOT}/admin/dashboard`;
+
+        const fallback =
+          accessRole === "tech" ? TECH_DASH : accessRole === "driver" ? DRIVER_DASH : ADMIN_DASH;
+
+        setOverlayState({
+          title: "Accès restreint",
+          body: "Ton organisation a limité l’accès à ce module pour ton compte.",
+          spinning: false,
+        });
+        redirectTo(withNextParam(fallback));
+        return;
+      }
     }
 
     if (overlay && overlay.isConnected) overlay.remove();

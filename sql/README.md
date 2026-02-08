@@ -26,6 +26,7 @@ Order to run in Supabase SQL Editor:
 22. `022_plans_transport_and_ultimate.sql`
 23. `023_fleet_module_and_vehicle_compliance.sql`
 24. `024_logistics_core.sql`
+25. `025_member_permissions_and_availability.sql`
 
 ## Important
 - Run each file in full, then validate before the next file.

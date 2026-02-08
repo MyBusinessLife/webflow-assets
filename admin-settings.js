@@ -62,6 +62,13 @@ window.Webflow.push(async function () {
     sectionOrg: "Entreprise",
     sectionBilling: "Facturation",
     sectionSub: "Abonnement",
+    sectionUsers: "Utilisateurs & accès",
+    usersEmpty: "Aucun utilisateur pour cette organisation.",
+    usersEdit: "Accès",
+    usersSave: "Enregistrer",
+    usersClose: "Fermer",
+    usersModeInherit: "Accès automatique (selon rôle)",
+    usersModeCustom: "Accès personnalisé (cases à cocher)",
     save: "Enregistrer",
   };
 
@@ -272,10 +279,81 @@ window.Webflow.push(async function () {
       }
       .set-link:hover { transform: translateY(-1px); border-color: rgba(var(--mbl-primary-rgb, 14, 165, 233),0.30); box-shadow: 0 16px 34px rgba(2,6,23,0.12); }
 
+      .set-users { display:flex; flex-direction: column; gap: 10px; }
+      .set-user {
+        display:flex;
+        align-items:flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        border: 1px solid rgba(15,23,42,0.10);
+        background: rgba(255,255,255,0.86);
+        border-radius: 14px;
+        padding: 12px 12px;
+      }
+      .set-user__name { font-weight: 950; color: rgba(2,6,23,0.86); }
+      .set-user__meta { margin-top: 4px; color: rgba(2,6,23,0.62); font-weight: 800; font-size: 12px; }
+      .set-pills { display:flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+      .set-pill {
+        display:inline-flex;
+        align-items:center;
+        gap: 8px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(15,23,42,0.10);
+        background: rgba(248,250,252,0.92);
+        font-weight: 950;
+        font-size: 12px;
+        color: rgba(2,6,23,0.74);
+        white-space: nowrap;
+      }
+      .set-pill .dot { width:8px; height:8px; border-radius: 999px; background: rgba(148,163,184,0.9); }
+      .set-pill.is-ok .dot { background:#22c55e; }
+      .set-pill.is-warn .dot { background:#f59e0b; }
+      .set-pill.is-muted .dot { background:#94a3b8; }
+
+      /* Modal (users) */
+      .set-modal { position: fixed; inset: 0; z-index: 2147483646; display:none; }
+      .set-modal.is-open { display:block; }
+      .set-modal__backdrop { position:absolute; inset:0; background: rgba(2,6,23,0.55); backdrop-filter: blur(8px); }
+      .set-modal__panel {
+        position:absolute; left:50%; top: 6vh; transform: translateX(-50%);
+        width: min(900px, calc(100% - 24px));
+        max-height: 88vh;
+        overflow:auto;
+        border-radius: 18px;
+        border: 1px solid rgba(255,255,255,0.22);
+        background: rgba(255,255,255,0.96);
+        box-shadow: 0 24px 80px rgba(0,0,0,0.22);
+        padding: 14px;
+      }
+      .set-modal__head { display:flex; align-items:center; justify-content: space-between; gap: 10px; }
+      .set-modal__title { margin:0; font-size: 16px; font-weight: 1000; }
+      .set-modal__foot { display:flex; justify-content:flex-end; gap: 10px; margin-top: 14px; }
+      .set-checks {
+        display:grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px 14px;
+        margin-top: 10px;
+      }
+      .set-check {
+        display:flex;
+        align-items:flex-start;
+        gap: 10px;
+        border: 1px solid rgba(15,23,42,0.10);
+        background: rgba(248,250,252,0.70);
+        border-radius: 14px;
+        padding: 10px 10px;
+      }
+      .set-check input { margin-top: 3px; }
+      .set-check__txt { font-weight: 900; color: rgba(2,6,23,0.84); }
+      .set-check__hint { margin-top: 4px; font-weight: 800; font-size: 12px; color: rgba(2,6,23,0.62); }
+      .set-check.is-disabled { opacity: 0.55; }
+
       @media (max-width: 860px) {
         .mbl-settings__top { align-items: flex-start; flex-direction: column; }
         .set-grid { grid-template-columns: 1fr; }
         .set-form { grid-template-columns: 1fr; }
+        .set-checks { grid-template-columns: 1fr; }
       }
     `;
     document.head.appendChild(st);
@@ -419,6 +497,25 @@ window.Webflow.push(async function () {
               </div>
             </div>
           </section>
+
+          <section class="set-card">
+            <div class="set-card__head">${escapeHTML(STR.sectionUsers)}</div>
+            <div class="set-card__body">
+              <div class="set-users" data-users></div>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <div class="set-modal" data-modal aria-hidden="true">
+        <div class="set-modal__backdrop" data-modal-backdrop></div>
+        <div class="set-modal__panel" role="dialog" aria-modal="true" aria-label="Accès utilisateur">
+          <div class="set-modal__head">
+            <h3 class="set-modal__title" data-modal-title></h3>
+            <button type="button" class="set-link" data-modal-close>${escapeHTML(STR.usersClose)}</button>
+          </div>
+          <div data-modal-body></div>
+          <div class="set-modal__foot" data-modal-foot></div>
         </div>
       </div>
     `;
@@ -429,6 +526,13 @@ window.Webflow.push(async function () {
       orgForm: root.querySelector("[data-org-form]"),
       billingForm: root.querySelector("[data-billing-form]"),
       subKv: root.querySelector("[data-sub-kv]"),
+      users: root.querySelector("[data-users]"),
+      modal: root.querySelector("[data-modal]"),
+      modalBackdrop: root.querySelector("[data-modal-backdrop]"),
+      modalClose: root.querySelector("[data-modal-close]"),
+      modalTitle: root.querySelector("[data-modal-title]"),
+      modalBody: root.querySelector("[data-modal-body]"),
+      modalFoot: root.querySelector("[data-modal-foot]"),
     };
   }
 
@@ -465,9 +569,322 @@ window.Webflow.push(async function () {
     return String(el.value ?? "").trim();
   }
 
+  function isMissingColumnError(err) {
+    const msg = String(err?.message || "").toLowerCase();
+    return msg.includes("does not exist") || msg.includes("column") || msg.includes("missing");
+  }
+
+  function openModal(els, { title, bodyHtml, footHtml }) {
+    els.modalTitle.textContent = title || "";
+    els.modalBody.innerHTML = bodyHtml || "";
+    els.modalFoot.innerHTML = footHtml || "";
+    els.modal.classList.add("is-open");
+    els.modal.setAttribute("aria-hidden", "false");
+  }
+
+  function closeModal(els) {
+    els.modal.classList.remove("is-open");
+    els.modal.setAttribute("aria-hidden", "true");
+    els.modalTitle.textContent = "";
+    els.modalBody.innerHTML = "";
+    els.modalFoot.innerHTML = "";
+  }
+
+  function modulesAllow(mods, required) {
+    const req = Array.isArray(required) ? required.filter(Boolean) : [];
+    if (!req.length) return true;
+    return req.every((m) => Boolean(mods?.[m]));
+  }
+
+  const PERM_ITEMS = [
+    { group: "Général", key: "admin_dashboard", label: "Dashboard", requires: [] },
+    { group: "Général", key: "settings", label: "Paramètres", requires: [] },
+    { group: "CRM", key: "crm", label: "CRM", requires: ["billing"] },
+
+    { group: "Facturation", key: "billing_clients", label: "Clients", requires: ["billing"] },
+    { group: "Facturation", key: "billing_quotes", label: "Devis", requires: ["billing"] },
+    { group: "Facturation", key: "billing_invoices", label: "Factures", requires: ["billing"] },
+    { group: "Facturation", key: "billing_payments", label: "Paiements", requires: ["billing"] },
+
+    { group: "Stock", key: "inventory_products", label: "Produits", requires: ["billing"] },
+    { group: "Stock", key: "inventory_categories", label: "Catégories", requires: ["billing"] },
+
+    { group: "Interventions", key: "interventions_admin", label: "Gestion interventions", requires: ["interventions"] },
+    { group: "Interventions", key: "interventions_tech", label: "Espace technicien", requires: ["interventions"] },
+
+    { group: "Transport", key: "fleet", label: "Véhicules / Chauffeurs", requires: ["fleet"] },
+    { group: "Transport", key: "transport_driver", label: "Espace chauffeur", requires: ["transport"] },
+
+    { group: "Logistique", key: "logistics", label: "Logistique", requires: ["logistics"] },
+  ];
+
+  function groupBy(items, keyFn) {
+    const map = new Map();
+    items.forEach((it) => {
+      const k = String(keyFn(it) || "");
+      const arr = map.get(k) || [];
+      arr.push(it);
+      map.set(k, arr);
+    });
+    return map;
+  }
+
+  function pickDisplayName(profile, userId) {
+    const fn = String(profile?.first_name || "").trim();
+    const ln = String(profile?.last_name || "").trim();
+    const full = [fn, ln].filter(Boolean).join(" ").trim();
+    if (full) return full;
+    const email = String(profile?.email || "").trim();
+    if (email) return email;
+    const id = String(userId || "").trim();
+    return id ? id.slice(0, 8) + "…" : "Utilisateur";
+  }
+
+  function cleanRole(role) {
+    const r = String(role || "").trim().toLowerCase();
+    return r || "viewer";
+  }
+
+  function cleanMode(mode) {
+    const m = String(mode || "").trim().toLowerCase();
+    return m === "custom" ? "custom" : "inherit";
+  }
+
+  async function loadOrgMembers(supabase, orgId) {
+    const baseSel = "id, user_id, role, is_active, created_at";
+    const fullSel = baseSel + ", permissions_mode, permissions";
+    let res = await supabase
+      .from("organization_members")
+      .select(fullSel)
+      .eq("organization_id", orgId)
+      .order("created_at", { ascending: true })
+      .limit(2000);
+
+    if (res.error && isMissingColumnError(res.error)) {
+      res = await supabase
+        .from("organization_members")
+        .select(baseSel)
+        .eq("organization_id", orgId)
+        .order("created_at", { ascending: true })
+        .limit(2000);
+    }
+
+    if (res.error) throw res.error;
+    return res.data || [];
+  }
+
+  async function loadProfilesById(supabase, userIds) {
+    const ids = Array.isArray(userIds) ? userIds.filter(Boolean) : [];
+    if (!ids.length) return new Map();
+    const res = await supabase
+      .from("profiles")
+      .select("id, email, first_name, last_name, user_type")
+      .in("id", ids)
+      .limit(2000);
+    if (res.error) return new Map();
+    return new Map((res.data || []).map((p) => [String(p.id), p]));
+  }
+
+  async function refreshUsers(ctx, els) {
+    if (!ctx?.supabase || !ctx?.orgId) return;
+    const members = await loadOrgMembers(ctx.supabase, ctx.orgId);
+    const profilesById = await loadProfilesById(
+      ctx.supabase,
+      members.map((m) => m.user_id)
+    );
+    ctx.members = members;
+    ctx.profilesById = profilesById;
+    renderUsersList(els, { members, profilesById, modules: ctx.modules, ctx });
+  }
+
+  function renderUsersList(els, { members, profilesById, modules, ctx }) {
+    if (!members.length) {
+      els.users.innerHTML = `<div class="set-user"><div><div class="set-user__name">${escapeHTML(
+        STR.usersEmpty
+      )}</div></div></div>`;
+      return;
+    }
+
+    els.users.innerHTML = members
+      .map((m) => {
+        const prof = profilesById.get(String(m.user_id)) || null;
+        const name = pickDisplayName(prof, m.user_id);
+        const email = String(prof?.email || "").trim();
+        const userType = String(prof?.user_type || "").trim().toLowerCase() || "—";
+        const role = cleanRole(m.role);
+        const mode = cleanMode(m.permissions_mode);
+        const active = m.is_active !== false;
+
+        const pills = [
+          `<span class="set-pill ${active ? "is-ok" : "is-muted"}"><span class="dot"></span>${escapeHTML(active ? "Actif" : "Inactif")}</span>`,
+          `<span class="set-pill"><span class="dot"></span>${escapeHTML("Rôle: " + role)}</span>`,
+          `<span class="set-pill ${mode === "custom" ? "is-warn" : ""}"><span class="dot"></span>${escapeHTML(
+            mode === "custom" ? "Accès: personnalisé" : "Accès: auto"
+          )}</span>`,
+          `<span class="set-pill"><span class="dot"></span>${escapeHTML("Type: " + userType)}</span>`,
+        ];
+
+        const metaBits = [];
+        if (email) metaBits.push(email);
+        if (String(m.user_id || "").trim()) metaBits.push(String(m.user_id).slice(0, 8) + "…");
+        return `
+          <div class="set-user" data-member-id="${escapeHTML(m.id)}">
+            <div style="min-width:0;">
+              <div class="set-user__name">${escapeHTML(name)}</div>
+              <div class="set-user__meta">${escapeHTML(metaBits.join(" • ") || "—")}</div>
+              <div class="set-pills">${pills.join("")}</div>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:10px; align-items:flex-end;">
+              <button type="button" class="set-link" data-action="edit-user">${escapeHTML(STR.usersEdit)}</button>
+            </div>
+          </div>
+        `;
+      })
+      .join("");
+
+    els.users.querySelectorAll('[data-action="edit-user"]').forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        const card = e.target.closest("[data-member-id]");
+        if (!card) return;
+        const memberId = String(card.getAttribute("data-member-id") || "");
+        const member = members.find((x) => String(x.id) === memberId) || null;
+        if (!member) return;
+        const prof = profilesById.get(String(member.user_id)) || null;
+        openUserModal(els, { member, profile: prof, modules, ctx });
+      });
+    });
+  }
+
+  function openUserModal(els, { member, profile, modules, ctx }) {
+    const name = pickDisplayName(profile, member.user_id);
+    const role = cleanRole(member.role);
+    const mode = cleanMode(member.permissions_mode);
+    const perms = member.permissions && typeof member.permissions === "object" ? member.permissions : {};
+    const active = member.is_active !== false;
+
+    const roleOptions = ["owner", "admin", "manager", "tech", "driver", "viewer"]
+      .map((r) => `<option value="${escapeHTML(r)}"${r === role ? " selected" : ""}>${escapeHTML(r)}</option>`)
+      .join("");
+
+    const grouped = groupBy(PERM_ITEMS, (x) => x.group);
+    const blocks = Array.from(grouped.entries())
+      .map(([group, items]) => {
+        const checks = items
+          .map((it) => {
+            const enabledBySub = modulesAllow(modules, it.requires);
+            const checked = perms?.[it.key] === true;
+            const disabled = !enabledBySub;
+            const hint = disabled ? "Abonnement requis" : it.requires?.length ? `Nécessite: ${it.requires.join(", ")}` : "";
+            const cls = disabled ? "set-check is-disabled" : "set-check";
+            return `
+              <label class="${cls}">
+                <input type="checkbox" data-perm="${escapeHTML(it.key)}"${checked ? " checked" : ""}${disabled ? " disabled" : ""} />
+                <div>
+                  <div class="set-check__txt">${escapeHTML(it.label)}</div>
+                  ${hint ? `<div class="set-check__hint">${escapeHTML(hint)}</div>` : ""}
+                </div>
+              </label>
+            `;
+          })
+          .join("");
+        return `
+          <div class="set-card" style="margin-top:12px;">
+            <div class="set-card__head">${escapeHTML(group)}</div>
+            <div class="set-card__body">
+              <div class="set-checks">${checks}</div>
+            </div>
+          </div>
+        `;
+      })
+      .join("");
+
+    openModal(els, {
+      title: `Accès utilisateur • ${name}`,
+      bodyHtml: `
+        <form class="set-form" data-user-form>
+          <div class="set-field">
+            <div class="set-label">Rôle</div>
+            <select class="set-input" name="role">${roleOptions}</select>
+          </div>
+          <div class="set-field">
+            <div class="set-label">Statut</div>
+            <label style="display:flex; align-items:center; gap:10px; font-weight: 900; color: rgba(2,6,23,0.78);">
+              <input type="checkbox" name="is_active" ${active ? "checked" : ""} />
+              Actif
+            </label>
+          </div>
+          <div class="set-field is-full">
+            <div class="set-label">Mode d'accès</div>
+            <select class="set-input" name="permissions_mode">
+              <option value="inherit"${mode === "inherit" ? " selected" : ""}>${escapeHTML(STR.usersModeInherit)}</option>
+              <option value="custom"${mode === "custom" ? " selected" : ""}>${escapeHTML(STR.usersModeCustom)}</option>
+            </select>
+          </div>
+        </form>
+        <div data-perms-wrap ${mode === "custom" ? "" : 'style="display:none"'}>${blocks}</div>
+      `,
+      footHtml: `
+        <button type="button" class="set-link" data-action="cancel">${escapeHTML(STR.usersClose)}</button>
+        <button type="button" class="set-btn" data-action="save">${escapeHTML(STR.usersSave)}</button>
+      `,
+    });
+
+    const permsWrap = els.modalBody.querySelector("[data-perms-wrap]");
+    const form = els.modalBody.querySelector("[data-user-form]");
+    form.permissions_mode.addEventListener("change", () => {
+      const v = String(form.permissions_mode.value || "inherit");
+      if (permsWrap) permsWrap.style.display = v === "custom" ? "" : "none";
+    });
+
+    els.modalFoot.querySelector('[data-action="cancel"]').addEventListener("click", () => closeModal(els));
+    els.modalFoot.querySelector('[data-action="save"]').addEventListener("click", async () => {
+      if (!ctx?.supabase) return;
+      const nextRole = String(form.role.value || "").trim().toLowerCase() || "viewer";
+      const nextActive = Boolean(form.is_active.checked);
+      const nextMode = cleanMode(form.permissions_mode.value);
+
+      const nextPerms = {};
+      if (nextMode === "custom" && permsWrap) {
+        permsWrap.querySelectorAll("input[type='checkbox'][data-perm]").forEach((cb) => {
+          if (cb.disabled) return;
+          if (cb.checked) nextPerms[String(cb.getAttribute("data-perm") || "")] = true;
+        });
+      }
+
+      showBanner(els, STR.saving, "");
+      try {
+        const payload = {
+          role: nextRole,
+          is_active: nextActive,
+          permissions_mode: nextMode,
+          permissions: nextPerms,
+          updated_at: new Date().toISOString(),
+        };
+        const res = await ctx.supabase.from("organization_members").update(payload).eq("id", member.id);
+        if (res.error) throw res.error;
+
+        closeModal(els);
+        await refreshUsers(ctx, els);
+        showBanner(els, "Accès utilisateur mis à jour.", "ok");
+        setTimeout(() => showBanner(els, "", ""), 1400);
+      } catch (e) {
+        warn("user update failed", e);
+        showBanner(els, e?.message || STR.saveError, "err");
+      }
+    });
+  }
+
   // ===== boot =====
   injectStyles();
   const els = renderShell();
+  const ctx = { supabase: null, orgId: "", modules: {}, members: [], profilesById: new Map() };
+
+  els.modalBackdrop.addEventListener("click", () => closeModal(els));
+  els.modalClose.addEventListener("click", () => closeModal(els));
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (els.modal.classList.contains("is-open")) closeModal(els);
+  });
 
   try {
     const supabase = await getSupabase();
@@ -512,6 +929,10 @@ window.Webflow.push(async function () {
     const limits = entRes?.data?.limits && typeof entRes.data.limits === "object" ? entRes.data.limits : {};
     const maxUsers = limits?.max_users != null ? String(limits.max_users) : "—";
 
+    ctx.supabase = supabase;
+    ctx.orgId = orgId;
+    ctx.modules = modules;
+
     // Org form
     els.orgForm.innerHTML =
       fieldHtml({ key: "trade_name", label: "Nom commercial", value: p.trade_name, full: true, placeholder: "Ex: My Business Life" }) +
@@ -553,6 +974,14 @@ window.Webflow.push(async function () {
       kvHtml("Plan", planName) +
       kvHtml("Statut", status) +
       kvHtml("Max utilisateurs", maxUsers);
+
+    // Users / access
+    try {
+      await refreshUsers(ctx, els);
+    } catch (e) {
+      warn("users load failed", e);
+      els.users.innerHTML = `<div class="set-user"><div><div class="set-user__name">Erreur chargement utilisateurs</div><div class="set-user__meta">Vérifie la migration 025 et les droits RLS.</div></div></div>`;
+    }
 
     els.btnSave.addEventListener("click", async () => {
       showBanner(els, "", "");
@@ -608,4 +1037,3 @@ window.Webflow.push(async function () {
     showBanner(els, STR.loadError, "err");
   }
 });
-

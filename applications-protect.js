@@ -44,6 +44,7 @@
     LOGIN_URL,
     ADMIN_DASH: CFG.ADMIN_DASH || `${APP_ROOT}/admin/dashboard`,
     TECH_DASH: CFG.TECH_DASH || `${APP_ROOT}/technician/dashboard`,
+    DRIVER_DASH: CFG.DRIVER_DASH || `${APP_ROOT}/driver/dashboard`,
 
     MAX_BOOT_MS: 6000,
   };
@@ -53,6 +54,7 @@
   CFG.LOGIN_PATH ||= CONFIG.LOGIN_URL;
   CFG.ADMIN_DASH ||= CONFIG.ADMIN_DASH;
   CFG.TECH_DASH ||= CONFIG.TECH_DASH;
+  CFG.DRIVER_DASH ||= CONFIG.DRIVER_DASH;
   CFG.AUTH_STORAGE_KEY ||= CONFIG.AUTH_STORAGE_KEY;
   CFG.SUPABASE_URL ||= CONFIG.SUPABASE_URL;
   CFG.SUPABASE_ANON_KEY ||= CONFIG.SUPABASE_ANON_KEY;
@@ -216,13 +218,29 @@
     return client;
   }
 
+  function isAdminRole(role) {
+    const r = String(role || "").trim().toLowerCase();
+    return ["owner", "admin", "manager"].includes(r);
+  }
+
   async function getRole(supabase, userId) {
+    // Prefer org membership role (per org) then fallback to profiles.role (legacy).
     try {
-      const { data, error } = await supabase
-        .from(CONFIG.PROFILES_TABLE)
-        .select("role")
-        .eq("id", userId)
-        .single();
+      const mem = await supabase
+        .from("organization_members")
+        .select("role, is_default, created_at")
+        .eq("user_id", userId)
+        .eq("is_active", true)
+        .order("is_default", { ascending: false })
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      const r = String(mem?.data?.role || "").trim().toLowerCase();
+      if (!mem.error && r) return r;
+    } catch (_) {}
+
+    try {
+      const { data, error } = await supabase.from(CONFIG.PROFILES_TABLE).select("role").eq("id", userId).single();
       if (error) return "unknown";
       return String(data?.role || "").trim().toLowerCase() || "unknown";
     } catch (e) {
@@ -305,8 +323,9 @@
         if (next) return safeReplace(next, "login_next");
 
         const role = await getRole(supabase, session.user.id);
-        if (role === "admin") return safeReplace(CONFIG.ADMIN_DASH, "login_admin");
+        if (isAdminRole(role) || role === "admin") return safeReplace(CONFIG.ADMIN_DASH, "login_admin");
         if (role === "tech" || role === "technician") return safeReplace(CONFIG.TECH_DASH, "login_tech");
+        if (role === "driver") return safeReplace(CONFIG.DRIVER_DASH, "login_driver");
 
         ready();
         return;
@@ -323,8 +342,9 @@
         if (next) return safeReplace(next, "signup_next");
 
         const role = await getRole(supabase, session.user.id);
-        if (role === "admin") return safeReplace(CONFIG.ADMIN_DASH, "signup_admin");
+        if (isAdminRole(role) || role === "admin") return safeReplace(CONFIG.ADMIN_DASH, "signup_admin");
         if (role === "tech" || role === "technician") return safeReplace(CONFIG.TECH_DASH, "signup_tech");
+        if (role === "driver") return safeReplace(CONFIG.DRIVER_DASH, "signup_driver");
         return safeReplace(CONFIG.APP_ROOT, "signup_default");
       }
 
@@ -337,13 +357,20 @@
       const role = await getRole(supabase, session.user.id);
       if (role === "unknown") return safeReplace(CONFIG.LOGIN_URL, "role_unknown");
 
-      if (p.startsWith(`${APP_ROOT}/admin`) && role !== "admin") {
+      if (p.startsWith(`${APP_ROOT}/admin`) && !(isAdminRole(role) || role === "admin")) {
         if (role === "tech" || role === "technician") return safeReplace(CONFIG.TECH_DASH, "admin_page_as_tech");
+        if (role === "driver") return safeReplace(CONFIG.DRIVER_DASH, "admin_page_as_driver");
         return safeReplace(CONFIG.LOGIN_URL, "admin_forbidden");
       }
 
-      if (p.startsWith(`${APP_ROOT}/technician`) && role !== "admin" && role !== "tech" && role !== "technician") {
+      if (p.startsWith(`${APP_ROOT}/technician`) && !(isAdminRole(role) || role === "admin" || role === "tech" || role === "technician")) {
+        if (role === "driver") return safeReplace(CONFIG.DRIVER_DASH, "tech_page_as_driver");
         return safeReplace(CONFIG.LOGIN_URL, "tech_forbidden");
+      }
+
+      if (p.startsWith(`${APP_ROOT}/driver`) && !(isAdminRole(role) || role === "admin" || role === "driver")) {
+        if (role === "tech" || role === "technician") return safeReplace(CONFIG.TECH_DASH, "driver_page_as_tech");
+        return safeReplace(CONFIG.LOGIN_URL, "driver_forbidden");
       }
 
       ready();

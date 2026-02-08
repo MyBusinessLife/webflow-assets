@@ -95,6 +95,10 @@
       "technician-interventions-run": `${CONFIG.APP_ROOT}/technician/intervention-realisation`,
       "technician-profile": `${CONFIG.APP_ROOT}/technician/profile`,
       "technician-earn": `${CONFIG.APP_ROOT}/technician/earn`,
+      "technician-planning": `${CONFIG.APP_ROOT}/technician/planning`,
+
+      // Driver
+      "driver-dashboard": `${CONFIG.APP_ROOT}/driver/dashboard`,
 
       // Shared
       subscriptions: CONFIG.SUBSCRIBE_PATH,
@@ -739,16 +743,31 @@
     }
 
     async function resolveOrgMember(supabase, userId) {
-      const { data, error } = await supabase
+      // Newer schemas include permissions_mode + permissions.
+      const baseSel = "organization_id, role, is_default, created_at";
+      const fullSel = baseSel + ", permissions_mode, permissions";
+      let res = await supabase
         .from("organization_members")
-        .select("organization_id, role, is_default, created_at")
+        .select(fullSel)
         .eq("user_id", userId)
         .eq("is_active", true)
         .order("is_default", { ascending: false })
         .order("created_at", { ascending: true })
         .limit(1);
-      if (error) return null;
-      return data?.[0] || null;
+
+      if (res.error && String(res.error.message || "").toLowerCase().includes("does not exist")) {
+        res = await supabase
+          .from("organization_members")
+          .select(baseSel)
+          .eq("user_id", userId)
+          .eq("is_active", true)
+          .order("is_default", { ascending: false })
+          .order("created_at", { ascending: true })
+          .limit(1);
+      }
+
+      if (res.error) return null;
+      return res.data?.[0] || null;
     }
 
     async function getProfileRole(supabase, userId) {
@@ -793,6 +812,7 @@
       products: `<svg class="mbl-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4a2 2 0 0 0 1-1.73z"/><path d="M3.29 7 12 12l8.71-5"/><path d="M12 22V12"/></svg>`,
       logistics: `<svg class="mbl-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-6 9 6v12H3V9z"/><path d="M9 22V12h6v10"/><path d="M9 12h6"/></svg>`,
       interventions: `<svg class="mbl-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3-3a2.1 2.1 0 0 0-3-3z"/><path d="M19 8l-7.5 7.5a2 2 0 0 1-1.2.6l-3.8.5.5-3.8a2 2 0 0 1 .6-1.2L15 4"/></svg>`,
+      calendar: `<svg class="mbl-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>`,
       truck: `<svg class="mbl-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h11v10H3z"/><path d="M14 10h4l3 3v4h-7z"/><path d="M7 17a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/><path d="M18 17a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg>`,
       settings: `<svg class="mbl-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V22a2 2 0 1 1-4 0v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H2a2 2 0 1 1 0-4h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3 1.7 1.7 0 0 0 1-1.5V2a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8 1.7 1.7 0 0 0 1.5 1H22a2 2 0 1 1 0 4h-.2a1.7 1.7 0 0 0-1.5 1z"/></svg>`,
       card: `<svg class="mbl-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>`,
@@ -894,6 +914,57 @@
       return req.every((m) => Boolean(mods?.[m]));
     }
 
+    // =========================================================
+    // Per-member permissions
+    // - Stored in organization_members.permissions + permissions_mode ('inherit'|'custom')
+    // - Effective access also depends on the active subscription modules (checked separately).
+    // =========================================================
+
+    const PERMS = {
+      admin_dashboard: "admin_dashboard",
+      settings: "settings",
+
+      billing_clients: "billing_clients",
+      billing_quotes: "billing_quotes",
+      billing_invoices: "billing_invoices",
+      billing_payments: "billing_payments",
+
+      inventory_products: "inventory_products",
+      inventory_categories: "inventory_categories",
+
+      crm: "crm",
+
+      interventions_admin: "interventions_admin",
+      interventions_tech: "interventions_tech",
+
+      fleet: "fleet",
+      logistics: "logistics",
+
+      transport_driver: "transport_driver",
+    };
+
+    function normalizePermissions(raw) {
+      const mode = String(raw?.permissions_mode || "inherit").trim().toLowerCase();
+      const permissions = raw?.permissions && typeof raw.permissions === "object" ? raw.permissions : {};
+      return { mode: mode === "custom" ? "custom" : "inherit", permissions };
+    }
+
+    function permissionAllow({ isAdmin, orgRole, permMode, permMap }, permKey) {
+      const key = String(permKey || "").trim();
+      if (!key) return true;
+      if (isAdmin) return true;
+
+      if (permMode === "custom") return permMap?.[key] === true;
+
+      // Inherit defaults: keep it strict.
+      // - tech => interventions only
+      // - driver => transport driver only
+      // - others => no access by default (admin can enable via "custom")
+      if (orgRole === "tech") return key === PERMS.interventions_tech;
+      if (orgRole === "driver") return key === PERMS.transport_driver;
+      return false;
+    }
+
     function cleanPath(value) {
       const v = sanitizePath(value) || "";
       const pathOnly = String(v).split("?")[0].split("#")[0];
@@ -902,7 +973,7 @@
 
     const CURRENT_PATH = cleanPath(location.pathname);
 
-    function buildNav({ isAdmin, isTech, modules, activePage }) {
+    function buildNav({ isAdmin, isTech, isDriver, orgRole, permMode, permMap, modules, activePage }) {
       const items = [
         {
           section: "Général",
@@ -912,7 +983,8 @@
               label: "Dashboard",
               href: isTech && !isAdmin ? routeFor("technician-dashboard") : routeFor("admin-dashboard"),
               icon: ICONS.dashboard,
-              roles: ["admin", "tech"],
+              perm: isDriver && !isAdmin ? PERMS.transport_driver : isTech && !isAdmin ? PERMS.interventions_tech : PERMS.admin_dashboard,
+              roles: [],
               requires: [],
             },
             {
@@ -920,7 +992,8 @@
               label: "CRM",
               href: routeFor("admin-crm"),
               icon: ICONS.crm,
-              roles: ["admin"],
+              perm: PERMS.crm,
+              roles: [],
               requires: ["billing"],
             },
           ],
@@ -928,16 +1001,49 @@
         {
           section: "Facturation",
           entries: [
-            { key: "clients", label: "Clients", href: routeFor("clients"), icon: ICONS.clients, roles: ["admin"], requires: ["billing"] },
-            { key: "devis-list", label: "Devis", href: routeFor("devis-list"), icon: ICONS.quotes, roles: ["admin"], requires: ["billing"] },
-            { key: "factures-list", label: "Factures", href: routeFor("factures-list"), icon: ICONS.invoices, roles: ["admin"], requires: ["billing"] },
-            { key: "admin-paiements", label: "Paiements", href: routeFor("admin-paiements"), icon: ICONS.card, roles: ["admin"], requires: ["billing"] },
+            {
+              key: "clients",
+              label: "Clients",
+              href: routeFor("clients"),
+              icon: ICONS.clients,
+              perm: PERMS.billing_clients,
+              roles: [],
+              requires: ["billing"],
+            },
+            {
+              key: "devis-list",
+              label: "Devis",
+              href: routeFor("devis-list"),
+              icon: ICONS.quotes,
+              perm: PERMS.billing_quotes,
+              roles: [],
+              requires: ["billing"],
+            },
+            {
+              key: "factures-list",
+              label: "Factures",
+              href: routeFor("factures-list"),
+              icon: ICONS.invoices,
+              perm: PERMS.billing_invoices,
+              roles: [],
+              requires: ["billing"],
+            },
+            {
+              key: "admin-paiements",
+              label: "Paiements",
+              href: routeFor("admin-paiements"),
+              icon: ICONS.card,
+              perm: PERMS.billing_payments,
+              roles: [],
+              requires: ["billing"],
+            },
             {
               key: "admin-products",
               label: "Produits",
               href: routeFor("admin-products"),
               icon: ICONS.products,
-              roles: ["admin"],
+              perm: PERMS.inventory_products,
+              roles: [],
               requires: ["billing"],
             },
             {
@@ -945,7 +1051,8 @@
               label: "Catégories",
               href: routeFor("admin-categories"),
               icon: ICONS.products,
-              roles: ["admin"],
+              perm: PERMS.inventory_categories,
+              roles: [],
               requires: ["billing"],
             },
           ],
@@ -958,7 +1065,8 @@
               label: "Gestion interventions",
               href: routeFor("admin-interventions"),
               icon: ICONS.interventions,
-              roles: ["admin"],
+              perm: PERMS.interventions_admin,
+              roles: [],
               requires: ["interventions"],
             },
             {
@@ -966,7 +1074,8 @@
               label: "Mes interventions",
               href: routeFor("technician-interventions"),
               icon: ICONS.interventions,
-              roles: ["tech", "admin"],
+              perm: PERMS.interventions_tech,
+              roles: [],
               requires: ["interventions"],
             },
             {
@@ -974,7 +1083,8 @@
               label: "Espace technicien",
               href: routeFor("technician-dashboard"),
               icon: ICONS.interventions,
-              roles: ["tech", "admin"],
+              perm: PERMS.interventions_tech,
+              roles: [],
               requires: ["interventions"],
             },
             {
@@ -982,7 +1092,8 @@
               label: "Gains",
               href: routeFor("technician-earn"),
               icon: ICONS.card,
-              roles: ["tech", "admin"],
+              perm: PERMS.interventions_tech,
+              roles: [],
               requires: ["interventions"],
             },
             {
@@ -990,7 +1101,17 @@
               label: "Mon profil",
               href: routeFor("technician-profile"),
               icon: ICONS.settings,
-              roles: ["tech", "admin"],
+              perm: PERMS.interventions_tech,
+              roles: [],
+              requires: ["interventions"],
+            },
+            {
+              key: "technician-planning",
+              label: "Planning",
+              href: routeFor("technician-planning"),
+              icon: ICONS.calendar,
+              perm: PERMS.interventions_tech,
+              roles: [],
               requires: ["interventions"],
             },
           ],
@@ -1003,7 +1124,8 @@
               label: "Logistique",
               href: routeFor("admin-logistics"),
               icon: ICONS.logistics,
-              roles: ["admin"],
+              perm: PERMS.logistics,
+              roles: [],
               requires: ["logistics"],
             },
           ],
@@ -1018,8 +1140,23 @@
               label: modules && typeof modules === "object" && modules.transport ? "Transport" : "Véhicules",
               href: routeFor("admin-transport"),
               icon: ICONS.truck,
-              roles: ["admin"],
+              perm: PERMS.fleet,
+              roles: [],
               requires: ["fleet"],
+            },
+          ],
+        },
+        {
+          section: "Chauffeur",
+          entries: [
+            {
+              key: "driver-dashboard",
+              label: "Mes tournées",
+              href: routeFor("driver-dashboard"),
+              icon: ICONS.truck,
+              perm: PERMS.transport_driver,
+              roles: [],
+              requires: ["transport"],
             },
           ],
         },
@@ -1033,11 +1170,16 @@
               const roleOk =
                 !it.roles?.length ||
                 (it.roles.includes("admin") && isAdmin) ||
-                (it.roles.includes("tech") && isTech);
+                (it.roles.includes("tech") && isTech) ||
+                (it.roles.includes("driver") && isDriver);
+
               const modOk = modulesAllow(modules, it.requires);
-              const locked = roleOk && !modOk;
-              const visible = roleOk && (modOk || CONFIG.SHOW_LOCKED);
-              return { ...it, visible, locked };
+              const permOk = permissionAllow({ isAdmin, orgRole, permMode, permMap }, it.perm);
+
+              const lockKind = roleOk && !modOk ? "subscription" : roleOk && modOk && !permOk ? "permission" : "";
+              const locked = Boolean(lockKind);
+              const visible = roleOk && (!locked || CONFIG.SHOW_LOCKED);
+              return { ...it, visible, locked, lockKind };
             })
             .filter((it) => it.visible);
           return { ...sec, entries };
@@ -1063,11 +1205,12 @@
         wrap.className = "mbl-nav__section";
         wrap.innerHTML = `<div class="mbl-nav__label">${escapeHTML(sec.section)}</div>`;
         sec.entries.forEach((it) => {
+          const badge = it.lockKind === "subscription" ? "Verrouillé" : it.lockKind === "permission" ? "Accès" : "";
           const node = itemTemplate({
             href: it.locked ? "" : it.href,
             label: it.label,
             icon: it.icon,
-            badge: it.locked ? "Verrouillé" : "",
+            badge,
             active: it.active,
             locked: it.locked,
           });
@@ -1075,7 +1218,11 @@
             node.addEventListener("click", (e) => {
               e.preventDefault();
               e.stopPropagation();
-              openSubscriptionsModal({ source: `locked:${it.key}` });
+              if (it.lockKind === "permission") {
+                alert("Accès restreint. Demande à un administrateur de t'accorder l'accès à ce module.");
+              } else {
+                openSubscriptionsModal({ source: `locked:${it.key}` });
+              }
               openMobile(false);
             });
           }
@@ -1225,6 +1372,9 @@
 
       const isAdmin = ["owner", "admin", "manager"].includes(orgRole) || profileRole === "admin";
       const isTech = orgRole === "tech" || profileRole === "tech";
+      const isDriver = orgRole === "driver" || profileRole === "driver";
+      const permState = normalizePermissions(member);
+      const accessRole = isAdmin ? "admin" : isTech ? "tech" : isDriver ? "driver" : orgRole;
 
       // Resolve org name + plan/modules
       const [orgRes, entRes, subRes] = await Promise.all([
@@ -1259,7 +1409,16 @@
       dom.aside.querySelector("[data-org-meta]").textContent = metaBits.join(" • ");
 
       const activePage = String(document.documentElement.dataset.page || "").trim();
-      const nav = buildNav({ isAdmin, isTech, modules: subActive ? modules : {}, activePage });
+      const nav = buildNav({
+        isAdmin,
+        isTech,
+        isDriver,
+        orgRole: accessRole,
+        permMode: permState.mode,
+        permMap: permState.permissions,
+        modules: subActive ? modules : {},
+        activePage,
+      });
       renderNav(navEl, nav);
       renderBottom(bottomEl, { isAdmin, isTech, planName, isLogged: true });
     } catch (e) {
