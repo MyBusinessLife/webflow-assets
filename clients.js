@@ -151,7 +151,7 @@ window.Webflow.push(async function () {
       renderList();
 
       const preselectId = resolveClientIdFromUrl();
-      if (preselectId) selectClient(preselectId);
+      if (preselectId) openClientModal(preselectId, "view");
 
       if (state.currentUserId && state.organizationId) setStatus("");
     } catch (e) {
@@ -179,14 +179,23 @@ window.Webflow.push(async function () {
     });
 
     els.list.addEventListener("click", (e) => {
+      const action = e.target.closest("[data-list-action]")?.dataset?.listAction || "";
       const card = e.target.closest("[data-client-id]");
       if (!card) return;
-      selectClient(card.dataset.clientId || "");
+      const id = card.dataset.clientId || "";
+
+      if (action === "edit") return openClientModal(id, "edit");
+      if (action === "invoice") return openInvoiceUrlForId(id);
+      if (action === "quote") return openQuoteUrlForId(id);
+
+      // Default: view
+      openClientModal(id, "view");
     });
 
-    els.detail.addEventListener("click", onDetailClick);
-    els.detail.addEventListener("input", onDetailInput);
-    els.detail.addEventListener("change", onDetailInput);
+    els.clientModalBackdrop.addEventListener("click", () => closeClientModal());
+    els.clientModalInner.addEventListener("click", onDetailClick);
+    els.clientModalInner.addEventListener("input", onDetailInput);
+    els.clientModalInner.addEventListener("change", onDetailInput);
 
     els.modalBackdrop.addEventListener("click", closeDeleteModal);
     els.modalCancel.addEventListener("click", closeDeleteModal);
@@ -194,6 +203,12 @@ window.Webflow.push(async function () {
     els.modalInput.addEventListener("input", () => {
       const ok = normalize(String(els.modalInput.value || "")) === "supprimer";
       els.modalConfirm.disabled = !ok;
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      if (!els.modal.hidden) return closeDeleteModal();
+      if (!els.clientModal.hidden) return closeClientModal();
     });
   }
 
@@ -296,16 +311,6 @@ window.Webflow.push(async function () {
           <div class="cl-empty-body">${STR.emptyBody}</div>
         </div>
       `;
-      // Don't clobber edit/create state when the list is filtered to empty.
-      if (state.mode === "view" && !hasUnsavedChanges()) {
-        state.selectedId = "";
-        state.form = blankClientForm();
-        state.sites = [];
-        state.siteMode = "idle";
-        state.siteEditingId = "";
-        state.siteForm = blankSiteForm();
-        renderDetailEmpty();
-      }
       return;
     }
 
@@ -319,7 +324,8 @@ window.Webflow.push(async function () {
         const ref = escapeHTML(String(c.external_ref || "").trim());
         const email = escapeHTML(String(c.email || "").trim());
         const phone = escapeHTML(String(c.phone || "").trim());
-        const metaBits = [ref ? `Ref: ${ref}` : "", email, phone].filter(Boolean);
+        const siret = escapeHTML(String(c.siret || "").trim());
+        const metaBits = [ref ? `Ref: ${ref}` : "", email, phone, siret ? `SIRET: ${siret}` : ""].filter(Boolean);
         const meta = metaBits.length ? metaBits.join(" • ") : "—";
         return `
           <article class="cl-card ${selected}" data-client-id="${escapeHTML(c.id)}">
@@ -331,28 +337,16 @@ window.Webflow.push(async function () {
               ${badge}
             </div>
             <div class="cl-card-meta">${escapeHTML(meta)}</div>
+            <div class="cl-card-actions">
+              <button type="button" class="cl-btn cl-btn--primary cl-btn--sm" data-list-action="view">Voir</button>
+              <button type="button" class="cl-btn cl-btn--ghost cl-btn--sm" data-list-action="edit">Editer</button>
+              <button type="button" class="cl-btn cl-btn--ghost cl-btn--sm" data-list-action="quote">Devis</button>
+              <button type="button" class="cl-btn cl-btn--ghost cl-btn--sm" data-list-action="invoice">Facture</button>
+            </div>
           </article>
         `;
       })
       .join("");
-
-    // Keep detail in sync (e.g., after search/filter changes) but never discard edits.
-    if (state.mode === "view") {
-      if (state.selectedId) {
-        const stillVisible = rows.some((c) => String(c.id) === String(state.selectedId));
-        if (!stillVisible && !hasUnsavedChanges()) {
-          state.selectedId = "";
-          state.form = blankClientForm();
-          state.sites = [];
-          state.siteMode = "idle";
-          state.siteEditingId = "";
-          state.siteForm = blankSiteForm();
-          renderDetailEmpty();
-        }
-      } else {
-        renderDetailEmpty();
-      }
-    }
   }
 
   function filterClients(items) {
@@ -375,52 +369,88 @@ window.Webflow.push(async function () {
     state.siteMode = "idle";
     state.siteEditingId = "";
     state.siteForm = blankSiteForm();
+    setClientModalOpen(true);
     renderList();
     renderDetail();
   }
 
-  function selectClient(id) {
+  function syncBodyModalOpen() {
+    const anyOpen = !els.modal.hidden || !els.clientModal.hidden;
+    document.body.classList.toggle("cl-modal-open", anyOpen);
+  }
+
+  function setClientModalOpen(open) {
+    els.clientModal.hidden = !open;
+    syncBodyModalOpen();
+  }
+
+  function closeClientModal(force) {
+    if (!force && !confirmDiscardIfNeeded()) return;
+    setClientModalOpen(false);
+
+    // Reset transient edit state.
+    if (state.mode === "create") {
+      state.selectedId = "";
+      state.form = blankClientForm();
+      state.sites = [];
+    } else if (state.selectedId) {
+      const found = state.clients.find((c) => String(c.id) === String(state.selectedId));
+      if (found) state.form = clientToForm(found);
+    }
+
+    state.mode = "view";
+    state.siteMode = "idle";
+    state.siteEditingId = "";
+    state.siteForm = blankSiteForm();
+    resetDirtyFlags();
+    renderList();
+  }
+
+  function openClientModal(id, mode) {
     const safe = asUuid(id);
     if (!safe) return;
-    if (safe === state.selectedId && state.mode === "view" && state.siteMode === "idle") return;
+    const requestedMode = mode === "edit" ? "edit" : "view";
+    if (safe === state.selectedId && state.mode === requestedMode && !els.clientModal.hidden) return;
     if (!confirmDiscardIfNeeded()) return;
     resetDirtyFlags();
+
     const found = state.clients.find((c) => String(c.id) === String(safe));
     if (!found) return;
 
     state.selectedId = safe;
-    state.mode = "view";
+    state.mode = requestedMode;
     state.form = clientToForm(found);
     state.sites = [];
     state.siteMode = "idle";
     state.siteEditingId = "";
     state.siteForm = blankSiteForm();
+    state.dirtyClient = false;
+    state.dirtySite = false;
 
+    setClientModalOpen(true);
     renderList();
     renderDetail();
+
     loadSitesForClient(safe).catch((e) => {
       console.error(e);
       showToast("warning", "Impossible de charger les sites.");
     });
   }
 
-  function renderDetailEmpty() {
-    els.detail.innerHTML = `
-      <div class="cl-detail-empty">
-        <div class="cl-detail-empty-title">Clients</div>
-        <div class="cl-detail-empty-body">${STR.emptySelect}</div>
-        <button class="cl-btn cl-btn--primary" data-action="new">${STR.btnNew}</button>
-      </div>
-    `;
-  }
-
   function renderDetail() {
+    if (els.clientModal.hidden) return;
+
     if (state.mode === "create") {
-      els.detail.innerHTML = renderDetailHtml({ title: "Nouveau client", subtitle: "Creation", pill: `<span class="cl-pill cl-pill--info">Nouveau</span>` });
+      els.clientModalInner.innerHTML = renderDetailHtml({
+        title: "Nouveau client",
+        subtitle: "Creation",
+        pill: `<span class="cl-pill cl-pill--info">Nouveau</span>`,
+      });
       return;
     }
+
     if (!state.selectedId) {
-      renderDetailEmpty();
+      els.clientModalInner.innerHTML = "";
       return;
     }
 
@@ -432,7 +462,7 @@ window.Webflow.push(async function () {
     if (state.form.phone) subtitleBits.push(state.form.phone);
     const subtitle = escapeHTML(subtitleBits.join(" • ") || "—");
     const pill = active ? `<span class="cl-pill cl-pill--ok">Actif</span>` : `<span class="cl-pill cl-pill--muted">Archive</span>`;
-    els.detail.innerHTML = renderDetailHtml({ title, subtitle, pill });
+    els.clientModalInner.innerHTML = renderDetailHtml({ title, subtitle, pill });
   }
 
   function renderDetailHtml({ title, subtitle, pill }) {
@@ -445,6 +475,7 @@ window.Webflow.push(async function () {
       ? `
         <button class="cl-btn cl-btn--ghost" data-action="cancel">${STR.btnCancel}</button>
         <button class="cl-btn cl-btn--primary" data-action="save">${STR.btnSave}</button>
+        <button class="cl-iconbtn" type="button" data-action="close" aria-label="Fermer">&times;</button>
       `
       : `
         <button class="cl-btn cl-btn--ghost" data-action="edit">${STR.btnEdit}</button>
@@ -453,6 +484,7 @@ window.Webflow.push(async function () {
         <div class="cl-split"></div>
         <button class="cl-btn cl-btn--ghost" data-action="toggle-active" ${canArchive ? "" : "disabled"}>${state.form.is_active === false ? STR.btnRestore : STR.btnArchive}</button>
         <button class="cl-btn cl-btn--danger" data-action="delete" ${canDelete ? "" : "disabled"}>${STR.btnDelete}</button>
+        <button class="cl-iconbtn" type="button" data-action="close" aria-label="Fermer">&times;</button>
       `;
 
     const vatPresetId = vatExemptionPresetIdFromText(state.form.vat_exemption_text);
@@ -475,27 +507,27 @@ window.Webflow.push(async function () {
         </header>
 
         <div class="cl-detail-grid">
-          <div class="cl-box">
+            <div class="cl-box">
             <div class="cl-box-title">Identite</div>
             <div class="cl-field">
               <label>Nom (affichage)</label>
-              <input class="cl-input" data-field="name" value="${escapeHTML(state.form.name)}" ${editing ? "" : "disabled"} />
+              <input class="cl-input" data-field="name" value="${escapeHTML(state.form.name)}" ${editing ? "" : "readonly"} />
             </div>
             <div class="cl-field">
               <label>Raison sociale</label>
-              <input class="cl-input" data-field="legal_name" value="${escapeHTML(state.form.legal_name)}" ${editing ? "" : "disabled"} />
+              <input class="cl-input" data-field="legal_name" value="${escapeHTML(state.form.legal_name)}" ${editing ? "" : "readonly"} />
             </div>
             <div class="cl-field">
               <label>Reference client</label>
-              <input class="cl-input" data-field="external_ref" value="${escapeHTML(state.form.external_ref)}" ${editing ? "" : "disabled"} />
+              <input class="cl-input" data-field="external_ref" value="${escapeHTML(state.form.external_ref)}" ${editing ? "" : "readonly"} />
             </div>
             <div class="cl-field">
               <label>SIRET</label>
-              <input class="cl-input" data-field="siret" value="${escapeHTML(state.form.siret)}" placeholder="Ex: 123 456 789 00012" ${editing ? "" : "disabled"} />
+              <input class="cl-input" data-field="siret" value="${escapeHTML(state.form.siret)}" placeholder="Ex: 123 456 789 00012" ${editing ? "" : "readonly"} />
             </div>
             <div class="cl-field">
               <label>TVA intracommunautaire</label>
-              <input class="cl-input" data-field="vat_number" value="${escapeHTML(state.form.vat_number)}" placeholder="Ex: FR.." ${editing ? "" : "disabled"} />
+              <input class="cl-input" data-field="vat_number" value="${escapeHTML(state.form.vat_number)}" placeholder="Ex: FR.." ${editing ? "" : "readonly"} />
             </div>
           </div>
 
@@ -503,15 +535,15 @@ window.Webflow.push(async function () {
             <div class="cl-box-title">Contact</div>
             <div class="cl-field">
               <label>Email</label>
-              <input class="cl-input" data-field="email" value="${escapeHTML(state.form.email)}" ${editing ? "" : "disabled"} />
+              <input class="cl-input" data-field="email" value="${escapeHTML(state.form.email)}" ${editing ? "" : "readonly"} />
             </div>
             <div class="cl-field">
               <label>Telephone</label>
-              <input class="cl-input" data-field="phone" value="${escapeHTML(state.form.phone)}" ${editing ? "" : "disabled"} />
+              <input class="cl-input" data-field="phone" value="${escapeHTML(state.form.phone)}" ${editing ? "" : "readonly"} />
             </div>
             <div class="cl-field">
               <label>Notes internes</label>
-              <textarea class="cl-textarea" data-field="notes" rows="5" ${editing ? "" : "disabled"}>${escapeHTML(state.form.notes)}</textarea>
+              <textarea class="cl-textarea" data-field="notes" rows="5" ${editing ? "" : "readonly"}>${escapeHTML(state.form.notes)}</textarea>
             </div>
           </div>
 
@@ -520,11 +552,11 @@ window.Webflow.push(async function () {
             <div class="cl-two">
               <div class="cl-field">
                 <label>Adresse de facturation</label>
-                <textarea class="cl-textarea" data-field="billing_address" rows="4" placeholder="Rue + CP Ville + Pays (1 ligne par ligne)" ${editing ? "" : "disabled"}>${escapeHTML(state.form.billing_address)}</textarea>
+                <textarea class="cl-textarea" data-field="billing_address" rows="4" placeholder="Rue + CP Ville + Pays (1 ligne par ligne)" ${editing ? "" : "readonly"}>${escapeHTML(state.form.billing_address)}</textarea>
               </div>
               <div class="cl-field">
                 <label>Paiement (jours)</label>
-                <input class="cl-input" data-field="payment_terms_days" inputmode="numeric" value="${escapeHTML(state.form.payment_terms_days)}" placeholder="Ex: 30" ${editing ? "" : "disabled"} />
+                <input class="cl-input" data-field="payment_terms_days" inputmode="numeric" value="${escapeHTML(state.form.payment_terms_days)}" placeholder="Ex: 30" ${editing ? "" : "readonly"} />
                 <div class="cl-help">Optionnel. Sinon, les valeurs de l'organisation s'appliquent.</div>
               </div>
             </div>
@@ -532,11 +564,11 @@ window.Webflow.push(async function () {
             <div class="cl-three">
               <div class="cl-field">
                 <label>Taux penalites (% annuel)</label>
-                <input class="cl-input" data-field="late_fee_rate" inputmode="decimal" value="${escapeHTML(state.form.late_fee_rate)}" placeholder="Ex: 10" ${editing ? "" : "disabled"} />
+                <input class="cl-input" data-field="late_fee_rate" inputmode="decimal" value="${escapeHTML(state.form.late_fee_rate)}" placeholder="Ex: 10" ${editing ? "" : "readonly"} />
               </div>
               <div class="cl-field">
                 <label>Indemnite recouvrement (EUR)</label>
-                <input class="cl-input" data-field="recovery_fee_eur" inputmode="decimal" value="${escapeHTML(state.form.recovery_fee_eur)}" placeholder="Ex: 40,00" ${editing ? "" : "disabled"} />
+                <input class="cl-input" data-field="recovery_fee_eur" inputmode="decimal" value="${escapeHTML(state.form.recovery_fee_eur)}" placeholder="Ex: 40,00" ${editing ? "" : "readonly"} />
               </div>
               <div class="cl-field">
                 <label>Factures sans TVA</label>
@@ -555,7 +587,7 @@ window.Webflow.push(async function () {
                   ${VAT_EXEMPTION_PRESETS.map((p) => `<option value="${escapeHTML(p.id)}" ${p.id === vatPresetId ? "selected" : ""}>${escapeHTML(p.label)}</option>`).join("")}
                   <option value="__custom__" ${vatPresetId === "__custom__" ? "selected" : ""}>Autre (personnalisee)</option>
                 </select>
-                <textarea class="cl-textarea" data-field="vat_exemption_text" rows="2" ${editing ? "" : "disabled"}>${escapeHTML(
+                <textarea class="cl-textarea" data-field="vat_exemption_text" rows="2" ${editing ? "" : "readonly"}>${escapeHTML(
                   state.form.vat_exemption_text
                 )}</textarea>
                 <div class="cl-help">Utilise sur la facture si la TVA calculee est a 0.</div>
@@ -700,6 +732,7 @@ window.Webflow.push(async function () {
     if (action === "edit") return startEdit();
     if (action === "cancel") return cancelEdit();
     if (action === "save") return saveClient();
+    if (action === "close") return closeClientModal();
     if (action === "toggle-active") return toggleClientActive();
     if (action === "delete") return openDeleteModal();
     if (action === "new-invoice") return openInvoiceForClient();
@@ -767,10 +800,7 @@ window.Webflow.push(async function () {
 
   function cancelEdit() {
     if (state.mode === "create") {
-      state.mode = "view";
-      state.form = blankClientForm();
-      state.dirtyClient = false;
-      renderDetailEmpty();
+      closeClientModal(true);
       return;
     }
     if (!state.selectedId) return;
@@ -842,22 +872,30 @@ window.Webflow.push(async function () {
     }
   }
 
-  function openInvoiceForClient() {
+  function openInvoiceUrlForId(id) {
     if (!confirmDiscardIfNeeded()) return;
-    const id = asUuid(state.form.id);
-    if (!id) return;
+    const safe = asUuid(id);
+    if (!safe) return;
     const base = String(CONFIG.INVOICE_URL || "").trim() || "/extranet/facturation/invoice";
     const sep = base.includes("?") ? "&" : "?";
-    window.location.href = `${base}${sep}client_id=${encodeURIComponent(id)}`;
+    window.location.href = `${base}${sep}client_id=${encodeURIComponent(safe)}`;
+  }
+
+  function openQuoteUrlForId(id) {
+    if (!confirmDiscardIfNeeded()) return;
+    const safe = asUuid(id);
+    if (!safe) return;
+    const base = String(CONFIG.QUOTE_URL || "").trim() || "/extranet/facturation/devis-add";
+    const sep = base.includes("?") ? "&" : "?";
+    window.location.href = `${base}${sep}client_id=${encodeURIComponent(safe)}`;
+  }
+
+  function openInvoiceForClient() {
+    openInvoiceUrlForId(state.form.id);
   }
 
   function openQuoteForClient() {
-    if (!confirmDiscardIfNeeded()) return;
-    const id = asUuid(state.form.id);
-    if (!id) return;
-    const base = String(CONFIG.QUOTE_URL || "").trim() || "/extranet/facturation/devis-add";
-    const sep = base.includes("?") ? "&" : "?";
-    window.location.href = `${base}${sep}client_id=${encodeURIComponent(id)}`;
+    openQuoteUrlForId(state.form.id);
   }
 
   async function toggleClientActive() {
@@ -889,7 +927,7 @@ window.Webflow.push(async function () {
   function openDeleteModal() {
     if (!asUuid(state.form.id)) return;
     els.modal.hidden = false;
-    document.body.classList.add("cl-modal-open");
+    syncBodyModalOpen();
     els.modalTitle.textContent = STR.deleteConfirmTitle;
     els.modalBody.textContent = STR.deleteConfirmBody;
     els.modalInput.value = "";
@@ -898,7 +936,7 @@ window.Webflow.push(async function () {
 
   function closeDeleteModal() {
     els.modal.hidden = true;
-    document.body.classList.remove("cl-modal-open");
+    syncBodyModalOpen();
   }
 
   async function confirmDeleteClient() {
@@ -925,8 +963,7 @@ window.Webflow.push(async function () {
       state.form = blankClientForm();
       state.sites = [];
       resetDirtyFlags();
-      renderList();
-      renderDetailEmpty();
+      closeClientModal(true);
       showToast("success", STR.deleteOk);
     } catch (e) {
       console.error(e);
@@ -1325,39 +1362,40 @@ window.Webflow.push(async function () {
 
         <div class="cl-status" data-status></div>
 
-        <div class="cl-grid">
-          <aside class="cl-left">
-            <div class="cl-controls">
-              <div class="cl-filters">
-                <button class="cl-chip is-active" data-filter="active">${copy.statusActive}</button>
-                <button class="cl-chip" data-filter="archived">${copy.statusArchived}</button>
-                <button class="cl-chip" data-filter="all">${copy.statusAll}</button>
-              </div>
-              <input class="cl-search" type="search" placeholder="${copy.searchPlaceholder}" data-search />
-            </div>
-
-            <div class="cl-kpis">
-              <div class="cl-kpi">
-                <div class="cl-kpi-label">Affiches</div>
-                <div class="cl-kpi-value" data-kpi-count>0</div>
-              </div>
-              <div class="cl-kpi">
-                <div class="cl-kpi-label">Actifs</div>
-                <div class="cl-kpi-value" data-kpi-active>0</div>
-              </div>
-              <div class="cl-kpi">
-                <div class="cl-kpi-label">Archives</div>
-                <div class="cl-kpi-value" data-kpi-archived>0</div>
-              </div>
-            </div>
-
-            <div class="cl-list" data-list></div>
-          </aside>
-
-          <main class="cl-right" data-detail></main>
+        <div class="cl-controls">
+          <div class="cl-filters">
+            <button class="cl-chip is-active" data-filter="active">${copy.statusActive}</button>
+            <button class="cl-chip" data-filter="archived">${copy.statusArchived}</button>
+            <button class="cl-chip" data-filter="all">${copy.statusAll}</button>
+          </div>
+          <input class="cl-search" type="search" placeholder="${copy.searchPlaceholder}" data-search />
         </div>
 
+        <div class="cl-kpis">
+          <div class="cl-kpi">
+            <div class="cl-kpi-label">Affiches</div>
+            <div class="cl-kpi-value" data-kpi-count>0</div>
+          </div>
+          <div class="cl-kpi">
+            <div class="cl-kpi-label">Actifs</div>
+            <div class="cl-kpi-value" data-kpi-active>0</div>
+          </div>
+          <div class="cl-kpi">
+            <div class="cl-kpi-label">Archives</div>
+            <div class="cl-kpi-value" data-kpi-archived>0</div>
+          </div>
+        </div>
+
+        <div class="cl-list" data-list></div>
+
         <div class="cl-toasts" data-toasts></div>
+
+        <div class="cl-cmodal" data-client-modal hidden>
+          <div class="cl-modal-backdrop" data-client-modal-backdrop></div>
+          <div class="cl-cmodal-panel">
+            <div class="cl-cmodal-inner" data-client-modal-inner></div>
+          </div>
+        </div>
 
         <div class="cl-modal" data-modal hidden>
           <div class="cl-modal-backdrop" data-modal-backdrop></div>
@@ -1384,8 +1422,10 @@ window.Webflow.push(async function () {
       kpiActive: rootEl.querySelector("[data-kpi-active]"),
       kpiArchived: rootEl.querySelector("[data-kpi-archived]"),
       list: rootEl.querySelector("[data-list]"),
-      detail: rootEl.querySelector("[data-detail]"),
       toasts: rootEl.querySelector("[data-toasts]"),
+      clientModal: rootEl.querySelector("[data-client-modal]"),
+      clientModalBackdrop: rootEl.querySelector("[data-client-modal-backdrop]"),
+      clientModalInner: rootEl.querySelector("[data-client-modal-inner]"),
       modal: rootEl.querySelector("[data-modal]"),
       modalBackdrop: rootEl.querySelector("[data-modal-backdrop]"),
       modalTitle: rootEl.querySelector("[data-modal-title]"),
@@ -1465,26 +1505,11 @@ window.Webflow.push(async function () {
         margin-bottom: 12px;
       }
 
-      .cl-grid {
-        display: grid;
-        grid-template-columns: 420px minmax(0, 1fr);
-        gap: 14px;
-        align-items: start;
-      }
-
-      .cl-left, .cl-right {
-        background: var(--cl-surface);
-        border: 1px solid var(--cl-border);
-        border-radius: 18px;
-        box-shadow: var(--cl-shadow);
-        overflow: hidden;
-      }
-      .cl-left { padding: 12px; }
-      .cl-right { padding: 0; }
-
       .cl-controls {
         display: grid;
+        grid-template-columns: 1fr minmax(260px, 360px);
         gap: 10px;
+        align-items: center;
         margin-bottom: 12px;
       }
       .cl-filters {
@@ -1548,11 +1573,15 @@ window.Webflow.push(async function () {
       }
 
       .cl-list {
+        background: var(--cl-surface);
+        border: 1px solid var(--cl-border);
+        border-radius: 18px;
+        box-shadow: var(--cl-shadow);
+        padding: 12px;
         display: grid;
         gap: 10px;
-        max-height: calc(100vh - 290px);
+        max-height: min(72vh, 760px);
         overflow: auto;
-        padding-right: 2px;
       }
       .cl-card {
         background: rgba(255, 255, 255, 0.92);
@@ -1592,6 +1621,13 @@ window.Webflow.push(async function () {
         margin-top: 10px;
         font-size: 12px;
         color: var(--cl-soft);
+      }
+      .cl-card-actions {
+        margin-top: 12px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
       }
 
       .cl-pill {
@@ -1711,6 +1747,11 @@ window.Webflow.push(async function () {
         background: rgba(241, 245, 249, 0.8);
         color: rgba(15, 23, 42, 0.65);
       }
+      .cl-input[readonly], .cl-textarea[readonly] {
+        background: rgba(255, 255, 255, 0.78);
+        color: #0f172a;
+        border-color: rgba(203, 213, 225, 0.65);
+      }
       .cl-help {
         margin-top: 6px;
         font-size: 12px;
@@ -1767,6 +1808,23 @@ window.Webflow.push(async function () {
       }
       .cl-btn--ghost { background: rgba(255, 255, 255, 0.55); }
       .cl-btn--sm { padding: 7px 10px; font-size: 12px; border-radius: 12px; }
+
+      .cl-iconbtn {
+        width: 40px;
+        height: 40px;
+        border-radius: 14px;
+        border: 1px solid rgba(203, 213, 225, 0.95);
+        background: rgba(255, 255, 255, 0.72);
+        color: #0f172a;
+        font-size: 22px;
+        line-height: 1;
+        font-weight: 900;
+        display: grid;
+        place-items: center;
+        cursor: pointer;
+        transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+      }
+      .cl-iconbtn:hover { transform: translateY(-1px); box-shadow: 0 10px 18px rgba(15, 23, 42, 0.08); border-color: rgba(148, 163, 184, 0.9); }
 
       .cl-empty {
         border: 1px dashed rgba(203, 213, 225, 0.9);
@@ -1866,10 +1924,28 @@ window.Webflow.push(async function () {
       .cl-toast--error { border-color: rgba(220, 38, 38, 0.22); }
       .cl-toast--warning { border-color: rgba(234, 179, 8, 0.22); }
 
-      .cl-modal {
+      .cl-cmodal {
         position: fixed;
         inset: 0;
         z-index: 100020;
+      }
+      .cl-cmodal-panel {
+        position: relative;
+        width: min(1040px, calc(100% - 24px));
+        margin: 6vh auto 0;
+        height: min(86vh, 860px);
+        background: rgba(255, 255, 255, 0.96);
+        border: 1px solid rgba(15, 23, 42, 0.12);
+        border-radius: 22px;
+        box-shadow: 0 30px 70px rgba(15, 23, 42, 0.26);
+        overflow: auto;
+      }
+      .cl-cmodal-inner { min-height: 100%; }
+
+      .cl-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 100030;
       }
       .cl-modal-backdrop {
         position: absolute;
@@ -1922,13 +1998,15 @@ window.Webflow.push(async function () {
       }
 
       @media (max-width: 980px) {
-        .cl-grid { grid-template-columns: 1fr; }
+        .cl-controls { grid-template-columns: 1fr; }
         .cl-list { max-height: none; }
+        .cl-cmodal-panel { width: calc(100% - 18px); margin: 4vh auto 0; }
       }
       @media (max-width: 720px) {
         .cl-shell { padding: 14px; }
         .cl-title { font-size: 24px; }
         .cl-count { display: none; }
+        .cl-cmodal-panel { width: 100%; height: 100%; margin: 0; border-radius: 0; }
         .cl-detail-grid { grid-template-columns: 1fr; }
         .cl-two { grid-template-columns: 1fr; }
         .cl-three { grid-template-columns: 1fr; }
