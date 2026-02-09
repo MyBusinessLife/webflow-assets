@@ -76,8 +76,8 @@
       theme_nav_bg: "#f1f5f9",
     };
 
-	    const FALLBACK_ROUTES = {
-	      // Admin
+    const FALLBACK_ROUTES = {
+      // Admin
       "admin-dashboard": sanitizePath(CFG.ADMIN_DASH) || `${CONFIG.APP_ROOT}/admin/dashboard`,
       "admin-paiements": `${CONFIG.APP_ROOT}/admin/paiements`,
       "admin-crm": sanitizePath(CFG.CRM_PATH) || `${CONFIG.APP_ROOT}/crm/crm`,
@@ -85,6 +85,8 @@
       "admin-users": `${CONFIG.APP_ROOT}/settings?tab=users`,
       "admin-transport": `${CONFIG.APP_ROOT}/transport`,
       "admin-logistics": `${CONFIG.APP_ROOT}/logistics`,
+      "admin-restaurant": `${CONFIG.APP_ROOT}/restaurant`,
+      "admin-pos": `${CONFIG.APP_ROOT}/pos`,
 
       // Billing (Facturation)
       clients: `${CONFIG.APP_ROOT}/facturation/clients`,
@@ -253,20 +255,25 @@
     window.MBL = window.MBL || {};
     if (typeof window.MBL.openSubscriptionsModal !== "function") window.MBL.openSubscriptionsModal = openSubscriptionsModal;
 
-	    function rewriteKnownBadLinks() {
-	      // Webflow buttons can keep stale slugs after refactors.
-	      // Fix them defensively so navigation stays consistent.
-	      const appRoot = String(CONFIG.APP_ROOT || "/applications").trim() || "/applications";
-	      const fixMap = new Map([
-	        // Old root-level slugs -> app folder slugs
-	        ["/settings", `${appRoot}/settings`],
-	        ["/crm", `${appRoot}/crm/crm`],
-	        ["/crm/crm", `${appRoot}/crm/crm`],
-	        ["/transport", `${appRoot}/transport`],
-	        ["/facturation/clients", `${appRoot}/facturation/clients`],
-	        ["/facturation/devis-list", `${appRoot}/facturation/devis-list`],
-	        ["/facturation/devis-add", `${appRoot}/facturation/devis-add`],
-	        ["/facturation/invoices-list", `${appRoot}/facturation/invoices-list`],
+    function rewriteKnownBadLinks() {
+      // Webflow buttons can keep stale slugs after refactors.
+      // Fix them defensively so navigation stays consistent.
+      const appRoot = String(CONFIG.APP_ROOT || "/applications").trim() || "/applications";
+      const fixMap = new Map([
+        // Old root-level slugs -> app folder slugs
+        ["/settings", `${appRoot}/settings`],
+        ["/crm", `${appRoot}/crm/crm`],
+        ["/crm/crm", `${appRoot}/crm/crm`],
+        ["/transport", `${appRoot}/transport`],
+        ["/logistics", `${appRoot}/logistics`],
+        ["/restaurant", `${appRoot}/restaurant`],
+        ["/admin/restaurant", `${appRoot}/restaurant`],
+        ["/pos", `${appRoot}/pos`],
+        ["/admin/pos", `${appRoot}/pos`],
+        ["/facturation/clients", `${appRoot}/facturation/clients`],
+        ["/facturation/devis-list", `${appRoot}/facturation/devis-list`],
+        ["/facturation/devis-add", `${appRoot}/facturation/devis-add`],
+        ["/facturation/invoices-list", `${appRoot}/facturation/invoices-list`],
         ["/facturation/invoice", `${appRoot}/facturation/invoice`],
       ]);
 
@@ -460,8 +467,8 @@
 
         @media (max-width: 991px) {
           .mbl-app-shell {
-            width: clamp(274px, 86vw, 360px);
-            max-width: calc(100vw - 12px);
+            width: min(84vw, 332px);
+            max-width: calc(100vw - 6px);
             height: 100dvh;
             padding:
               max(10px, env(safe-area-inset-top))
@@ -474,7 +481,7 @@
             box-shadow: var(--mbl-shell-shadow);
           }
           html[data-mbl-appshell="1"][data-mbl-appshell-collapsed="1"] .mbl-app-shell {
-            width: clamp(274px, 86vw, 360px);
+            width: min(84vw, 332px);
           }
           html[data-mbl-appshell="1"][data-mbl-appshell-open="1"] .mbl-app-shell {
             transform: translateX(0);
@@ -751,7 +758,7 @@
         }
         @media (max-width: 480px) {
           .mbl-app-shell {
-            width: min(92vw, 360px) !important;
+            width: min(90vw, 320px) !important;
           }
           .mbl-app-shell__burger {
             width: 42px;
@@ -962,6 +969,8 @@
       invoices: `<svg class="mbl-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16l-2-1-2 1-2-1-2 1-2-1-2 1-2-1-2 1z"/><path d="M8 8h8"/><path d="M8 12h8"/><path d="M8 16h5"/></svg>`,
       products: `<svg class="mbl-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4a2 2 0 0 0 1-1.73z"/><path d="M3.29 7 12 12l8.71-5"/><path d="M12 22V12"/></svg>`,
       logistics: `<svg class="mbl-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-6 9 6v12H3V9z"/><path d="M9 22V12h6v10"/><path d="M9 12h6"/></svg>`,
+      restaurant: `<svg class="mbl-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2v8"/><path d="M10 2v8"/><path d="M8 2v20"/><path d="M14 2v8a2 2 0 0 0 2 2h2V2"/></svg>`,
+      pos: `<svg class="mbl-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10"/><path d="M7 12h6"/><path d="M15 15h2"/></svg>`,
       interventions: `<svg class="mbl-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3-3a2.1 2.1 0 0 0-3-3z"/><path d="M19 8l-7.5 7.5a2 2 0 0 1-1.2.6l-3.8.5.5-3.8a2 2 0 0 1 .6-1.2L15 4"/></svg>`,
       calendar: `<svg class="mbl-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>`,
       truck: `<svg class="mbl-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h11v10H3z"/><path d="M14 10h4l3 3v4h-7z"/><path d="M7 17a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/><path d="M18 17a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg>`,
@@ -1059,10 +1068,12 @@
       return a;
     }
 
-    function modulesAllow(mods, required) {
+    function modulesAllow(mods, required, requiredAny) {
       const req = Array.isArray(required) ? required.filter(Boolean) : [];
-      if (!req.length) return true;
-      return req.every((m) => Boolean(mods?.[m]));
+      const any = Array.isArray(requiredAny) ? requiredAny.filter(Boolean) : [];
+      const allOk = !req.length || req.every((m) => Boolean(mods?.[m]));
+      const anyOk = !any.length || any.some((m) => Boolean(mods?.[m]));
+      return allOk && anyOk;
     }
 
     // =========================================================
@@ -1084,6 +1095,8 @@
       inventory_categories: "inventory_categories",
 
       crm: "crm",
+      restaurant_admin: "restaurant_admin",
+      pos: "pos",
 
       interventions_admin: "interventions_admin",
       interventions_tech: "interventions_tech",
@@ -1220,6 +1233,29 @@
           ],
         },
         {
+          section: "Restauration",
+          entries: [
+            {
+              key: "admin-restaurant",
+              label: "Restaurant",
+              href: routeFor("admin-restaurant"),
+              icon: ICONS.restaurant,
+              perm: PERMS.restaurant_admin,
+              roles: [],
+              requires: ["restaurant"],
+            },
+            {
+              key: "admin-pos",
+              label: "POS",
+              href: routeFor("admin-pos"),
+              icon: ICONS.pos,
+              perm: PERMS.pos,
+              roles: [],
+              requiresAny: ["billing", "restaurant"],
+            },
+          ],
+        },
+        {
           section: "Interventions",
           entries: [
             {
@@ -1335,7 +1371,7 @@
                 (it.roles.includes("tech") && isTech) ||
                 (it.roles.includes("driver") && isDriver);
 
-              const modOk = modulesAllow(modules, it.requires);
+              const modOk = modulesAllow(modules, it.requires, it.requiresAny);
               const permOk = permissionAllow({ isAdmin, orgRole, permMode, permMap }, it.perm);
 
               const lockKind = roleOk && !modOk ? "subscription" : roleOk && modOk && !permOk ? "permission" : "";

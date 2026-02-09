@@ -65,6 +65,10 @@
     "admin-products": ["billing"],
     "admin-categories": ["billing"],
 
+    // Restaurant / POS
+    "admin-restaurant": ["restaurant"],
+    "admin-pos": { any: ["billing", "restaurant"] },
+
     // Interventions
     "admin-interventions": ["interventions"],
     "technician-dashboard": ["interventions"],
@@ -98,6 +102,8 @@
     "admin-paiements": "billing_payments",
     "admin-products": "inventory_products",
     "admin-categories": "inventory_categories",
+    "admin-restaurant": "restaurant_admin",
+    "admin-pos": "pos",
 
     // Interventions
     "admin-interventions": "interventions_admin",
@@ -250,7 +256,24 @@
       .split(",")
       .map((s) => String(s || "").trim())
       .filter(Boolean);
-    return list.length ? list : null;
+    return list.length ? { all: list, any: [] } : null;
+  }
+
+  function normalizeModuleRule(input) {
+    if (Array.isArray(input)) {
+      return {
+        all: input.filter(Boolean),
+        any: [],
+      };
+    }
+
+    if (input && typeof input === "object") {
+      const all = Array.isArray(input.all) ? input.all.filter(Boolean) : [];
+      const any = Array.isArray(input.any) ? input.any.filter(Boolean) : [];
+      return { all, any };
+    }
+
+    return { all: [], any: [] };
   }
 
   function requiredModulesForPage() {
@@ -258,10 +281,33 @@
     if (override) return override;
 
     const page = String(document.documentElement.dataset.page || "").trim();
-    if (page && PAGE_REQUIRED_MODULES[page]) return PAGE_REQUIRED_MODULES[page];
+    if (page && PAGE_REQUIRED_MODULES[page]) return normalizeModuleRule(PAGE_REQUIRED_MODULES[page]);
+
+    const p = String(location.pathname || "");
+    if (/\/restaurant\/?$/.test(p) || /\/admin\/restaurant\/?$/.test(p)) {
+      return normalizeModuleRule(PAGE_REQUIRED_MODULES["admin-restaurant"]);
+    }
+    if (/\/pos\/?$/.test(p) || /\/admin\/pos\/?$/.test(p)) {
+      return normalizeModuleRule(PAGE_REQUIRED_MODULES["admin-pos"]);
+    }
 
     // If unknown page under /applications, require an active subscription (no module check).
-    return [];
+    return { all: [], any: [] };
+  }
+
+  function checkModuleRule(modules, rule) {
+    const all = Array.isArray(rule?.all) ? rule.all.filter(Boolean) : [];
+    const any = Array.isArray(rule?.any) ? rule.any.filter(Boolean) : [];
+
+    const missingAll = all.filter((m) => !Boolean(modules?.[m]));
+    const anyOk = !any.length || any.some((m) => Boolean(modules?.[m]));
+    const ok = missingAll.length === 0 && anyOk;
+
+    return {
+      ok,
+      missingAll,
+      missingAny: anyOk ? [] : any,
+    };
   }
 
   function requiredPermForPage() {
@@ -274,6 +320,10 @@
 
     const page = String(document.documentElement.dataset.page || "").trim();
     if (page && PAGE_REQUIRED_PERMS[page]) return PAGE_REQUIRED_PERMS[page];
+
+    const p = String(location.pathname || "");
+    if (/\/restaurant\/?$/.test(p) || /\/admin\/restaurant\/?$/.test(p)) return PAGE_REQUIRED_PERMS["admin-restaurant"];
+    if (/\/pos\/?$/.test(p) || /\/admin\/pos\/?$/.test(p)) return PAGE_REQUIRED_PERMS["admin-pos"];
     return "";
   }
 
@@ -558,13 +608,17 @@
       return;
     }
 
-    const required = requiredModulesForPage();
-    const missing = required.filter((m) => !Boolean(entMods?.[m] ?? planMods?.[m]));
+    const requiredRule = requiredModulesForPage();
+    const moduleState = checkModuleRule({ ...planMods, ...entMods }, requiredRule);
 
-    if (missing.length) {
+    if (!moduleState.ok) {
+      const missingText = [];
+      if (moduleState.missingAll.length) missingText.push(moduleState.missingAll.join(", "));
+      if (moduleState.missingAny.length) missingText.push(`un des modules suivants: ${moduleState.missingAny.join(" ou ")}`);
+
       setOverlayState({
         title: "Module non inclus",
-        body: `Ton abonnement ne contient pas: ${missing.join(", ")}.`,
+        body: `Ton abonnement ne contient pas: ${missingText.join(" ; ")}.`,
         spinning: false,
       });
       redirectTo(withNextParam(CONFIG.SUBSCRIBE_PATH));

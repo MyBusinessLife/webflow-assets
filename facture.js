@@ -339,6 +339,12 @@ window.Webflow.push(async function () {
 
   async function applyAutoPrefillFromContext() {
     const params = new URLSearchParams(window.location.search || "");
+    const restaurantOrderId =
+      params.get("restaurant_order_id") ||
+      params.get("restaurantOrderId") ||
+      params.get("order_id") ||
+      params.get("orderId") ||
+      "";
     const transportShipmentId =
       params.get("transport_shipment_id") ||
       params.get("transportShipmentId") ||
@@ -417,6 +423,91 @@ window.Webflow.push(async function () {
         }
       } catch (e) {
         if (DEBUG) console.warn("[FACTURE] transport prefill ignored:", e);
+      }
+    }
+
+    if (restaurantOrderId) {
+      try {
+        const ordRes = await supabase
+          .from("restaurant_orders")
+          .select("id, reference, customer_name, table_label, note, created_at")
+          .eq("organization_id", state.organizationId)
+          .eq("id", restaurantOrderId)
+          .maybeSingle();
+
+        if (!ordRes.error && ordRes.data?.id) {
+          const linesRes = await supabase
+            .from("restaurant_order_lines")
+            .select("id, line_type, label, qty, unit_price_cents, vat_rate")
+            .eq("organization_id", state.organizationId)
+            .eq("order_id", ordRes.data.id)
+            .order("created_at", { ascending: true });
+
+          if (!linesRes.error) {
+            const hasExisting = (state.draft.items || []).some(
+              (it) => it?.source?.kind === "restaurant_order" && String(it?.source?.id || "") === String(ordRes.data.id)
+            );
+
+            if (!hasExisting) {
+              const mapped = (linesRes.data || [])
+                .map((line) => {
+                  const qty = Number(line?.qty || 0);
+                  const unitCents = Number(line?.unit_price_cents || 0);
+                  if (!Number.isFinite(qty) || qty <= 0) return null;
+                  return {
+                    name: String(line?.label || "Article").trim() || "Article",
+                    qty,
+                    unit: clean(line?.line_type) === "menu_item" ? "menu" : "u",
+                    unit_cents: Math.max(0, unitCents),
+                    vat_rate: sanitizeVatRate(line?.vat_rate ?? state.draft.vat_rate ?? CONFIG.VAT_RATE),
+                    source: {
+                      kind: "restaurant_order",
+                      id: String(ordRes.data.id),
+                      line_id: String(line?.id || ""),
+                    },
+                  };
+                })
+                .filter(Boolean);
+
+              if (mapped.length) {
+                state.draft.items = state.draft.items || [];
+                state.draft.items = mapped.concat(state.draft.items);
+              }
+            }
+
+            if (!state.draft.client_name && ordRes.data.customer_name) {
+              state.draft.client_name = String(ordRes.data.customer_name).trim();
+              if (els.client) els.client.value = state.draft.client_name;
+            }
+
+            if (!state.draft.notes) {
+              const bits = [];
+              const ref = String(ordRes.data.reference || "").trim();
+              if (ref) bits.push(`Commande ${ref}`);
+              const tableLabel = String(ordRes.data.table_label || "").trim();
+              if (tableLabel) bits.push(`Table: ${tableLabel}`);
+              const note = String(ordRes.data.note || "").trim();
+              if (note) bits.push(note);
+              if (bits.length) {
+                state.draft.notes = bits.join(" - ");
+                if (els.notes) els.notes.value = state.draft.notes;
+              }
+            }
+
+            if (ordRes.data.created_at) {
+              const d = new Date(ordRes.data.created_at);
+              if (Number.isFinite(d.getTime())) {
+                const iso = d.toISOString().slice(0, 10);
+                state.draft.service_date = iso;
+                if (els.serviceDate) els.serviceDate.value = iso;
+              }
+            }
+
+            return;
+          }
+        }
+      } catch (e) {
+        if (DEBUG) console.warn("[FACTURE] restaurant prefill ignored:", e);
       }
     }
 

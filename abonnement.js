@@ -1404,6 +1404,7 @@
     rows.push(m.fleet ? "Flotte: vehicules, chauffeurs et alertes" : "Flotte (en option)");
     rows.push(m.logistics ? "Logistique: entrepots, emplacements, stock" : "Logistique (en option)");
     rows.push(m.transport ? "Transport: flotte, tournees et courses" : "Transport (en option)");
+    rows.push(m.restaurant ? "Restauration: menu, QR, commandes et POS" : "Restauration (en option)");
     rows.push("PDF pro, numerotation automatique, export");
     rows.push("TVA, mentions legales et conformite FR");
 
@@ -1522,6 +1523,7 @@
       { label: "Flotte (vehicules)", type: "module", key: "fleet" },
       { label: "Logistique", type: "module", key: "logistics" },
       { label: "Transport", type: "module", key: "transport" },
+      { label: "Restauration", type: "module", key: "restaurant" },
       { label: "Utilisateurs", type: "limit", key: "max_users" },
       { label: "Support & MAJ", type: "static", value: true },
     ];

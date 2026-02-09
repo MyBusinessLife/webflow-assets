@@ -1048,10 +1048,12 @@ window.Webflow.push(async function () {
     els.modalFoot.innerHTML = "";
   }
 
-  function modulesAllow(mods, required) {
+  function modulesAllow(mods, required, requiredAny) {
     const req = Array.isArray(required) ? required.filter(Boolean) : [];
-    if (!req.length) return true;
-    return req.every((m) => Boolean(mods?.[m]));
+    const any = Array.isArray(requiredAny) ? requiredAny.filter(Boolean) : [];
+    const allOk = !req.length || req.every((m) => Boolean(mods?.[m]));
+    const anyOk = !any.length || any.some((m) => Boolean(mods?.[m]));
+    return allOk && anyOk;
   }
 
   const PERM_ITEMS = [
@@ -1066,6 +1068,9 @@ window.Webflow.push(async function () {
 
     { group: "Stock", key: "inventory_products", label: "Produits", requires: ["billing"] },
     { group: "Stock", key: "inventory_categories", label: "Catégories", requires: ["billing"] },
+
+    { group: "Restauration", key: "restaurant_admin", label: "Gestion restaurant", requires: ["restaurant"] },
+    { group: "Restauration", key: "pos", label: "POS", requiresAny: ["billing", "restaurant"] },
 
     { group: "Interventions", key: "interventions_admin", label: "Gestion interventions", requires: ["interventions"] },
     { group: "Interventions", key: "interventions_tech", label: "Espace technicien", requires: ["interventions"] },
@@ -1439,7 +1444,7 @@ window.Webflow.push(async function () {
       .map(([group, items]) => {
         const checks = items
           .map((it) => {
-            const enabledBySub = modulesAllow(modules, it.requires);
+            const enabledBySub = modulesAllow(modules, it.requires, it.requiresAny);
             const checked = perms?.[it.key] === true;
             const disabled = !enabledBySub;
             const hint = disabled ? "Abonnement requis" : it.requires?.length ? `Nécessite: ${it.requires.join(", ")}` : "";

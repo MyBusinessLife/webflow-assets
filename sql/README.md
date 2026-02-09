@@ -29,6 +29,7 @@ Order to run in Supabase SQL Editor:
 25. `025_member_permissions_and_availability.sql`
 26. `026_org_invitations_and_claim.sql`
 27. `027_org_profile_branding.sql`
+28. `028_restaurant_pos_core.sql`
 
 ## Important
 - Run each file in full, then validate before the next file.
