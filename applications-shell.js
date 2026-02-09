@@ -68,14 +68,14 @@
       SHOW_LOCKED: String(CFG.SHELL_SHOW_LOCKED ?? "1").trim() !== "0",
     };
 
-    const FALLBACK_ROUTES = {
-      // Admin
-      "admin-dashboard": sanitizePath(CFG.ADMIN_DASH) || `${CONFIG.APP_ROOT}/admin/dashboard`,
-      "admin-paiements": `${CONFIG.APP_ROOT}/admin/paiements`,
-      "admin-crm": "/crm/crm",
-      "admin-settings": `${CONFIG.APP_ROOT}/settings`,
-      "admin-transport": `${CONFIG.APP_ROOT}/transport`,
-      "admin-logistics": `${CONFIG.APP_ROOT}/logistics`,
+	    const FALLBACK_ROUTES = {
+	      // Admin
+	      "admin-dashboard": sanitizePath(CFG.ADMIN_DASH) || `${CONFIG.APP_ROOT}/admin/dashboard`,
+	      "admin-paiements": `${CONFIG.APP_ROOT}/admin/paiements`,
+	      "admin-crm": sanitizePath(CFG.CRM_PATH) || `${CONFIG.APP_ROOT}/crm/crm`,
+	      "admin-settings": `${CONFIG.APP_ROOT}/settings`,
+	      "admin-transport": `${CONFIG.APP_ROOT}/transport`,
+	      "admin-logistics": `${CONFIG.APP_ROOT}/logistics`,
 
       // Billing (Facturation)
       clients: `${CONFIG.APP_ROOT}/facturation/clients`,
@@ -244,18 +244,20 @@
     window.MBL = window.MBL || {};
     if (typeof window.MBL.openSubscriptionsModal !== "function") window.MBL.openSubscriptionsModal = openSubscriptionsModal;
 
-    function rewriteKnownBadLinks() {
-      // Webflow buttons can keep stale slugs after refactors.
-      // Fix them defensively so navigation stays consistent.
-      const appRoot = String(CONFIG.APP_ROOT || "/applications").trim() || "/applications";
-      const fixMap = new Map([
-        // Old root-level slugs -> app folder slugs
-        ["/settings", `${appRoot}/settings`],
-        ["/transport", `${appRoot}/transport`],
-        ["/facturation/clients", `${appRoot}/facturation/clients`],
-        ["/facturation/devis-list", `${appRoot}/facturation/devis-list`],
-        ["/facturation/devis-add", `${appRoot}/facturation/devis-add`],
-        ["/facturation/invoices-list", `${appRoot}/facturation/invoices-list`],
+	    function rewriteKnownBadLinks() {
+	      // Webflow buttons can keep stale slugs after refactors.
+	      // Fix them defensively so navigation stays consistent.
+	      const appRoot = String(CONFIG.APP_ROOT || "/applications").trim() || "/applications";
+	      const fixMap = new Map([
+	        // Old root-level slugs -> app folder slugs
+	        ["/settings", `${appRoot}/settings`],
+	        ["/crm", `${appRoot}/crm/crm`],
+	        ["/crm/crm", `${appRoot}/crm/crm`],
+	        ["/transport", `${appRoot}/transport`],
+	        ["/facturation/clients", `${appRoot}/facturation/clients`],
+	        ["/facturation/devis-list", `${appRoot}/facturation/devis-list`],
+	        ["/facturation/devis-add", `${appRoot}/facturation/devis-add`],
+	        ["/facturation/invoices-list", `${appRoot}/facturation/invoices-list`],
         ["/facturation/invoice", `${appRoot}/facturation/invoice`],
       ]);
 
