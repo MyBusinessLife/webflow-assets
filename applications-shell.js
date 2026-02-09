@@ -78,12 +78,13 @@
 
 	    const FALLBACK_ROUTES = {
 	      // Admin
-	      "admin-dashboard": sanitizePath(CFG.ADMIN_DASH) || `${CONFIG.APP_ROOT}/admin/dashboard`,
-	      "admin-paiements": `${CONFIG.APP_ROOT}/admin/paiements`,
-	      "admin-crm": sanitizePath(CFG.CRM_PATH) || `${CONFIG.APP_ROOT}/crm/crm`,
-	      "admin-settings": `${CONFIG.APP_ROOT}/settings`,
-	      "admin-transport": `${CONFIG.APP_ROOT}/transport`,
-	      "admin-logistics": `${CONFIG.APP_ROOT}/logistics`,
+      "admin-dashboard": sanitizePath(CFG.ADMIN_DASH) || `${CONFIG.APP_ROOT}/admin/dashboard`,
+      "admin-paiements": `${CONFIG.APP_ROOT}/admin/paiements`,
+      "admin-crm": sanitizePath(CFG.CRM_PATH) || `${CONFIG.APP_ROOT}/crm/crm`,
+      "admin-settings": `${CONFIG.APP_ROOT}/settings`,
+      "admin-users": `${CONFIG.APP_ROOT}/settings?tab=users`,
+      "admin-transport": `${CONFIG.APP_ROOT}/transport`,
+      "admin-logistics": `${CONFIG.APP_ROOT}/logistics`,
 
       // Billing (Facturation)
       clients: `${CONFIG.APP_ROOT}/facturation/clients`,
@@ -459,7 +460,7 @@
 
         @media (max-width: 991px) {
           .mbl-app-shell {
-            width: min(86vw, 340px);
+            width: clamp(274px, 86vw, 360px);
             max-width: calc(100vw - 12px);
             height: 100dvh;
             padding:
@@ -473,10 +474,18 @@
             box-shadow: var(--mbl-shell-shadow);
           }
           html[data-mbl-appshell="1"][data-mbl-appshell-collapsed="1"] .mbl-app-shell {
-            width: min(86vw, 340px);
+            width: clamp(274px, 86vw, 360px);
           }
           html[data-mbl-appshell="1"][data-mbl-appshell-open="1"] .mbl-app-shell {
             transform: translateX(0);
+          }
+
+          /* On mobile, always render the full menu content even if desktop was collapsed. */
+          html[data-mbl-appshell="1"][data-mbl-appshell-collapsed="1"] .mbl-org__txt,
+          html[data-mbl-appshell="1"][data-mbl-appshell-collapsed="1"] .mbl-nav__text,
+          html[data-mbl-appshell="1"][data-mbl-appshell-collapsed="1"] .mbl-nav__badge,
+          html[data-mbl-appshell="1"][data-mbl-appshell-collapsed="1"] .mbl-nav__label {
+            display: initial;
           }
         }
 
@@ -1114,6 +1123,8 @@
     }
 
     const CURRENT_PATH = cleanPath(location.pathname);
+    const CURRENT_TAB = String(new URLSearchParams(location.search).get("tab") || "").trim().toLowerCase();
+    const IS_SETTINGS_USERS_TAB = CURRENT_TAB === "users" && /\/settings\/?$/.test(CURRENT_PATH);
 
     function buildNav({ isAdmin, isTech, isDriver, orgRole, permMode, permMap, modules, activePage }) {
       const items = [
@@ -1137,6 +1148,15 @@
               perm: PERMS.crm,
               roles: [],
               requires: ["billing"],
+            },
+            {
+              key: "admin-users",
+              label: "Utilisateurs",
+              href: routeFor("admin-users"),
+              icon: ICONS.clients,
+              perm: PERMS.settings,
+              roles: [],
+              requires: [],
             },
           ],
         },
@@ -1333,7 +1353,11 @@
         sec.entries.forEach((it) => {
           it.active =
             String(activePage || "").trim() === it.key ||
-            (it.href ? cleanPath(it.href) === CURRENT_PATH : false);
+            (it.key === "admin-users"
+              ? IS_SETTINGS_USERS_TAB
+              : it.href
+              ? cleanPath(it.href) === CURRENT_PATH
+              : false);
         });
       });
 

@@ -71,6 +71,8 @@ window.Webflow.push(async function () {
     sectionBranding: "Branding & interface",
     sectionSub: "Abonnement",
     sectionUsers: "Utilisateurs & accès",
+    tabGeneral: "Paramètres",
+    tabUsers: "Utilisateurs",
     usersEmpty: "Aucun utilisateur pour cette organisation.",
     usersEdit: "Accès",
     usersSave: "Enregistrer",
@@ -253,6 +255,38 @@ window.Webflow.push(async function () {
       .mbl-settings__title { margin: 0; font-size: 18px; font-weight: 950; }
       .mbl-settings__subtitle { margin: 4px 0 0; font-size: 13px; color: var(--set-muted); font-weight: 750; }
 
+      .mbl-settings__tabs {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .set-tab {
+        height: 36px;
+        padding: 0 12px;
+        border-radius: 10px;
+        border: 1px solid rgba(15, 23, 42, 0.12);
+        background: rgba(255,255,255,0.86);
+        color: rgba(2,6,23,0.82);
+        font-weight: 900;
+        cursor: pointer;
+        transition: transform 160ms ease, border-color 180ms ease, box-shadow 180ms ease;
+      }
+      .set-tab:hover {
+        transform: translateY(-1px);
+        border-color: rgba(var(--mbl-primary-rgb, 14, 165, 233),0.30);
+        box-shadow: 0 14px 28px rgba(2,6,23,0.10);
+      }
+      .set-tab.is-active {
+        border-color: rgba(var(--mbl-primary-rgb, 14, 165, 233),0.38);
+        color: rgba(2,6,23,0.92);
+        background: linear-gradient(
+          180deg,
+          rgba(var(--mbl-primary-rgb, 14, 165, 233),0.14),
+          rgba(255,255,255,0.94)
+        );
+        box-shadow: 0 14px 30px rgba(var(--mbl-primary-rgb, 14, 165, 233),0.14);
+      }
+
       .set-btn {
         display: inline-flex;
         align-items: center;
@@ -282,6 +316,8 @@ window.Webflow.push(async function () {
       .mbl-settings__banner.is-err { display:block; background:#fef2f2; color:#991b1b; }
 
       .mbl-settings__body { padding: 14px; }
+      .set-pane { display: block; }
+      .set-pane[hidden] { display: none !important; }
 
       .set-grid {
         display: grid;
@@ -582,6 +618,8 @@ window.Webflow.push(async function () {
 
       @media (max-width: 860px) {
         .mbl-settings__top { align-items: flex-start; flex-direction: column; }
+        .mbl-settings__tabs { width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
+        .set-tab { width: 100%; }
         .set-grid { grid-template-columns: 1fr; }
         .set-form { grid-template-columns: 1fr; }
         .set-brand-layout { grid-template-columns: 1fr; }
@@ -704,52 +742,62 @@ window.Webflow.push(async function () {
           <h2 class="mbl-settings__title">${escapeHTML(STR.title)}</h2>
           <p class="mbl-settings__subtitle">${escapeHTML(STR.subtitle)}</p>
         </div>
-        <button type="button" class="set-btn" data-save>${escapeHTML(STR.save)}</button>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <div class="mbl-settings__tabs" data-tabs>
+            <button type="button" class="set-tab is-active" data-tab="general">${escapeHTML(STR.tabGeneral)}</button>
+            <button type="button" class="set-tab" data-tab="users">${escapeHTML(STR.tabUsers)}</button>
+          </div>
+          <button type="button" class="set-btn" data-save>${escapeHTML(STR.save)}</button>
+        </div>
       </div>
       <div class="mbl-settings__banner" data-banner></div>
       <div class="mbl-settings__body">
-        <div class="set-grid">
-          <section class="set-card">
-            <div class="set-card__head">${escapeHTML(STR.sectionOrg)}</div>
-            <div class="set-card__body">
-              <div class="set-form" data-org-form></div>
-            </div>
-          </section>
-
-          <section class="set-card">
-            <div class="set-card__head">${escapeHTML(STR.sectionBilling)}</div>
-            <div class="set-card__body">
-              <div class="set-form" data-billing-form></div>
-            </div>
-          </section>
-
-          <section class="set-card">
-            <div class="set-card__head">${escapeHTML(STR.sectionBranding)}</div>
-            <div class="set-card__body">
-              <div class="set-brand-layout">
-                <div class="set-form" data-branding-form></div>
-                <div class="set-brand-preview" data-branding-preview></div>
+        <section class="set-pane" data-pane="general">
+          <div class="set-grid">
+            <section class="set-card">
+              <div class="set-card__head">${escapeHTML(STR.sectionOrg)}</div>
+              <div class="set-card__body">
+                <div class="set-form" data-org-form></div>
               </div>
-            </div>
-          </section>
+            </section>
 
-          <section class="set-card">
-            <div class="set-card__head">${escapeHTML(STR.sectionSub)}</div>
-            <div class="set-card__body">
-              <div class="set-kv" data-sub-kv></div>
-              <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap;">
-                <a class="set-link" href="${escapeHTML(CONFIG.SUBSCRIBE_PATH)}">Gérer mon abonnement</a>
+            <section class="set-card">
+              <div class="set-card__head">${escapeHTML(STR.sectionBilling)}</div>
+              <div class="set-card__body">
+                <div class="set-form" data-billing-form></div>
               </div>
-            </div>
-          </section>
+            </section>
 
+            <section class="set-card">
+              <div class="set-card__head">${escapeHTML(STR.sectionBranding)}</div>
+              <div class="set-card__body">
+                <div class="set-brand-layout">
+                  <div class="set-form" data-branding-form></div>
+                  <div class="set-brand-preview" data-branding-preview></div>
+                </div>
+              </div>
+            </section>
+
+            <section class="set-card">
+              <div class="set-card__head">${escapeHTML(STR.sectionSub)}</div>
+              <div class="set-card__body">
+                <div class="set-kv" data-sub-kv></div>
+                <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap;">
+                  <a class="set-link" href="${escapeHTML(CONFIG.SUBSCRIBE_PATH)}">Gérer mon abonnement</a>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="set-pane" data-pane="users" hidden>
           <section class="set-card">
             <div class="set-card__head">${escapeHTML(STR.sectionUsers)}</div>
             <div class="set-card__body">
               <div class="set-users" data-users></div>
             </div>
           </section>
-        </div>
+        </section>
       </div>
 
       <div class="set-modal" data-modal aria-hidden="true">
@@ -767,6 +815,7 @@ window.Webflow.push(async function () {
 
     return {
       btnSave: root.querySelector("[data-save]"),
+      tabs: Array.from(root.querySelectorAll("[data-tab]")),
       banner: root.querySelector("[data-banner]"),
       orgForm: root.querySelector("[data-org-form]"),
       billingForm: root.querySelector("[data-billing-form]"),
@@ -774,6 +823,8 @@ window.Webflow.push(async function () {
       brandingPreview: root.querySelector("[data-branding-preview]"),
       subKv: root.querySelector("[data-sub-kv]"),
       users: root.querySelector("[data-users]"),
+      paneGeneral: root.querySelector('[data-pane="general"]'),
+      paneUsers: root.querySelector('[data-pane="users"]'),
       modal: root.querySelector("[data-modal]"),
       modalBackdrop: root.querySelector("[data-modal-backdrop]"),
       modalClose: root.querySelector("[data-modal-close]"),
@@ -928,6 +979,20 @@ window.Webflow.push(async function () {
 
     const logoInput = els.brandingForm.querySelector('[data-k="brand_logo_url"]');
     logoInput?.addEventListener("input", () => renderBrandingPreview(els, profile));
+  }
+
+  function setActiveTab(els, tab) {
+    const next = String(tab || "").trim().toLowerCase() === "users" ? "users" : "general";
+    const isUsers = next === "users";
+    if (els?.paneGeneral) els.paneGeneral.hidden = isUsers;
+    if (els?.paneUsers) els.paneUsers.hidden = !isUsers;
+    if (els?.btnSave) els.btnSave.style.display = isUsers ? "none" : "";
+    if (Array.isArray(els?.tabs)) {
+      els.tabs.forEach((btn) => {
+        const key = String(btn.getAttribute("data-tab") || "").trim().toLowerCase();
+        btn.classList.toggle("is-active", key === next);
+      });
+    }
   }
 
   function normalizeEmail(value) {
@@ -1480,6 +1545,20 @@ window.Webflow.push(async function () {
   // ===== boot =====
   injectStyles();
   const els = renderShell();
+  const initialTab = String(url.searchParams.get("tab") || "").trim().toLowerCase() === "users" ? "users" : "general";
+  setActiveTab(els, initialTab);
+  els.tabs.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const tab = String(btn.getAttribute("data-tab") || "").trim().toLowerCase();
+      setActiveTab(els, tab);
+      try {
+        const u = new URL(location.href);
+        if (tab === "users") u.searchParams.set("tab", "users");
+        else u.searchParams.delete("tab");
+        history.replaceState(null, "", u.pathname + u.search + u.hash);
+      } catch (_) {}
+    });
+  });
   const ctx = {
     supabase: null,
     userId: "",
