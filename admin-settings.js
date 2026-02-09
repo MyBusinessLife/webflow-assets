@@ -68,6 +68,7 @@ window.Webflow.push(async function () {
     saveError: "Impossible d'enregistrer.",
     sectionOrg: "Entreprise",
     sectionBilling: "Facturation",
+    sectionBranding: "Branding & interface",
     sectionSub: "Abonnement",
     sectionUsers: "Utilisateurs & accès",
     usersEmpty: "Aucun utilisateur pour cette organisation.",
@@ -89,7 +90,16 @@ window.Webflow.push(async function () {
     inviteRevoked: "Invitation revoquee.",
     inviteError: "Impossible de gerer l'invitation.",
     inviteSchemaMissing: "Migration 026 manquante: systeme d'invitations indisponible.",
+    brandingSchemaMissing: "Migration 027 manquante: personnalisation visuelle indisponible.",
     save: "Enregistrer",
+  };
+
+  const BRAND_DEFAULTS = {
+    theme_primary: "#0ea5e9",
+    theme_secondary: "#0c4a6e",
+    theme_surface: "#f6fbff",
+    theme_text: "#020617",
+    theme_nav_bg: "#f1f5f9",
   };
 
   function findRoot() {
@@ -136,10 +146,52 @@ window.Webflow.push(async function () {
       }
     }
 
-    const m = s.match(/rgba?\\(\\s*([\\d.]+)\\s*,\\s*([\\d.]+)\\s*,\\s*([\\d.]+)(?:\\s*,\\s*([\\d.]+))?\\s*\\)/i);
+    const m = s.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)/i);
     if (m) return { r: clamp255(m[1]), g: clamp255(m[2]), b: clamp255(m[3]) };
 
     return null;
+  }
+
+  function rgbToHex(rgb) {
+    if (!rgb) return "";
+    const toHex = (n) => clamp255(n).toString(16).padStart(2, "0");
+    return `#${toHex(rgb.r)}${toHex(rgb.g)}${toHex(rgb.b)}`;
+  }
+
+  function normalizeColor(value, fallback = "") {
+    const v = String(value || "").trim();
+    if (!v) return fallback || "";
+    const rgb = parseColorToRgb(v);
+    if (!rgb) return fallback || "";
+    return rgbToHex(rgb);
+  }
+
+  function sanitizeLogoUrl(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return null;
+    try {
+      const u = new URL(raw, location.origin);
+      if (!["http:", "https:"].includes(u.protocol)) return null;
+      return u.toString();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function applyBrandingThemeVars(branding) {
+    const primary = normalizeColor(branding?.theme_primary, BRAND_DEFAULTS.theme_primary);
+    const secondary = normalizeColor(branding?.theme_secondary, BRAND_DEFAULTS.theme_secondary);
+    const surface = normalizeColor(branding?.theme_surface, BRAND_DEFAULTS.theme_surface);
+    const text = normalizeColor(branding?.theme_text, BRAND_DEFAULTS.theme_text);
+    const navBg = normalizeColor(branding?.theme_nav_bg, BRAND_DEFAULTS.theme_nav_bg);
+    const primaryRgb = parseColorToRgb(primary) || parseColorToRgb(BRAND_DEFAULTS.theme_primary);
+
+    if (primary) document.documentElement.style.setProperty("--mbl-primary", primary);
+    if (primaryRgb) document.documentElement.style.setProperty("--mbl-primary-rgb", `${primaryRgb.r}, ${primaryRgb.g}, ${primaryRgb.b}`);
+    if (secondary) document.documentElement.style.setProperty("--mbl-secondary", secondary);
+    if (surface) document.documentElement.style.setProperty("--mbl-surface", surface);
+    if (text) document.documentElement.style.setProperty("--mbl-text", text);
+    if (navBg) document.documentElement.style.setProperty("--mbl-shell-bg-custom", navBg);
   }
 
   function resolvePrimary() {
@@ -299,6 +351,124 @@ window.Webflow.push(async function () {
       }
       .set-link:hover { transform: translateY(-1px); border-color: rgba(var(--mbl-primary-rgb, 14, 165, 233),0.30); box-shadow: 0 16px 34px rgba(2,6,23,0.12); }
 
+      .set-brand-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+        gap: 12px;
+        align-items: start;
+      }
+      .set-brand-preview {
+        border: 1px solid rgba(15, 23, 42, 0.12);
+        border-radius: 14px;
+        overflow: hidden;
+        background: rgba(255,255,255,0.94);
+      }
+      .set-brand-preview__head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 10px 12px;
+        border-bottom: 1px solid rgba(15,23,42,0.10);
+        background: rgba(248,250,252,0.9);
+      }
+      .set-brand-preview__title {
+        margin: 0;
+        font-size: 12px;
+        font-weight: 900;
+        color: rgba(2,6,23,0.72);
+      }
+      .set-brand-preview__logo {
+        width: 30px;
+        height: 30px;
+        border-radius: 10px;
+        overflow: hidden;
+        border: 1px solid rgba(15,23,42,0.12);
+        display: grid;
+        place-items: center;
+        color: #fff;
+        font-size: 11px;
+        font-weight: 950;
+        background: linear-gradient(
+          180deg,
+          rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.92),
+          rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.72)
+        );
+      }
+      .set-brand-preview__logo img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+      .set-brand-preview__body {
+        padding: 12px;
+        display: grid;
+        gap: 10px;
+      }
+      .set-brand-preview__menu {
+        border-radius: 10px;
+        border: 1px solid rgba(15,23,42,0.10);
+        background: linear-gradient(
+          180deg,
+          rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.08),
+          rgba(255,255,255,0.92)
+        );
+        padding: 8px;
+        display: grid;
+        gap: 7px;
+      }
+      .set-brand-preview__menu-item {
+        border-radius: 8px;
+        border: 1px solid rgba(15,23,42,0.10);
+        background: #fff;
+        color: rgba(2,6,23,0.82);
+        font-size: 11px;
+        font-weight: 900;
+        padding: 7px 8px;
+      }
+      .set-brand-preview__menu-item.is-active {
+        border-color: rgba(var(--mbl-primary-rgb, 14, 165, 233),0.38);
+        background: rgba(var(--mbl-primary-rgb, 14, 165, 233),0.14);
+      }
+      .set-brand-preview__chips {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .set-brand-preview__chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 8px;
+        border: 1px solid rgba(15,23,42,0.10);
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 900;
+        color: rgba(2,6,23,0.74);
+        background: rgba(255,255,255,0.92);
+      }
+      .set-brand-preview__chip-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        display: inline-block;
+      }
+      .set-color-input-wrap {
+        display: grid;
+        grid-template-columns: 48px 1fr;
+        gap: 8px;
+      }
+      .set-color-picker {
+        width: 48px;
+        height: 42px;
+        border-radius: 12px;
+        border: 1px solid rgba(15, 23, 42, 0.12);
+        background: #fff;
+        padding: 4px;
+        cursor: pointer;
+      }
+
       .set-users { display:flex; flex-direction: column; gap: 10px; }
       .set-users__group {
         display:flex;
@@ -414,6 +584,7 @@ window.Webflow.push(async function () {
         .mbl-settings__top { align-items: flex-start; flex-direction: column; }
         .set-grid { grid-template-columns: 1fr; }
         .set-form { grid-template-columns: 1fr; }
+        .set-brand-layout { grid-template-columns: 1fr; }
         .set-checks { grid-template-columns: 1fr; }
         .set-inline-form { grid-template-columns: 1fr; }
         .set-inv, .set-user { flex-direction: column; }
@@ -553,6 +724,16 @@ window.Webflow.push(async function () {
           </section>
 
           <section class="set-card">
+            <div class="set-card__head">${escapeHTML(STR.sectionBranding)}</div>
+            <div class="set-card__body">
+              <div class="set-brand-layout">
+                <div class="set-form" data-branding-form></div>
+                <div class="set-brand-preview" data-branding-preview></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="set-card">
             <div class="set-card__head">${escapeHTML(STR.sectionSub)}</div>
             <div class="set-card__body">
               <div class="set-kv" data-sub-kv></div>
@@ -589,6 +770,8 @@ window.Webflow.push(async function () {
       banner: root.querySelector("[data-banner]"),
       orgForm: root.querySelector("[data-org-form]"),
       billingForm: root.querySelector("[data-billing-form]"),
+      brandingForm: root.querySelector("[data-branding-form]"),
+      brandingPreview: root.querySelector("[data-branding-preview]"),
       subKv: root.querySelector("[data-sub-kv]"),
       users: root.querySelector("[data-users]"),
       modal: root.querySelector("[data-modal]"),
@@ -623,6 +806,20 @@ window.Webflow.push(async function () {
     `;
   }
 
+  function colorFieldHtml({ key, label, value, full = false }) {
+    const normalized = normalizeColor(value, BRAND_DEFAULTS[key] || BRAND_DEFAULTS.theme_primary);
+    const cls = full ? "set-field is-full" : "set-field";
+    return `
+      <label class="${cls}">
+        <div class="set-label">${escapeHTML(label)}</div>
+        <div class="set-color-input-wrap">
+          <input class="set-color-picker" type="color" data-color-k="${escapeHTML(key)}" value="${escapeHTML(normalized)}" />
+          <input class="set-input" data-k="${escapeHTML(key)}" value="${escapeHTML(normalized)}" placeholder="#000000" />
+        </div>
+      </label>
+    `;
+  }
+
   function kvHtml(k, v) {
     return `<div class="set-kv__k">${escapeHTML(k)}</div><div class="set-kv__v">${escapeHTML(v)}</div>`;
   }
@@ -631,6 +828,106 @@ window.Webflow.push(async function () {
     const el = container.querySelector(`[data-k="${CSS.escape(String(key))}"]`);
     if (!el) return "";
     return String(el.value ?? "").trim();
+  }
+
+  function pickInitials(name) {
+    const parts = String(name || "")
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    const a = parts[0]?.[0] || "M";
+    const b = parts[1]?.[0] || parts[0]?.[1] || "B";
+    return (a + b).toUpperCase();
+  }
+
+  function readBrandingFormValues(els) {
+    return {
+      brand_logo_url: getFormValue(els.brandingForm, "brand_logo_url"),
+      theme_primary: getFormValue(els.brandingForm, "theme_primary") || BRAND_DEFAULTS.theme_primary,
+      theme_secondary: getFormValue(els.brandingForm, "theme_secondary") || BRAND_DEFAULTS.theme_secondary,
+      theme_surface: getFormValue(els.brandingForm, "theme_surface") || BRAND_DEFAULTS.theme_surface,
+      theme_text: getFormValue(els.brandingForm, "theme_text") || BRAND_DEFAULTS.theme_text,
+      theme_nav_bg: getFormValue(els.brandingForm, "theme_nav_bg") || BRAND_DEFAULTS.theme_nav_bg,
+    };
+  }
+
+  function renderBrandingPreview(els, profile) {
+    if (!els?.brandingPreview) return;
+    const values = readBrandingFormValues(els);
+    const orgName =
+      String(getFormValue(els.orgForm, "trade_name") || getFormValue(els.orgForm, "legal_name") || profile?.trade_name || profile?.legal_name || "")
+        .trim() || "Mon organisation";
+
+    const primary = normalizeColor(values.theme_primary, BRAND_DEFAULTS.theme_primary);
+    const secondary = normalizeColor(values.theme_secondary, BRAND_DEFAULTS.theme_secondary);
+    const surface = normalizeColor(values.theme_surface, BRAND_DEFAULTS.theme_surface);
+    const text = normalizeColor(values.theme_text, BRAND_DEFAULTS.theme_text);
+    const navBg = normalizeColor(values.theme_nav_bg, BRAND_DEFAULTS.theme_nav_bg);
+    const rgb = parseColorToRgb(primary) || parseColorToRgb(BRAND_DEFAULTS.theme_primary);
+    const primaryRgbCss = rgb ? `${rgb.r}, ${rgb.g}, ${rgb.b}` : "14, 165, 233";
+    const logoUrl = sanitizeLogoUrl(values.brand_logo_url);
+    const initials = pickInitials(orgName);
+
+    applyBrandingThemeVars(values);
+
+    const logoInner = logoUrl
+      ? `<img src="${escapeHTML(logoUrl)}" alt="Logo" loading="lazy" />`
+      : `<span>${escapeHTML(initials)}</span>`;
+
+    els.brandingPreview.innerHTML = `
+      <div class="set-brand-preview__head" style="background:${escapeHTML(surface)};">
+        <p class="set-brand-preview__title">Aperçu menu & widgets</p>
+        <div class="set-brand-preview__logo" style="--mbl-primary-rgb:${escapeHTML(primaryRgbCss)}; background:linear-gradient(180deg, ${escapeHTML(primary)}, ${escapeHTML(secondary)});">
+          ${logoInner}
+        </div>
+      </div>
+      <div class="set-brand-preview__body" style="background:${escapeHTML(navBg)}; color:${escapeHTML(text)};">
+        <div class="set-brand-preview__menu" style="--mbl-primary-rgb:${escapeHTML(primaryRgbCss)};">
+          <div class="set-brand-preview__menu-item is-active">${escapeHTML(orgName)}</div>
+          <div class="set-brand-preview__menu-item">Facturation</div>
+          <div class="set-brand-preview__menu-item">Interventions</div>
+        </div>
+        <div class="set-brand-preview__chips">
+          <span class="set-brand-preview__chip"><span class="set-brand-preview__chip-dot" style="background:${escapeHTML(primary)};"></span>Primaire</span>
+          <span class="set-brand-preview__chip"><span class="set-brand-preview__chip-dot" style="background:${escapeHTML(secondary)};"></span>Secondaire</span>
+          <span class="set-brand-preview__chip"><span class="set-brand-preview__chip-dot" style="background:${escapeHTML(surface)}; border:1px solid rgba(15,23,42,.18);"></span>Surface</span>
+        </div>
+      </div>
+    `;
+  }
+
+  function wireBrandingControls(els, profile) {
+    if (!els?.brandingForm) return;
+
+    const syncTextFromPicker = (key) => {
+      const picker = els.brandingForm.querySelector(`[data-color-k="${CSS.escape(String(key))}"]`);
+      const input = els.brandingForm.querySelector(`[data-k="${CSS.escape(String(key))}"]`);
+      if (!picker || !input) return;
+      input.value = normalizeColor(picker.value, BRAND_DEFAULTS[key] || BRAND_DEFAULTS.theme_primary);
+      renderBrandingPreview(els, profile);
+    };
+
+    const syncPickerFromText = (key) => {
+      const picker = els.brandingForm.querySelector(`[data-color-k="${CSS.escape(String(key))}"]`);
+      const input = els.brandingForm.querySelector(`[data-k="${CSS.escape(String(key))}"]`);
+      if (!picker || !input) return;
+      const next = normalizeColor(input.value, "");
+      if (next) {
+        picker.value = next;
+        input.value = next;
+      }
+      renderBrandingPreview(els, profile);
+    };
+
+    ["theme_primary", "theme_secondary", "theme_surface", "theme_text", "theme_nav_bg"].forEach((key) => {
+      const picker = els.brandingForm.querySelector(`[data-color-k="${CSS.escape(String(key))}"]`);
+      const input = els.brandingForm.querySelector(`[data-k="${CSS.escape(String(key))}"]`);
+      picker?.addEventListener("input", () => syncTextFromPicker(key));
+      input?.addEventListener("input", () => syncPickerFromText(key));
+    });
+
+    const logoInput = els.brandingForm.querySelector('[data-k="brand_logo_url"]');
+    logoInput?.addEventListener("input", () => renderBrandingPreview(els, profile));
   }
 
   function normalizeEmail(value) {
@@ -1285,6 +1582,29 @@ window.Webflow.push(async function () {
       }) +
       textareaHtml({ key: "footer_notes", label: "Notes bas de page (optionnel)", value: p.footer_notes });
 
+    // Branding form
+    els.brandingForm.innerHTML =
+      fieldHtml({
+        key: "brand_logo_url",
+        label: "Logo (URL)",
+        value: p.brand_logo_url,
+        full: true,
+        placeholder: "https://.../logo.png",
+      }) +
+      colorFieldHtml({ key: "theme_primary", label: "Couleur principale", value: p.theme_primary }) +
+      colorFieldHtml({ key: "theme_secondary", label: "Couleur secondaire", value: p.theme_secondary }) +
+      colorFieldHtml({ key: "theme_surface", label: "Couleur surface", value: p.theme_surface }) +
+      colorFieldHtml({ key: "theme_text", label: "Couleur texte", value: p.theme_text }) +
+      colorFieldHtml({ key: "theme_nav_bg", label: "Fond menu lateral", value: p.theme_nav_bg, full: true });
+
+    wireBrandingControls(els, p);
+    renderBrandingPreview(els, p);
+
+    ["trade_name", "legal_name"].forEach((k) => {
+      const input = els.orgForm.querySelector(`[data-k="${CSS.escape(String(k))}"]`);
+      input?.addEventListener("input", () => renderBrandingPreview(els, p));
+    });
+
     // Subscription kv
     els.subKv.innerHTML =
       kvHtml("Plan", planName) +
@@ -1306,7 +1626,7 @@ window.Webflow.push(async function () {
       els.btnSave.textContent = STR.saving;
 
       try {
-        const payload = {
+        const corePayload = {
           trade_name: getFormValue(els.orgForm, "trade_name") || null,
           legal_name: getFormValue(els.orgForm, "legal_name") || null,
           legal_form: getFormValue(els.orgForm, "legal_form") || null,
@@ -1335,9 +1655,29 @@ window.Webflow.push(async function () {
           updated_at: new Date().toISOString(),
         };
 
-        const { error } = await supabase.from(CONFIG.PROFILE_TABLE).update(payload).eq("organization_id", orgId);
-        if (error) throw error;
-        showBanner(els, STR.saved, "ok");
+        const brandingPayload = {
+          brand_logo_url: sanitizeLogoUrl(getFormValue(els.brandingForm, "brand_logo_url")),
+          theme_primary: normalizeColor(getFormValue(els.brandingForm, "theme_primary"), BRAND_DEFAULTS.theme_primary),
+          theme_secondary: normalizeColor(getFormValue(els.brandingForm, "theme_secondary"), BRAND_DEFAULTS.theme_secondary),
+          theme_surface: normalizeColor(getFormValue(els.brandingForm, "theme_surface"), BRAND_DEFAULTS.theme_surface),
+          theme_text: normalizeColor(getFormValue(els.brandingForm, "theme_text"), BRAND_DEFAULTS.theme_text),
+          theme_nav_bg: normalizeColor(getFormValue(els.brandingForm, "theme_nav_bg"), BRAND_DEFAULTS.theme_nav_bg),
+        };
+
+        applyBrandingThemeVars(brandingPayload);
+
+        const payload = { ...corePayload, ...brandingPayload };
+        const firstSave = await supabase.from(CONFIG.PROFILE_TABLE).update(payload).eq("organization_id", orgId);
+
+        if (firstSave.error && isMissingColumnError(firstSave.error)) {
+          const fallbackSave = await supabase.from(CONFIG.PROFILE_TABLE).update(corePayload).eq("organization_id", orgId);
+          if (fallbackSave.error) throw fallbackSave.error;
+          showBanner(els, STR.brandingSchemaMissing, "err");
+        } else if (firstSave.error) {
+          throw firstSave.error;
+        } else {
+          showBanner(els, STR.saved, "ok");
+        }
       } catch (e) {
         warn("save error", e);
         showBanner(els, STR.saveError, "err");

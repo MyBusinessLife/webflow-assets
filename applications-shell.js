@@ -68,6 +68,14 @@
       SHOW_LOCKED: String(CFG.SHELL_SHOW_LOCKED ?? "1").trim() !== "0",
     };
 
+    const BRAND_DEFAULTS = {
+      theme_primary: String(CFG.THEME_PRIMARY || "").trim() || "#0ea5e9",
+      theme_secondary: "#0c4a6e",
+      theme_surface: "#f6fbff",
+      theme_text: "#020617",
+      theme_nav_bg: "#f1f5f9",
+    };
+
 	    const FALLBACK_ROUTES = {
 	      // Admin
 	      "admin-dashboard": sanitizePath(CFG.ADMIN_DASH) || `${CONFIG.APP_ROOT}/admin/dashboard`,
@@ -322,6 +330,53 @@
       return null;
     }
 
+    function rgbToHex(rgb) {
+      if (!rgb) return "";
+      const toHex = (n) => clamp255(n).toString(16).padStart(2, "0");
+      return `#${toHex(rgb.r)}${toHex(rgb.g)}${toHex(rgb.b)}`;
+    }
+
+    function normalizeColor(value, fallback = "") {
+      const v = String(value || "").trim();
+      if (!v) return fallback || "";
+      const rgb = parseColorToRgb(v);
+      if (!rgb) return fallback || "";
+      return rgbToHex(rgb);
+    }
+
+    function sanitizeLogoUrl(value) {
+      const raw = String(value || "").trim();
+      if (!raw) return "";
+      try {
+        const u = new URL(raw, location.origin);
+        if (!["http:", "https:"].includes(u.protocol)) return "";
+        return u.toString();
+      } catch (_) {
+        return "";
+      }
+    }
+
+    function applyBrandingThemeVars(branding) {
+      const primary = normalizeColor(branding?.theme_primary, BRAND_DEFAULTS.theme_primary);
+      const secondary = normalizeColor(branding?.theme_secondary, BRAND_DEFAULTS.theme_secondary);
+      const surface = normalizeColor(branding?.theme_surface, BRAND_DEFAULTS.theme_surface);
+      const text = normalizeColor(branding?.theme_text, BRAND_DEFAULTS.theme_text);
+      const navBg = normalizeColor(branding?.theme_nav_bg, BRAND_DEFAULTS.theme_nav_bg);
+      const rgb = parseColorToRgb(primary) || parseColorToRgb(BRAND_DEFAULTS.theme_primary);
+
+      if (primary) document.documentElement.style.setProperty("--mbl-primary", primary);
+      if (rgb) document.documentElement.style.setProperty("--mbl-primary-rgb", `${rgb.r}, ${rgb.g}, ${rgb.b}`);
+      if (secondary) document.documentElement.style.setProperty("--mbl-secondary", secondary);
+      if (surface) document.documentElement.style.setProperty("--mbl-surface", surface);
+      if (text) document.documentElement.style.setProperty("--mbl-text", text);
+      if (navBg) document.documentElement.style.setProperty("--mbl-shell-bg-custom", navBg);
+    }
+
+    function isMissingColumnError(err) {
+      const msg = String(err?.message || "").toLowerCase();
+      return msg.includes("does not exist") || msg.includes("column") || msg.includes("missing");
+    }
+
     function resolvePrimary() {
       try {
         const v = String(getComputedStyle(document.documentElement).getPropertyValue("--mbl-primary") || "").trim();
@@ -354,9 +409,10 @@
           --mbl-shell-wc: 86px;
           --mbl-shell-radius: 18px;
           --mbl-shell-border: rgba(15, 23, 42, 0.12);
-          --mbl-shell-text: rgba(2, 6, 23, 0.90);
+          --mbl-shell-text: var(--mbl-text, rgba(2, 6, 23, 0.90));
           --mbl-shell-muted: rgba(2, 6, 23, 0.60);
-          --mbl-shell-bg: rgba(250, 252, 255, 0.92);
+          --mbl-shell-bg: var(--mbl-shell-bg-custom, rgba(250, 252, 255, 0.92));
+          --mbl-shell-surface: var(--mbl-surface, rgba(255,255,255,0.84));
           --mbl-shell-shadow: 0 28px 90px rgba(2, 6, 23, 0.14);
           --mbl-shell-shadow-sm: 0 10px 24px rgba(2, 6, 23, 0.12);
         }
@@ -390,7 +446,7 @@
           background:
             radial-gradient(980px 520px at 30% 0%, rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.14), transparent 52%),
             radial-gradient(900px 520px at 90% 10%, rgba(2, 6, 23, 0.10), transparent 58%),
-            rgba(246, 251, 255, 0.92);
+            var(--mbl-shell-bg);
           border-right: 1px solid rgba(15, 23, 42, 0.08);
           backdrop-filter: blur(8px);
           -webkit-backdrop-filter: blur(8px);
@@ -442,7 +498,7 @@
           gap: 10px;
           padding: 8px 8px 12px;
           border-radius: var(--mbl-shell-radius);
-          background: rgba(255,255,255,0.82);
+          background: var(--mbl-shell-surface);
           border: 1px solid rgba(15, 23, 42, 0.10);
           box-shadow: 0 14px 28px rgba(2, 6, 23, 0.08);
         }
@@ -475,6 +531,19 @@
           );
           box-shadow: 0 14px 28px rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.25);
           flex: 0 0 auto;
+        }
+        .mbl-org__mark.is-logo {
+          padding: 0;
+          background: #fff;
+          box-shadow: 0 8px 20px rgba(2, 6, 23, 0.14);
+          border: 1px solid rgba(15, 23, 42, 0.12);
+          color: transparent;
+        }
+        .mbl-org__mark img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
         }
         .mbl-org__txt { min-width: 0; }
         .mbl-org__name {
@@ -843,6 +912,37 @@
       const a = parts[0]?.[0] || "M";
       const b = parts[1]?.[0] || parts[0]?.[1] || "B";
       return (a + b).toUpperCase();
+    }
+
+    function renderOrgMark(markEl, orgName, logoUrl) {
+      if (!markEl) return;
+      const safeLogo = sanitizeLogoUrl(logoUrl);
+      if (safeLogo) {
+        markEl.classList.add("is-logo");
+        markEl.innerHTML = `<img src="${escapeHTML(safeLogo)}" alt="${escapeHTML(orgName || "Logo")}" loading="lazy" decoding="async" />`;
+        return;
+      }
+      markEl.classList.remove("is-logo");
+      markEl.textContent = pickInitials(orgName);
+    }
+
+    async function loadOrgProfile(supabase, orgId) {
+      if (!orgId) return null;
+
+      const baseSel = "trade_name, legal_name";
+      const fullSel = `${baseSel}, brand_logo_url, theme_primary, theme_secondary, theme_surface, theme_text, theme_nav_bg`;
+
+      let res = await supabase.from("organization_profiles").select(fullSel).eq("organization_id", orgId).maybeSingle();
+
+      if (res.error && isMissingColumnError(res.error)) {
+        res = await supabase.from("organization_profiles").select(baseSel).eq("organization_id", orgId).maybeSingle();
+      }
+
+      if (res.error) {
+        warn("organization_profiles load failed", res.error);
+        return null;
+      }
+      return res.data || null;
     }
 
     const ICONS = {
@@ -1370,6 +1470,7 @@
 
     // ==== boot ====
     rememberCurrentRoute();
+    applyBrandingThemeVars({});
     injectStyles();
     rewriteKnownBadLinks();
 
@@ -1422,9 +1523,10 @@
       const permState = normalizePermissions(member);
       const accessRole = isAdmin ? "admin" : isTech ? "tech" : isDriver ? "driver" : orgRole;
 
-      // Resolve org name + plan/modules
-      const [orgRes, entRes, subRes] = await Promise.all([
+      // Resolve org name + branding + plan/modules
+      const [orgRes, orgProfile, entRes, subRes] = await Promise.all([
         orgId ? supabase.from("organizations").select("id, name, slug").eq("id", orgId).maybeSingle() : Promise.resolve({ data: null }),
+        loadOrgProfile(supabase, orgId),
         orgId ? supabase.from("organization_entitlements").select("modules, limits").eq("organization_id", orgId).maybeSingle() : Promise.resolve({ data: null }),
         orgId
           ? supabase
@@ -1437,14 +1539,16 @@
           : Promise.resolve({ data: null }),
       ]);
 
-      const orgName = String(orgRes?.data?.name || "Applications").trim() || "Applications";
+      const orgName =
+        String(orgProfile?.trade_name || orgProfile?.legal_name || orgRes?.data?.name || "Applications").trim() || "Applications";
       const planName = String(subRes?.data?.plan?.name || "").trim();
       const planMods = subRes?.data?.plan?.modules && typeof subRes.data.plan.modules === "object" ? subRes.data.plan.modules : {};
       const entMods = entRes?.data?.modules && typeof entRes.data.modules === "object" ? entRes.data.modules : {};
       const modules = { ...planMods, ...entMods };
 
       // Put org context in UI
-      dom.aside.querySelector("[data-org-mark]").textContent = pickInitials(orgName);
+      applyBrandingThemeVars(orgProfile || {});
+      renderOrgMark(dom.aside.querySelector("[data-org-mark]"), orgName, orgProfile?.brand_logo_url);
       dom.aside.querySelector("[data-org-name]").textContent = orgName;
 
       const sub = subRes?.data || null;
