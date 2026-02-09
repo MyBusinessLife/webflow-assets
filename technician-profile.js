@@ -49,6 +49,7 @@
     labelPasswordConfirm: "Confirmer le mot de passe",
 
     readOnlyEmailHint: "L'email n'est pas modifiable depuis cette page.",
+    readOnlyIdentityHint: "Le nom et le prenom sont verrouilles pour les comptes employe/sous-traitant.",
     securityHint: "Choisis un mot de passe robuste (minimum 8 caracteres).",
 
     statTotal: "Interventions assignees",
@@ -139,6 +140,7 @@
       today: 0,
       completion: 0,
     },
+    canEditIdentity: false,
   };
 
   init();
@@ -327,6 +329,22 @@
     els.userType.textContent = resolvedUserType;
     els.createdAt.textContent = p.created_at ? formatDateFR(p.created_at) : "—";
     els.updatedAt.textContent = p.updated_at ? formatDateFR(p.updated_at) : "—";
+
+    const canEditIdentity = canEditIdentityFields();
+    state.canEditIdentity = canEditIdentity;
+    [els.firstName, els.lastName, els.displayName].forEach((field) => {
+      if (!field) return;
+      field.readOnly = !canEditIdentity;
+      if (!canEditIdentity) field.setAttribute("title", STR.readOnlyIdentityHint);
+      else field.removeAttribute("title");
+    });
+  }
+
+  function canEditIdentityFields() {
+    const rawRole = String(state.profile?.role || state.user?.user_metadata?.role || "tech")
+      .trim()
+      .toLowerCase();
+    return ["owner", "admin", "manager"].includes(rawRole);
   }
 
   function renderStats() {
@@ -393,9 +411,10 @@
       return;
     }
 
-    const firstName = cleanText(els.firstName.value, 80);
-    const lastName = cleanText(els.lastName.value, 80);
-    let displayName = cleanText(els.displayName.value, 120);
+    const canEditIdentity = state.canEditIdentity || canEditIdentityFields();
+    const firstName = canEditIdentity ? cleanText(els.firstName.value, 80) : cleanText(state.profile?.first_name, 80);
+    const lastName = canEditIdentity ? cleanText(els.lastName.value, 80) : cleanText(state.profile?.last_name, 80);
+    let displayName = canEditIdentity ? cleanText(els.displayName.value, 120) : cleanText(state.profile?.name, 120);
     if (!displayName) displayName = buildNameFromParts(firstName, lastName);
     if (!displayName) displayName = cleanText((state.user.email || "").split("@")[0], 120);
 

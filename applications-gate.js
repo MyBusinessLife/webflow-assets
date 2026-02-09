@@ -463,6 +463,23 @@
     return res.data?.[0] || null;
   }
 
+  async function claimPendingInvitations(supabase) {
+    try {
+      const res = await supabase.rpc("claim_pending_org_invitations");
+      if (res?.error) {
+        const msg = String(res.error?.message || "").toLowerCase();
+        if (msg.includes("does not exist") || msg.includes("function")) return 0;
+        console.warn("[APP GATE] claim_pending_org_invitations warning:", res.error.message);
+        return 0;
+      }
+      const n = Number(res?.data || 0);
+      return Number.isFinite(n) ? n : 0;
+    } catch (e) {
+      console.warn("[APP GATE] claim_pending_org_invitations failed:", e);
+      return 0;
+    }
+  }
+
   function redirectTo(path) {
     try {
       window.location.href = path;
@@ -497,6 +514,8 @@
       redirectTo(withNextParam(CONFIG.LOGIN_PATH));
       return;
     }
+
+    await claimPendingInvitations(supabase);
 
     const member = await resolveMember(supabase, user.id);
     const orgId = String(member?.organization_id || "").trim();

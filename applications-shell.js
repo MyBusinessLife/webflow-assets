@@ -403,9 +403,21 @@
 
         @media (max-width: 991px) {
           .mbl-app-shell {
+            width: min(86vw, 340px);
+            max-width: calc(100vw - 12px);
+            height: 100dvh;
+            padding:
+              max(10px, env(safe-area-inset-top))
+              10px
+              max(10px, env(safe-area-inset-bottom));
+            border-right: 1px solid rgba(15, 23, 42, 0.10);
+            border-top-right-radius: 18px;
+            border-bottom-right-radius: 18px;
             transform: translateX(-110%);
             box-shadow: var(--mbl-shell-shadow);
-            border-right: 1px solid rgba(15, 23, 42, 0.10);
+          }
+          html[data-mbl-appshell="1"][data-mbl-appshell-collapsed="1"] .mbl-app-shell {
+            width: min(86vw, 340px);
           }
           html[data-mbl-appshell="1"][data-mbl-appshell-open="1"] .mbl-app-shell {
             transform: translateX(0);
@@ -433,6 +445,13 @@
           background: rgba(255,255,255,0.82);
           border: 1px solid rgba(15, 23, 42, 0.10);
           box-shadow: 0 14px 28px rgba(2, 6, 23, 0.08);
+        }
+        @media (max-width: 991px) {
+          .mbl-app-shell__top {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+          }
         }
 
         .mbl-org {
@@ -507,13 +526,24 @@
           transform: rotate(0deg);
         }
         @media (max-width: 991px) {
-          .mbl-app-shell__toggle { display: none; }
+          .mbl-app-shell__toggle {
+            display: grid;
+            width: 36px;
+            height: 36px;
+            border-radius: 12px;
+          }
+          .mbl-app-shell__toggle svg { transform: rotate(90deg); }
+          html[data-mbl-appshell="1"][data-mbl-appshell-open="1"] .mbl-app-shell__toggle svg {
+            transform: rotate(0deg);
+          }
         }
 
         .mbl-app-shell__nav {
           margin-top: 12px;
           display: flex;
           flex-direction: column;
+          flex: 1 1 auto;
+          min-height: 0;
           gap: 10px;
           overflow: auto;
           padding: 6px 2px;
@@ -626,8 +656,8 @@
         .mbl-app-shell__burger {
           position: fixed;
           z-index: 2147483645;
-          left: 12px;
-          top: 12px;
+          left: max(10px, env(safe-area-inset-left));
+          top: max(10px, env(safe-area-inset-top));
           width: 44px;
           height: 44px;
           border-radius: 16px;
@@ -640,6 +670,16 @@
         }
         @media (max-width: 991px) {
           .mbl-app-shell__burger { display: grid; }
+        }
+        @media (max-width: 480px) {
+          .mbl-app-shell {
+            width: min(92vw, 360px) !important;
+          }
+          .mbl-app-shell__burger {
+            width: 42px;
+            height: 42px;
+            border-radius: 14px;
+          }
         }
 
         .mbl-tooltip {
@@ -1308,6 +1348,10 @@
       overlay.addEventListener("click", () => openMobile(false));
 
       toggle?.addEventListener("click", () => {
+        if (window.matchMedia("(max-width: 991px)").matches) {
+          openMobile(false);
+          return;
+        }
         const collapsed = document.documentElement.hasAttribute("data-mbl-appshell-collapsed");
         setCollapsed(!collapsed);
       });

@@ -27,6 +27,7 @@ Order to run in Supabase SQL Editor:
 23. `023_fleet_module_and_vehicle_compliance.sql`
 24. `024_logistics_core.sql`
 25. `025_member_permissions_and_availability.sql`
+26. `026_org_invitations_and_claim.sql`
 
 ## Important
 - Run each file in full, then validate before the next file.

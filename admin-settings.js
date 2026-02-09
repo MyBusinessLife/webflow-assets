@@ -38,6 +38,12 @@ window.Webflow.push(async function () {
     return /\/login\/?$/.test(v) ? v : "";
   }
 
+  function sanitizeSignupPath(value) {
+    const v = sanitizePath(value);
+    if (!v) return "";
+    return /\/signup\/?$/.test(v) ? v : "";
+  }
+
   const CONFIG = {
     SUPABASE_URL: CFG.SUPABASE_URL || "https://jrjdhdechcdlygpgaoes.supabase.co",
     SUPABASE_ANON_KEY:
@@ -46,6 +52,7 @@ window.Webflow.push(async function () {
     SUPABASE_CDN: CFG.SUPABASE_CDN || "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2",
     AUTH_STORAGE_KEY: CFG.AUTH_STORAGE_KEY || "mbl-extranet-auth",
     LOGIN_PATH: sanitizeLoginPath(CFG.LOGIN_PATH) || `${APP_ROOT}/login`,
+    SIGNUP_PATH: sanitizeSignupPath(CFG.SIGNUP_PATH) || `${APP_ROOT}/signup`,
     SUBSCRIBE_PATH: sanitizePath(CFG.SUBSCRIBE_PATH) || "/subscriptions",
     PROFILE_TABLE: "organization_profiles",
   };
@@ -69,6 +76,19 @@ window.Webflow.push(async function () {
     usersClose: "Fermer",
     usersModeInherit: "Accès automatique (selon rôle)",
     usersModeCustom: "Accès personnalisé (cases à cocher)",
+    inviteTitle: "Inviter un employe / sous-traitant",
+    inviteEmail: "Email",
+    inviteRole: "Role",
+    inviteType: "Type utilisateur",
+    inviteSend: "Envoyer l'invitation",
+    invitePending: "Invitations en attente",
+    inviteEmpty: "Aucune invitation en attente.",
+    inviteLink: "Copier le lien",
+    inviteRevoke: "Revoquer",
+    inviteSent: "Invitation enregistree.",
+    inviteRevoked: "Invitation revoquee.",
+    inviteError: "Impossible de gerer l'invitation.",
+    inviteSchemaMissing: "Migration 026 manquante: systeme d'invitations indisponible.",
     save: "Enregistrer",
   };
 
@@ -280,6 +300,47 @@ window.Webflow.push(async function () {
       .set-link:hover { transform: translateY(-1px); border-color: rgba(var(--mbl-primary-rgb, 14, 165, 233),0.30); box-shadow: 0 16px 34px rgba(2,6,23,0.12); }
 
       .set-users { display:flex; flex-direction: column; gap: 10px; }
+      .set-users__group {
+        display:flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .set-users__title {
+        font-weight: 950;
+        color: rgba(2,6,23,0.78);
+        font-size: 13px;
+      }
+      .set-invite {
+        border: 1px solid rgba(15,23,42,0.10);
+        background: rgba(255,255,255,0.90);
+        border-radius: 14px;
+        padding: 12px 12px;
+      }
+      .set-inline-form {
+        display:grid;
+        grid-template-columns: 1.35fr 1fr 1fr auto;
+        gap: 10px;
+        align-items:end;
+      }
+      .set-btn--mini {
+        height: 40px;
+        padding: 0 12px;
+        border-radius: 10px;
+      }
+      .set-inv-list { display:flex; flex-direction: column; gap: 10px; }
+      .set-inv {
+        display:flex;
+        align-items:flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        border: 1px solid rgba(15,23,42,0.10);
+        background: rgba(255,255,255,0.86);
+        border-radius: 14px;
+        padding: 12px 12px;
+      }
+      .set-inv__name { font-weight: 950; color: rgba(2,6,23,0.84); }
+      .set-inv__meta { margin-top: 4px; color: rgba(2,6,23,0.62); font-weight: 800; font-size: 12px; }
+      .set-inv__actions { display:flex; gap: 8px; flex-wrap: wrap; justify-content:flex-end; }
       .set-user {
         display:flex;
         align-items:flex-start;
@@ -354,6 +415,9 @@ window.Webflow.push(async function () {
         .set-grid { grid-template-columns: 1fr; }
         .set-form { grid-template-columns: 1fr; }
         .set-checks { grid-template-columns: 1fr; }
+        .set-inline-form { grid-template-columns: 1fr; }
+        .set-inv, .set-user { flex-direction: column; }
+        .set-inv__actions { justify-content:flex-start; }
       }
     `;
     document.head.appendChild(st);
@@ -569,6 +633,38 @@ window.Webflow.push(async function () {
     return String(el.value ?? "").trim();
   }
 
+  function normalizeEmail(value) {
+    return String(value || "").trim().toLowerCase();
+  }
+
+  function isEmailValid(value) {
+    const v = normalizeEmail(value);
+    if (!v) return false;
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+  }
+
+  function formatDateTimeFR(value) {
+    if (!value) return "—";
+    const d = new Date(value);
+    if (!Number.isFinite(d.getTime())) return "—";
+    return d.toLocaleString("fr-FR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
+  function inviteLinkForToken(token) {
+    const safeToken = String(token || "").trim();
+    if (!safeToken) return "";
+    const signupPath = String(CONFIG.SIGNUP_PATH || "").trim() || "/applications/signup";
+    const base = new URL(signupPath, location.origin);
+    base.searchParams.set("invite", safeToken);
+    return base.toString();
+  }
+
   function isMissingColumnError(err) {
     const msg = String(err?.message || "").toLowerCase();
     return msg.includes("does not exist") || msg.includes("column") || msg.includes("missing");
@@ -685,62 +781,156 @@ window.Webflow.push(async function () {
     return new Map((res.data || []).map((p) => [String(p.id), p]));
   }
 
-  async function refreshUsers(ctx, els) {
-    if (!ctx?.supabase || !ctx?.orgId) return;
-    const members = await loadOrgMembers(ctx.supabase, ctx.orgId);
-    const profilesById = await loadProfilesById(
-      ctx.supabase,
-      members.map((m) => m.user_id)
-    );
-    ctx.members = members;
-    ctx.profilesById = profilesById;
-    renderUsersList(els, { members, profilesById, modules: ctx.modules, ctx });
+  async function loadOrgInvites(supabase, orgId) {
+    const res = await supabase
+      .from("organization_invitations")
+      .select("id, organization_id, email, role, user_type, permissions_mode, status, token, invited_at, expires_at, accepted_at, revoked_at")
+      .eq("organization_id", orgId)
+      .order("invited_at", { ascending: false })
+      .limit(400);
+
+    if (res.error) {
+      if (isMissingColumnError(res.error) || String(res.error.message || "").toLowerCase().includes("relation")) {
+        return { available: false, rows: [] };
+      }
+      throw res.error;
+    }
+    return { available: true, rows: res.data || [] };
   }
 
-  function renderUsersList(els, { members, profilesById, modules, ctx }) {
-    if (!members.length) {
-      els.users.innerHTML = `<div class="set-user"><div><div class="set-user__name">${escapeHTML(
-        STR.usersEmpty
-      )}</div></div></div>`;
-      return;
-    }
+  async function refreshUsers(ctx, els) {
+    if (!ctx?.supabase || !ctx?.orgId) return;
+    const [members, invitesPack] = await Promise.all([
+      loadOrgMembers(ctx.supabase, ctx.orgId),
+      loadOrgInvites(ctx.supabase, ctx.orgId),
+    ]);
+    const profilesById = await loadProfilesById(ctx.supabase, members.map((m) => m.user_id));
+    ctx.members = members;
+    ctx.profilesById = profilesById;
+    ctx.invitesAvailable = Boolean(invitesPack?.available);
+    ctx.invites = invitesPack?.rows || [];
+    renderUsersList(els, {
+      members,
+      profilesById,
+      modules: ctx.modules,
+      invites: ctx.invites,
+      invitesAvailable: ctx.invitesAvailable,
+      ctx,
+    });
+  }
 
-    els.users.innerHTML = members
-      .map((m) => {
-        const prof = profilesById.get(String(m.user_id)) || null;
-        const name = pickDisplayName(prof, m.user_id);
-        const email = String(prof?.email || "").trim();
-        const userType = String(prof?.user_type || "").trim().toLowerCase() || "—";
-        const role = cleanRole(m.role);
-        const mode = cleanMode(m.permissions_mode);
-        const active = m.is_active !== false;
+  function renderUsersList(els, { members, profilesById, modules, invites, invitesAvailable, ctx }) {
+    const pendingInvites = (invites || []).filter((i) => String(i.status || "") === "pending");
 
-        const pills = [
-          `<span class="set-pill ${active ? "is-ok" : "is-muted"}"><span class="dot"></span>${escapeHTML(active ? "Actif" : "Inactif")}</span>`,
-          `<span class="set-pill"><span class="dot"></span>${escapeHTML("Rôle: " + role)}</span>`,
-          `<span class="set-pill ${mode === "custom" ? "is-warn" : ""}"><span class="dot"></span>${escapeHTML(
-            mode === "custom" ? "Accès: personnalisé" : "Accès: auto"
-          )}</span>`,
-          `<span class="set-pill"><span class="dot"></span>${escapeHTML("Type: " + userType)}</span>`,
-        ];
-
-        const metaBits = [];
-        if (email) metaBits.push(email);
-        if (String(m.user_id || "").trim()) metaBits.push(String(m.user_id).slice(0, 8) + "…");
-        return `
-          <div class="set-user" data-member-id="${escapeHTML(m.id)}">
-            <div style="min-width:0;">
-              <div class="set-user__name">${escapeHTML(name)}</div>
-              <div class="set-user__meta">${escapeHTML(metaBits.join(" • ") || "—")}</div>
-              <div class="set-pills">${pills.join("")}</div>
-            </div>
-            <div style="display:flex; flex-direction:column; gap:10px; align-items:flex-end;">
-              <button type="button" class="set-link" data-action="edit-user">${escapeHTML(STR.usersEdit)}</button>
-            </div>
-          </div>
-        `;
-      })
+    const roleOptions = ["viewer", "tech", "driver", "manager", "admin"]
+      .map((r) => `<option value="${escapeHTML(r)}">${escapeHTML(r)}</option>`)
       .join("");
+
+    const pendingHtml = invitesAvailable
+      ? pendingInvites.length
+        ? pendingInvites
+            .map((inv) => {
+              const email = String(inv.email || "").trim();
+              const role = cleanRole(inv.role);
+              const userType = String(inv.user_type || "internal").trim().toLowerCase() || "internal";
+              const invitedAt = formatDateTimeFR(inv.invited_at);
+              const expiresAt = formatDateTimeFR(inv.expires_at);
+              return `
+                <div class="set-inv" data-invite-id="${escapeHTML(inv.id)}">
+                  <div style="min-width:0;">
+                    <div class="set-inv__name">${escapeHTML(email || "Invitation")}</div>
+                    <div class="set-inv__meta">${escapeHTML(`Rôle: ${role} • Type: ${userType}`)}</div>
+                    <div class="set-inv__meta">${escapeHTML(`Envoyée: ${invitedAt} • Expire: ${expiresAt}`)}</div>
+                  </div>
+                  <div class="set-inv__actions">
+                    <button type="button" class="set-link" data-action="copy-invite">${escapeHTML(STR.inviteLink)}</button>
+                    <button type="button" class="set-link" data-action="revoke-invite">${escapeHTML(STR.inviteRevoke)}</button>
+                  </div>
+                </div>
+              `;
+            })
+            .join("")
+        : `<div class="set-inv"><div class="set-inv__name">${escapeHTML(STR.inviteEmpty)}</div></div>`
+      : `<div class="set-inv"><div class="set-inv__name">${escapeHTML(STR.inviteSchemaMissing)}</div></div>`;
+
+    const membersHtml = members.length
+      ? members
+          .map((m) => {
+            const prof = profilesById.get(String(m.user_id)) || null;
+            const name = pickDisplayName(prof, m.user_id);
+            const email = String(prof?.email || "").trim();
+            const userType = String(prof?.user_type || "").trim().toLowerCase() || "—";
+            const role = cleanRole(m.role);
+            const mode = cleanMode(m.permissions_mode);
+            const active = m.is_active !== false;
+
+            const pills = [
+              `<span class="set-pill ${active ? "is-ok" : "is-muted"}"><span class="dot"></span>${escapeHTML(
+                active ? "Actif" : "Inactif"
+              )}</span>`,
+              `<span class="set-pill"><span class="dot"></span>${escapeHTML("Rôle: " + role)}</span>`,
+              `<span class="set-pill ${mode === "custom" ? "is-warn" : ""}"><span class="dot"></span>${escapeHTML(
+                mode === "custom" ? "Accès: personnalisé" : "Accès: auto"
+              )}</span>`,
+              `<span class="set-pill"><span class="dot"></span>${escapeHTML("Type: " + userType)}</span>`,
+            ];
+
+            const metaBits = [];
+            if (email) metaBits.push(email);
+            if (String(m.user_id || "").trim()) metaBits.push(String(m.user_id).slice(0, 8) + "…");
+            return `
+              <div class="set-user" data-member-id="${escapeHTML(m.id)}">
+                <div style="min-width:0;">
+                  <div class="set-user__name">${escapeHTML(name)}</div>
+                  <div class="set-user__meta">${escapeHTML(metaBits.join(" • ") || "—")}</div>
+                  <div class="set-pills">${pills.join("")}</div>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:10px; align-items:flex-end;">
+                  <button type="button" class="set-link" data-action="edit-user">${escapeHTML(STR.usersEdit)}</button>
+                </div>
+              </div>
+            `;
+          })
+          .join("")
+      : `<div class="set-user"><div><div class="set-user__name">${escapeHTML(STR.usersEmpty)}</div></div></div>`;
+
+    els.users.innerHTML = `
+      <div class="set-users__group">
+        <div class="set-users__title">${escapeHTML(STR.inviteTitle)}</div>
+        <div class="set-invite">
+          <form class="set-inline-form" data-invite-form>
+            <label class="set-field">
+              <div class="set-label">${escapeHTML(STR.inviteEmail)}</div>
+              <input class="set-input" name="email" type="email" placeholder="prenom.nom@entreprise.fr" />
+            </label>
+            <label class="set-field">
+              <div class="set-label">${escapeHTML(STR.inviteRole)}</div>
+              <select class="set-input" name="role">${roleOptions}</select>
+            </label>
+            <label class="set-field">
+              <div class="set-label">${escapeHTML(STR.inviteType)}</div>
+              <select class="set-input" name="user_type">
+                <option value="internal">internal</option>
+                <option value="external">external</option>
+              </select>
+            </label>
+            <button type="submit" class="set-btn set-btn--mini" ${invitesAvailable ? "" : "disabled"}>${escapeHTML(
+          STR.inviteSend
+        )}</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="set-users__group">
+        <div class="set-users__title">${escapeHTML(STR.invitePending)}</div>
+        <div class="set-inv-list">${pendingHtml}</div>
+      </div>
+
+      <div class="set-users__group">
+        <div class="set-users__title">Comptes de l'organisation</div>
+        <div class="set-users__members">${membersHtml}</div>
+      </div>
+    `;
 
     els.users.querySelectorAll('[data-action="edit-user"]').forEach((btn) => {
       btn.addEventListener("click", (e) => {
@@ -751,6 +941,122 @@ window.Webflow.push(async function () {
         if (!member) return;
         const prof = profilesById.get(String(member.user_id)) || null;
         openUserModal(els, { member, profile: prof, modules, ctx });
+      });
+    });
+
+    const inviteForm = els.users.querySelector("[data-invite-form]");
+    if (inviteForm) {
+      inviteForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        if (!ctx?.supabase || !ctx?.orgId || !invitesAvailable) return;
+
+        const emailInput = inviteForm.querySelector('[name="email"]');
+        const roleInput = inviteForm.querySelector('[name="role"]');
+        const typeInput = inviteForm.querySelector('[name="user_type"]');
+
+        const email = normalizeEmail(emailInput?.value || "");
+        const role = cleanRole(roleInput?.value || "viewer");
+        const userType = String(typeInput?.value || "internal").trim().toLowerCase() === "external" ? "external" : "internal";
+        if (!isEmailValid(email)) {
+          showBanner(els, "Email invalide.", "err");
+          return;
+        }
+
+        const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+        showBanner(els, STR.saving, "");
+        try {
+          const findRes = await ctx.supabase
+            .from("organization_invitations")
+            .select("id")
+            .eq("organization_id", ctx.orgId)
+            .eq("status", "pending")
+            .ilike("email", email)
+            .limit(1)
+            .maybeSingle();
+          if (findRes.error) throw findRes.error;
+
+          if (findRes.data?.id) {
+            const upd = await ctx.supabase
+              .from("organization_invitations")
+              .update({
+                role,
+                user_type: userType,
+                permissions_mode: "inherit",
+                permissions: {},
+                expires_at: expiresAt,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", findRes.data.id);
+            if (upd.error) throw upd.error;
+          } else {
+            const ins = await ctx.supabase.from("organization_invitations").insert({
+              organization_id: ctx.orgId,
+              email,
+              role,
+              user_type: userType,
+              permissions_mode: "inherit",
+              permissions: {},
+              status: "pending",
+              invited_by: ctx.userId || null,
+              invited_at: new Date().toISOString(),
+              expires_at: expiresAt,
+            });
+            if (ins.error) throw ins.error;
+          }
+
+          inviteForm.reset();
+          if (roleInput) roleInput.value = "viewer";
+          if (typeInput) typeInput.value = "internal";
+          await refreshUsers(ctx, els);
+          showBanner(els, STR.inviteSent, "ok");
+          setTimeout(() => showBanner(els, "", ""), 1400);
+        } catch (err) {
+          warn("invite failed", err);
+          showBanner(els, err?.message || STR.inviteError, "err");
+        }
+      });
+    }
+
+    els.users.querySelectorAll('[data-action="copy-invite"]').forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        const card = e.target.closest("[data-invite-id]");
+        if (!card) return;
+        const id = String(card.getAttribute("data-invite-id") || "");
+        const invite = pendingInvites.find((x) => String(x.id) === id);
+        if (!invite) return;
+        const link = inviteLinkForToken(invite.token);
+        if (!link) return;
+        try {
+          await navigator.clipboard.writeText(link);
+          showBanner(els, "Lien d'invitation copié.", "ok");
+        } catch (_) {
+          showBanner(els, link, "ok");
+        }
+        setTimeout(() => showBanner(els, "", ""), 1800);
+      });
+    });
+
+    els.users.querySelectorAll('[data-action="revoke-invite"]').forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        const card = e.target.closest("[data-invite-id]");
+        if (!card || !ctx?.supabase) return;
+        const id = String(card.getAttribute("data-invite-id") || "");
+        if (!id) return;
+        showBanner(els, STR.saving, "");
+        try {
+          const res = await ctx.supabase
+            .from("organization_invitations")
+            .update({ status: "revoked", revoked_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+            .eq("id", id)
+            .eq("status", "pending");
+          if (res.error) throw res.error;
+          await refreshUsers(ctx, els);
+          showBanner(els, STR.inviteRevoked, "ok");
+          setTimeout(() => showBanner(els, "", ""), 1400);
+        } catch (err) {
+          warn("revoke invite failed", err);
+          showBanner(els, err?.message || STR.inviteError, "err");
+        }
       });
     });
   }
@@ -877,7 +1183,16 @@ window.Webflow.push(async function () {
   // ===== boot =====
   injectStyles();
   const els = renderShell();
-  const ctx = { supabase: null, orgId: "", modules: {}, members: [], profilesById: new Map() };
+  const ctx = {
+    supabase: null,
+    userId: "",
+    orgId: "",
+    modules: {},
+    members: [],
+    invites: [],
+    invitesAvailable: false,
+    profilesById: new Map(),
+  };
 
   els.modalBackdrop.addEventListener("click", () => closeModal(els));
   els.modalClose.addEventListener("click", () => closeModal(els));
@@ -930,6 +1245,7 @@ window.Webflow.push(async function () {
     const maxUsers = limits?.max_users != null ? String(limits.max_users) : "—";
 
     ctx.supabase = supabase;
+    ctx.userId = String(user.id || "");
     ctx.orgId = orgId;
     ctx.modules = modules;
 
@@ -980,7 +1296,7 @@ window.Webflow.push(async function () {
       await refreshUsers(ctx, els);
     } catch (e) {
       warn("users load failed", e);
-      els.users.innerHTML = `<div class="set-user"><div><div class="set-user__name">Erreur chargement utilisateurs</div><div class="set-user__meta">Vérifie la migration 025 et les droits RLS.</div></div></div>`;
+      els.users.innerHTML = `<div class="set-user"><div><div class="set-user__name">Erreur chargement utilisateurs</div><div class="set-user__meta">Vérifie les migrations 025/026 et les droits RLS.</div></div></div>`;
     }
 
     els.btnSave.addEventListener("click", async () => {

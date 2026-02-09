@@ -249,6 +249,25 @@
     }
   }
 
+  async function claimPendingInvitations(supabase) {
+    try {
+      const res = await supabase.rpc("claim_pending_org_invitations");
+      if (res?.error) {
+        const msg = String(res.error?.message || "").toLowerCase();
+        // Function not installed yet on some envs: keep legacy flow.
+        if (msg.includes("does not exist") || msg.includes("function")) return 0;
+        warn("claim_pending_org_invitations warning", res.error.message);
+        return 0;
+      }
+      const n = Number(res?.data || 0);
+      if (Number.isFinite(n) && n > 0) log("invites claimed", n);
+      return Number.isFinite(n) ? n : 0;
+    } catch (e) {
+      warn("claim_pending_org_invitations failed", e);
+      return 0;
+    }
+  }
+
   // Global logout.
   let logoutLock = false;
   async function doLogout() {
@@ -298,6 +317,10 @@
 
       const session = data?.session || null;
       const userId = session?.user?.id || "";
+
+      if (session?.user) {
+        await claimPendingInvitations(supabase);
+      }
 
       log("run", {
         reason,
