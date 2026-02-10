@@ -68,6 +68,7 @@
     // Restaurant / POS
     "admin-restaurant": ["restaurant"],
     "admin-pos": { any: ["billing", "restaurant"] },
+    "admin-rental": ["rental"],
 
     // Interventions
     "admin-interventions": ["interventions"],
@@ -104,6 +105,7 @@
     "admin-categories": "inventory_categories",
     "admin-restaurant": "restaurant_admin",
     "admin-pos": "pos",
+    "admin-rental": "rental_admin",
 
     // Interventions
     "admin-interventions": "interventions_admin",

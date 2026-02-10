@@ -90,6 +90,7 @@
       "admin-logistics": `${CONFIG.APP_ROOT}/logistics`,
       "admin-restaurant": `${CONFIG.APP_ROOT}/restaurant`,
       "admin-pos": `${CONFIG.APP_ROOT}/pos`,
+      "admin-rental": `${CONFIG.APP_ROOT}/rental`,
 
       // Billing (Facturation)
       clients: `${CONFIG.APP_ROOT}/facturation/clients`,
@@ -976,6 +977,7 @@
       pos: `<svg class="mbl-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10"/><path d="M7 12h6"/><path d="M15 15h2"/></svg>`,
       interventions: `<svg class="mbl-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3-3a2.1 2.1 0 0 0-3-3z"/><path d="M19 8l-7.5 7.5a2 2 0 0 1-1.2.6l-3.8.5.5-3.8a2 2 0 0 1 .6-1.2L15 4"/></svg>`,
       calendar: `<svg class="mbl-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>`,
+      rental: `<svg class="mbl-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v6"/><path d="M4 11h16"/><path d="M6 21v-6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v6"/><path d="M8 21v-2"/><path d="M16 21v-2"/></svg>`,
       truck: `<svg class="mbl-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h11v10H3z"/><path d="M14 10h4l3 3v4h-7z"/><path d="M7 17a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/><path d="M18 17a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg>`,
       settings: `<svg class="mbl-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V22a2 2 0 1 1-4 0v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H2a2 2 0 1 1 0-4h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3 1.7 1.7 0 0 0 1-1.5V2a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8 1.7 1.7 0 0 0 1.5 1H22a2 2 0 1 1 0 4h-.2a1.7 1.7 0 0 0-1.5 1z"/></svg>`,
       card: `<svg class="mbl-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>`,
@@ -1100,6 +1102,7 @@
       crm: "crm",
       restaurant_admin: "restaurant_admin",
       pos: "pos",
+      rental_admin: "rental_admin",
 
       interventions_admin: "interventions_admin",
       interventions_tech: "interventions_tech",
@@ -1284,6 +1287,20 @@
               perm: PERMS.restaurant_admin,
               roles: [],
               requires: ["restaurant"],
+            },
+          ],
+        },
+        {
+          section: "Hôtellerie",
+          entries: [
+            {
+              key: "admin-rental",
+              label: "Locations",
+              href: routeFor("admin-rental"),
+              icon: ICONS.rental,
+              perm: PERMS.rental_admin,
+              roles: [],
+              requires: ["rental"],
             },
           ],
         },
