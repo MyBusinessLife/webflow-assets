@@ -1144,6 +1144,7 @@
         placeholder: "Nom et prenom",
         autocomplete: "name",
         required: true,
+        afterEl: companyEl || null,
       });
 
     const phoneEl =
