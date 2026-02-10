@@ -43,6 +43,7 @@ window.Webflow.push(async function () {
     ORDER_LINES_TABLE: String(root.dataset.orderLinesTable || "restaurant_order_lines"),
 
     CURRENCY: String(root.dataset.currency || "EUR").trim() || "EUR",
+    SCANNER_IDLE_MS: Math.max(40, Number(root.dataset.scannerIdleMs || 95) || 95),
   };
 
   const STR = {
@@ -63,6 +64,7 @@ window.Webflow.push(async function () {
     tabAll: "Tous",
     tabMenus: "Menus",
     tabProducts: "Produits",
+    tabCode: "Code",
 
     save: "Enregistrer",
     createOrder: "Creer la commande",
@@ -73,6 +75,8 @@ window.Webflow.push(async function () {
     orderCreated: "Commande creee",
     orderFailed: "Impossible de creer la commande.",
     loadError: "Impossible de charger les donnees POS.",
+    scannerHint: "Douchette USB: scanner puis Entree. Saisie manuelle possible.",
+    scannerNotFound: "Aucun article trouve pour ce code-barres/SKU.",
   };
 
   const state = {
@@ -102,6 +106,11 @@ window.Webflow.push(async function () {
     },
 
     lastOrder: null,
+    scanner: {
+      buffer: "",
+      lastTs: 0,
+      bound: false,
+    },
   };
 
   function escapeHTML(input) {
@@ -141,6 +150,19 @@ window.Webflow.push(async function () {
     return Math.max(0.001, n);
   }
 
+  function formatQty(value) {
+    const n = Number(value || 0);
+    if (!Number.isFinite(n)) return "1";
+    return n % 1 === 0 ? String(Math.round(n)) : n.toFixed(3).replace(/\.?0+$/, "");
+  }
+
+  function normalizeCode(value) {
+    return String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[\s\-_.]+/g, "");
+  }
+
   function normalizeStatus(status) {
     const s = clean(status);
     if (["new", "confirmed", "preparing", "ready", "served", "completed", "canceled"].includes(s)) return s;
@@ -151,6 +173,11 @@ window.Webflow.push(async function () {
     const s = clean(status);
     if (["unpaid", "partially_paid", "paid", "refunded"].includes(s)) return s;
     return "paid";
+  }
+
+  function isMissingColumnError(error) {
+    const msg = String(error?.message || "").toLowerCase();
+    return msg.includes("column") && msg.includes("does not exist");
   }
 
   function normalizePath(path) {
@@ -373,6 +400,36 @@ window.Webflow.push(async function () {
       }
       html[data-page="admin-pos"] .pos-topbar { justify-content: space-between; margin-bottom: 10px; }
 
+      html[data-page="admin-pos"] .pos-scan {
+        margin: 0 0 10px;
+        border: 1px solid rgba(14,165,233,0.24);
+        border-radius: 14px;
+        padding: 10px;
+        background: linear-gradient(180deg, rgba(240,249,255,0.92), rgba(255,255,255,0.96));
+        display: grid;
+        gap: 8px;
+      }
+      html[data-page="admin-pos"] .pos-scan__row {
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) 90px minmax(110px, auto);
+        gap: 8px;
+        align-items: end;
+      }
+      html[data-page="admin-pos"] .pos-scan__hint {
+        font-size: 12px;
+        font-weight: 800;
+        color: rgba(2,6,23,0.64);
+      }
+      html[data-page="admin-pos"] .pos-scan__label {
+        display: block;
+        margin: 0 0 5px;
+        font-size: 11px;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        color: rgba(2,6,23,0.62);
+      }
+
       html[data-page="admin-pos"] .pos-input,
       html[data-page="admin-pos"] .pos-select,
       html[data-page="admin-pos"] .pos-textarea {
@@ -573,6 +630,10 @@ window.Webflow.push(async function () {
         html[data-page="admin-pos"] .pos-grid { grid-template-columns: 1fr; }
         html[data-page="admin-pos"] .pos-cart-list { max-height: none; }
       }
+      @media (max-width: 760px) {
+        html[data-page="admin-pos"] .pos-scan__row { grid-template-columns: 1fr 88px; }
+        html[data-page="admin-pos"] .pos-scan__row .pos-btn { grid-column: 1 / -1; }
+      }
     `;
     document.head.appendChild(st);
   }
@@ -633,6 +694,36 @@ window.Webflow.push(async function () {
     return loc?.name || "Sans lieu";
   }
 
+  function makeMenuRow(it) {
+    return {
+      kind: "menu_item",
+      id: String(it.id),
+      location_id: String(it.location_id || ""),
+      name: String(it.name || "Item menu"),
+      description: String(it.description || ""),
+      unit_price_cents: Number(it.price_cents || 0),
+      vat_rate: Number(it.vat_rate || 10),
+      badge: "Menu",
+      barcode: String(it?.metadata?.barcode || "").trim(),
+      sku: String(it?.metadata?.sku || "").trim(),
+    };
+  }
+
+  function makeProductRow(p) {
+    return {
+      kind: "product",
+      id: String(p.id),
+      location_id: "",
+      name: String(p.name || "Produit"),
+      description: String(p.description || ""),
+      unit_price_cents: Number(p.price_cents || 0),
+      vat_rate: 20,
+      badge: "Produit",
+      barcode: String(p.barcode || "").trim(),
+      sku: String(p.sku || "").trim(),
+    };
+  }
+
   function buildCatalogRows() {
     const q = clean(state.search);
     const locId = asUuid(state.activeLocationId);
@@ -644,33 +735,15 @@ window.Webflow.push(async function () {
         if (locId && String(it.location_id) !== locId) return;
         const hay = clean([it.name, it.description, it.id, it.location_id].filter(Boolean).join(" "));
         if (q && !hay.includes(q)) return;
-        rows.push({
-          kind: "menu_item",
-          id: String(it.id),
-          location_id: String(it.location_id || ""),
-          name: String(it.name || "Item menu"),
-          description: String(it.description || ""),
-          unit_price_cents: Number(it.price_cents || 0),
-          vat_rate: Number(it.vat_rate || 10),
-          badge: "Menu",
-        });
+        rows.push(makeMenuRow(it));
       });
     }
 
     if (state.hasBilling && (state.activeTab === "all" || state.activeTab === "products")) {
       state.products.forEach((p) => {
-        const hay = clean([p.name, p.sku, p.description, p.id].filter(Boolean).join(" "));
+        const hay = clean([p.name, p.sku, p.barcode, p.description, p.id].filter(Boolean).join(" "));
         if (q && !hay.includes(q)) return;
-        rows.push({
-          kind: "product",
-          id: String(p.id),
-          location_id: "",
-          name: String(p.name || "Produit"),
-          description: String(p.description || ""),
-          unit_price_cents: Number(p.price_cents || 0),
-          vat_rate: 20,
-          badge: "Produit",
-        });
+        rows.push(makeProductRow(p));
       });
     }
 
@@ -682,11 +755,36 @@ window.Webflow.push(async function () {
     return rows;
   }
 
-  function addCatalogRowToCart(row) {
+  function resolveRowByCode(rawCode) {
+    const code = normalizeCode(rawCode);
+    if (!code) return null;
+
+    if (state.hasBilling) {
+      const product = state.products.find((p) => {
+        const barcode = normalizeCode(p.barcode || "");
+        const sku = normalizeCode(p.sku || "");
+        return (barcode && barcode === code) || (sku && sku === code);
+      });
+      if (product) return makeProductRow(product);
+    }
+
+    if (state.hasRestaurant) {
+      const menu = state.menuItems.find((it) => {
+        const metaCode = normalizeCode(it?.metadata?.barcode || it?.metadata?.sku || "");
+        return metaCode && metaCode === code;
+      });
+      if (menu) return makeMenuRow(menu);
+    }
+
+    return null;
+  }
+
+  function addCatalogRowToCart(row, qtyToAdd = 1) {
+    const qty = Math.max(0.001, Number(qtyToAdd || 1));
     const key = `${row.kind}:${row.id}`;
     const existing = state.cart.find((it) => `${it.kind}:${it.id}` === key);
     if (existing) {
-      existing.qty = Math.max(0.001, Number(existing.qty || 0) + 1);
+      existing.qty = Math.max(0.001, Number(existing.qty || 0) + qty);
       return;
     }
 
@@ -695,11 +793,62 @@ window.Webflow.push(async function () {
       id: row.id,
       name: row.name,
       unit: row.kind === "menu_item" ? "menu" : "u",
-      qty: 1,
+      qty,
       unit_price_cents: Number(row.unit_price_cents || 0),
       vat_rate: Number(row.vat_rate || 0),
       location_id: row.location_id || "",
       note: "",
+    });
+  }
+
+  function addByCode(els, code, qty = 1, source = "manual") {
+    const row = resolveRowByCode(code);
+    if (!row) {
+      showAlert(els, STR.scannerNotFound, "error");
+      return false;
+    }
+    addCatalogRowToCart(row, qty);
+    renderCartPanel(els);
+    showAlert(els, `${row.name} x${formatQty(qty)} ajoute (${source}).`, "ok");
+    return true;
+  }
+
+  function shouldIgnoreScannerKey(target) {
+    const el = target instanceof Element ? target : null;
+    if (!el) return false;
+    if (el.closest('[data-pos-scan-input="1"]')) return false;
+    if (el.closest("input, textarea, select, [contenteditable='true']")) return true;
+    return false;
+  }
+
+  function bindHardwareScanner(els) {
+    if (state.scanner.bound) return;
+    state.scanner.bound = true;
+
+    document.addEventListener("keydown", (e) => {
+      if (e.defaultPrevented) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (shouldIgnoreScannerKey(e.target)) return;
+
+      const now = Date.now();
+      const idle = now - Number(state.scanner.lastTs || 0);
+      if (idle > CONFIG.SCANNER_IDLE_MS) state.scanner.buffer = "";
+
+      if (e.key === "Enter") {
+        const code = String(state.scanner.buffer || "").trim();
+        state.scanner.buffer = "";
+        state.scanner.lastTs = now;
+        if (!code || code.length < 4) return;
+        e.preventDefault();
+        addByCode(els, code, 1, "scanner");
+        return;
+      }
+
+      if (e.key.length !== 1) return;
+
+      const next = `${state.scanner.buffer || ""}${e.key}`;
+      state.scanner.buffer = next.slice(-80);
+      state.scanner.lastTs = now;
     });
   }
 
@@ -775,6 +924,21 @@ window.Webflow.push(async function () {
         </div>
       </div>
 
+      <section class="pos-scan">
+        <div class="pos-scan__row">
+          <label>
+            <span class="pos-scan__label">Code-barres / SKU</span>
+            <input class="pos-input" data-k="scan-code" data-pos-scan-input="1" placeholder="Ex: 3700000000012" autocomplete="off" />
+          </label>
+          <label>
+            <span class="pos-scan__label">Qté</span>
+            <input class="pos-input" data-k="scan-qty" type="number" step="0.001" min="0.001" value="1" />
+          </label>
+          <button class="pos-btn pos-btn--primary" type="button" data-action="scan-add">Ajouter code</button>
+        </div>
+        <div class="pos-scan__hint">${escapeHTML(STR.scannerHint)}</div>
+      </section>
+
       <div class="pos-tabs" style="margin-bottom:10px;">
         <button class="pos-tab" data-tab="all" aria-selected="${state.activeTab === "all" ? "true" : "false"}">${escapeHTML(STR.tabAll)}</button>
         <button class="pos-tab" data-tab="menus" aria-selected="${state.activeTab === "menus" ? "true" : "false"}" ${
@@ -802,6 +966,8 @@ window.Webflow.push(async function () {
                       <span class="pos-chip">${escapeHTML(row.badge)}</span>
                       ${row.location_id ? `<span class="pos-chip">${escapeHTML(locationNameById(row.location_id))}</span>` : ""}
                       <span class="pos-chip">TVA ${escapeHTML(String(row.vat_rate || 0))}%</span>
+                      ${row.barcode ? `<span class="pos-chip">CB ${escapeHTML(row.barcode)}</span>` : ""}
+                      ${row.sku ? `<span class="pos-chip">SKU ${escapeHTML(row.sku)}</span>` : ""}
                     </div>
                     <div class="pos-item__row" style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
                       <strong>${escapeHTML(formatMoney(row.unit_price_cents, CONFIG.CURRENCY))}</strong>
@@ -836,6 +1002,29 @@ window.Webflow.push(async function () {
     inputSearch?.addEventListener("input", () => {
       state.search = inputSearch.value || "";
       renderCatalogPanel(els);
+    });
+
+    const scanCodeEl = els.panelCatalog.querySelector('[data-k="scan-code"]');
+    const scanQtyEl = els.panelCatalog.querySelector('[data-k="scan-qty"]');
+    const scanAdd = () => {
+      const code = String(scanCodeEl?.value || "").trim();
+      const qty = parseQty(scanQtyEl?.value || "1");
+      if (!code) {
+        showAlert(els, "Saisis un code-barres ou un SKU.", "error");
+        return;
+      }
+      const ok = addByCode(els, code, qty, "manuel");
+      if (!ok) return;
+      if (scanCodeEl) scanCodeEl.value = "";
+      if (scanQtyEl) scanQtyEl.value = "1";
+      scanCodeEl?.focus();
+    };
+
+    els.panelCatalog.querySelector('[data-action="scan-add"]')?.addEventListener("click", scanAdd);
+    scanCodeEl?.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      scanAdd();
     });
 
     els.panelCatalog.querySelectorAll("[data-item-id]").forEach((card) => {
@@ -1234,13 +1423,28 @@ window.Webflow.push(async function () {
       );
 
       jobs.push(
-        state.supabase
-          .from(CONFIG.MENU_ITEMS_TABLE)
-          .select("id, location_id, name, description, price_cents, vat_rate, available_for_pos, is_active")
-          .eq("organization_id", state.orgId)
-          .eq("is_active", true)
-          .eq("available_for_pos", true)
-          .order("name", { ascending: true })
+        (async () => {
+          let res = await state.supabase
+            .from(CONFIG.MENU_ITEMS_TABLE)
+            .select("id, location_id, name, description, price_cents, vat_rate, metadata, available_for_pos, is_active")
+            .eq("organization_id", state.orgId)
+            .eq("is_active", true)
+            .eq("available_for_pos", true)
+            .order("name", { ascending: true });
+          if (res.error && isMissingColumnError(res.error)) {
+            res = await state.supabase
+              .from(CONFIG.MENU_ITEMS_TABLE)
+              .select("id, location_id, name, description, price_cents, vat_rate, available_for_pos, is_active")
+              .eq("organization_id", state.orgId)
+              .eq("is_active", true)
+              .eq("available_for_pos", true)
+              .order("name", { ascending: true });
+            if (!res.error && Array.isArray(res.data)) {
+              res.data = res.data.map((row) => ({ ...row, metadata: {} }));
+            }
+          }
+          return res;
+        })()
       );
     } else {
       jobs.push(Promise.resolve({ data: [], error: null }));
@@ -1249,12 +1453,26 @@ window.Webflow.push(async function () {
 
     if (state.hasBilling) {
       jobs.push(
-        state.supabase
-          .from(CONFIG.PRODUCTS_TABLE)
-          .select("id, name, sku, price_cents, description, is_active")
-          .eq("organization_id", state.orgId)
-          .eq("is_active", true)
-          .order("name", { ascending: true })
+        (async () => {
+          let res = await state.supabase
+            .from(CONFIG.PRODUCTS_TABLE)
+            .select("id, name, sku, barcode, price_cents, description, is_active")
+            .eq("organization_id", state.orgId)
+            .eq("is_active", true)
+            .order("name", { ascending: true });
+          if (res.error && isMissingColumnError(res.error)) {
+            res = await state.supabase
+              .from(CONFIG.PRODUCTS_TABLE)
+              .select("id, name, sku, price_cents, description, is_active")
+              .eq("organization_id", state.orgId)
+              .eq("is_active", true)
+              .order("name", { ascending: true });
+            if (!res.error && Array.isArray(res.data)) {
+              res.data = res.data.map((row) => ({ ...row, barcode: "" }));
+            }
+          }
+          return res;
+        })()
       );
     } else {
       jobs.push(Promise.resolve({ data: [], error: null }));
@@ -1321,6 +1539,7 @@ window.Webflow.push(async function () {
     const els = renderApp();
     renderCatalogPanel(els);
     renderCartPanel(els);
+    bindHardwareScanner(els);
 
     els.btnClear?.addEventListener("click", () => {
       state.cart = [];

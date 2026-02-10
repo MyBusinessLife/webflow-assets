@@ -33,7 +33,7 @@ create table if not exists public.restaurant_locations (
   organization_id uuid not null references public.organizations(id) on delete cascade,
   name text not null,
   slug text not null,
-  public_page_path text not null default '/restaurant-order',
+  public_page_path text not null default '/applications/restaurant-order',
   public_query_key text not null default 'loc',
   public_is_open boolean not null default true,
   service_mode text not null default 'mixed', -- table|counter|mixed

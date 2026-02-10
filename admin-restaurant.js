@@ -41,33 +41,35 @@ window.Webflow.push(async function () {
     MENU_IMAGE_BUCKET: String(root.dataset.menuImageBucket || "restaurant-media").trim() || "restaurant-media",
     MENU_IMAGE_PATH_PREFIX: String(root.dataset.menuImagePrefix || "menu-images").trim() || "menu-images",
 
-    ORDER_PAGE_DEFAULT: String(root.dataset.orderPagePath || "/restaurant-order").trim() || "/restaurant-order",
+    ORDER_PAGE_DEFAULT:
+      String(root.dataset.orderPagePath || `${APP_ROOT}/restaurant-order`).trim() ||
+      `${APP_ROOT}/restaurant-order`,
     CURRENCY: String(root.dataset.currency || "EUR").trim() || "EUR",
   };
 
   const STR = {
     title: "Restauration",
-    subtitle: "Lieux, menus, recettes, QR codes et reception des commandes",
+    subtitle: "Lieux, menus, recettes, QR codes et réception des commandes",
 
     loginTitle: "Connexion requise",
-    loginBody: "Connecte-toi pour acceder au module restauration.",
+    loginBody: "Connecte-toi pour accéder au module restauration.",
     loginCta: "Se connecter",
 
     forbiddenTitle: "Acces refuse",
-    forbiddenBody: "Ce module est reserve aux administrateurs.",
+    forbiddenBody: "Ce module est réservé aux administrateurs.",
 
     moduleMissingTitle: "Module non inclus",
     moduleMissingBody: "Ton abonnement n'inclut pas le module restauration.",
     moduleCta: "Gerer mon abonnement",
 
     loading: "Chargement...",
-    loadError: "Impossible de charger les donnees restauration.",
+    loadError: "Impossible de charger les données restauration.",
     saving: "Enregistrement...",
     saved: "Enregistre",
     deleted: "Supprime",
     copyOk: "Lien copie",
-    qrDisabled: "QR supprime",
-    qrEnabled: "QR active",
+    qrDisabled: "QR supprimé",
+    qrEnabled: "QR activé",
 
     tabCatalog: "Menus",
     tabOrders: "Commandes",
@@ -151,21 +153,25 @@ window.Webflow.push(async function () {
   function normalizePath(path) {
     const p = String(path || "").trim();
     if (!p) return CONFIG.ORDER_PAGE_DEFAULT;
+    if (p === "/restaurant-order" || p === "restaurant-order") return CONFIG.ORDER_PAGE_DEFAULT;
     if (p.startsWith("http://") || p.startsWith("https://")) {
       try {
         const u = new URL(p);
-        return u.pathname + u.search;
+        const fromUrl = `${u.pathname || ""}${u.search || ""}`;
+        if (fromUrl === "/restaurant-order" || fromUrl === "restaurant-order") return CONFIG.ORDER_PAGE_DEFAULT;
+        return fromUrl;
       } catch (_) {
         return CONFIG.ORDER_PAGE_DEFAULT;
       }
     }
     if (!p.startsWith("/")) return `/${p}`;
+    if (p === "/restaurant-order") return CONFIG.ORDER_PAGE_DEFAULT;
     return p;
   }
 
   function qrUrlForText(text) {
     const data = encodeURIComponent(String(text || ""));
-    return `https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=16&data=${data}`;
+    return `https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=16&data=${data}`;
   }
 
   function orderPublicUrl(loc) {
@@ -425,6 +431,8 @@ window.Webflow.push(async function () {
         border-radius: 14px;
         padding: 10px 12px;
         outline: none;
+        width: 100%;
+        min-width: 0;
       }
       html[data-page="admin-restaurant"] .rst-select,
       html[data-page="admin-restaurant"] .rst-input {
@@ -578,36 +586,51 @@ window.Webflow.push(async function () {
 
       html[data-page="admin-restaurant"] .rst-qr-grid {
         display:grid;
-        grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
         gap: 14px;
       }
       html[data-page="admin-restaurant"] .rst-qr {
         display:grid;
-        gap: 12px;
-        border: 1px solid rgba(14,165,233,0.16);
-        border-radius: 14px;
-        padding: 10px;
-        background: linear-gradient(180deg, rgba(255,255,255,0.95), rgba(240,249,255,0.82));
+        gap: 14px;
+        border: 1px solid rgba(14,165,233,0.20);
+        border-radius: 16px;
+        padding: 12px;
+        background:
+          radial-gradient(680px 380px at 0% 0%, rgba(14,165,233,0.10), transparent 55%),
+          linear-gradient(180deg, rgba(255,255,255,0.96), rgba(240,249,255,0.90));
       }
       html[data-page="admin-restaurant"] .rst-qr__top {
         display:grid;
-        grid-template-columns: 190px 1fr;
-        gap: 10px;
+        grid-template-columns: minmax(140px, 172px) 1fr;
+        gap: 12px;
         align-items: start;
       }
       html[data-page="admin-restaurant"] .rst-qr__img {
-        width: 190px;
-        height: 190px;
+        width: 172px;
+        height: 172px;
         border-radius: 12px;
         border: 1px solid rgba(15,23,42,0.12);
         background: #fff;
         object-fit: cover;
       }
       html[data-page="admin-restaurant"] .rst-qr__url {
-        word-break: break-all;
+        word-break: break-word;
+        overflow-wrap: anywhere;
         font-size: 12px;
+        line-height: 1.45;
         color: rgba(2,6,23,0.70);
-        margin-top: 4px;
+        margin-top: 5px;
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid rgba(15,23,42,0.10);
+        background: rgba(255,255,255,0.88);
+      }
+      html[data-page="admin-restaurant"] .rst-qr__url a {
+        color: rgba(12,74,110,0.95);
+        text-decoration: none;
+      }
+      html[data-page="admin-restaurant"] .rst-qr__url a:hover {
+        text-decoration: underline;
       }
       html[data-page="admin-restaurant"] .rst-qr__muted {
         font-size: 12px;
@@ -615,8 +638,8 @@ window.Webflow.push(async function () {
         font-weight: 800;
       }
       html[data-page="admin-restaurant"] .rst-qr__placeholder {
-        width: 190px;
-        height: 190px;
+        width: 172px;
+        height: 172px;
         border-radius: 12px;
         border: 1px dashed rgba(15,23,42,0.24);
         background: rgba(241,245,249,0.88);
@@ -631,16 +654,26 @@ window.Webflow.push(async function () {
       }
       html[data-page="admin-restaurant"] .rst-qr__fields {
         display:grid;
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 10px;
       }
       html[data-page="admin-restaurant"] .rst-qr__fields .full {
         grid-column: 1 / -1;
       }
       html[data-page="admin-restaurant"] .rst-qr__actions {
-        display:flex;
-        flex-wrap: wrap;
+        display:grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 8px;
+      }
+      html[data-page="admin-restaurant"] .rst-qr__actions .rst-btn,
+      html[data-page="admin-restaurant"] .rst-qr__actions a.rst-btn {
+        width: 100%;
+        min-width: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        text-decoration: none;
+        text-align: center;
       }
 
       html[data-page="admin-restaurant"] .rst-item__thumb {
@@ -734,10 +767,12 @@ window.Webflow.push(async function () {
         html[data-page="admin-restaurant"] .rst-qr__top { grid-template-columns: 1fr; }
         html[data-page="admin-restaurant"] .rst-qr__img,
         html[data-page="admin-restaurant"] .rst-qr__placeholder { width: 100%; height: auto; aspect-ratio: 1 / 1; }
+        html[data-page="admin-restaurant"] .rst-qr__actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       }
       @media (max-width: 780px) {
         html[data-page="admin-restaurant"] .rst-form { grid-template-columns: 1fr; }
         html[data-page="admin-restaurant"] .rst-qr__fields { grid-template-columns: 1fr; }
+        html[data-page="admin-restaurant"] .rst-qr__actions { grid-template-columns: 1fr; }
       }
     `;
     document.head.appendChild(st);
@@ -1276,9 +1311,9 @@ window.Webflow.push(async function () {
             <div class="rst-item__row">
               <div>
                 <h3 class="rst-card__title" style="margin:0;">${escapeHTML(loc.name)}</h3>
-                <div class="rst-item__meta">Slug interne: ${escapeHTML(loc.slug)}</div>
+                <div class="rst-item__meta">Slug interne : ${escapeHTML(loc.slug)}</div>
               </div>
-              <span class="rst-pill"><span class="rst-dot"></span>${isPublished ? "QR actif" : "QR supprime"}</span>
+              <span class="rst-pill"><span class="rst-dot"></span>${isPublished ? "QR actif" : "QR supprimé"}</span>
             </div>
 
             <div class="rst-qr" style="margin-top:10px;">
@@ -1286,25 +1321,29 @@ window.Webflow.push(async function () {
                 ${
                   hasLinkData && isPublished
                     ? `<img class="rst-qr__img" src="${escapeHTML(qrImg)}" alt="QR ${escapeHTML(loc.name)}" />`
-                    : `<div class="rst-qr__placeholder">QR desactive.<br/>Tu peux le reactiver quand tu veux.</div>`
+                    : `<div class="rst-qr__placeholder">QR désactivé.<br/>Tu peux le réactiver quand tu veux.</div>`
                 }
                 <div>
                   <div class="rst-qr__muted">URL publique</div>
-                  <div class="rst-qr__url">${escapeHTML(publicUrl || "Aucune URL active.")}</div>
+                  <div class="rst-qr__url">${
+                    publicUrl
+                      ? `<a href="${escapeHTML(publicUrl)}" target="_blank" rel="noopener">${escapeHTML(publicUrl)}</a>`
+                      : "Aucune URL active."
+                  }</div>
                 </div>
               </div>
 
               <div class="rst-qr__fields">
                 <label class="full">
                   <span class="rst-label">Page de commande (path)</span>
-                  <input class="rst-input" data-k="public_page_path" value="${escapeHTML(loc.public_page_path || CONFIG.ORDER_PAGE_DEFAULT)}" />
+                  <input class="rst-input" data-k="public_page_path" value="${escapeHTML(normalizePath(loc.public_page_path || CONFIG.ORDER_PAGE_DEFAULT))}" />
                 </label>
                 <label>
                   <span class="rst-label">Query key (auto)</span>
                   <input class="rst-input" data-k="public_query_key" value="${escapeHTML(loc.public_query_key || "")}" readonly />
                 </label>
                 <label>
-                  <span class="rst-label">Cle publique (auto)</span>
+                  <span class="rst-label">Clé publique (auto)</span>
                   <input class="rst-input" data-k="public_access_key" value="${escapeHTML(loc.public_access_key || "")}" readonly />
                 </label>
                 <label class="full">
@@ -1320,7 +1359,7 @@ window.Webflow.push(async function () {
                 <button class="rst-btn" type="button" data-action="copy-url" ${isPublished ? "" : "disabled"}>Copier URL</button>
                 <a class="rst-btn" href="${escapeHTML(qrImg || "#")}" target="_blank" rel="noopener" ${isPublished ? "" : "aria-disabled=\"true\""}>Ouvrir QR</a>
                 <button class="rst-btn rst-btn--primary" type="button" data-action="save-qr">Enregistrer</button>
-                <button class="rst-btn" type="button" data-action="regen-link">Regenerer lien</button>
+                <button class="rst-btn" type="button" data-action="regen-link">Régénérer lien</button>
                 <button class="rst-btn rst-btn--danger" type="button" data-action="toggle-qr">${isPublished ? "Supprimer QR" : "Activer QR"}</button>
                 <button class="rst-btn" type="button" data-action="edit-location">Modifier lieu</button>
               </div>
@@ -1333,7 +1372,7 @@ window.Webflow.push(async function () {
     els.pane.innerHTML = `
       <div class="rst-topbar">
         <div class="rst-topbar__left">
-          <div class="rst-item__meta">Le QR est genere automatiquement pour chaque page de commande configuree.</div>
+          <div class="rst-item__meta">Le QR est généré automatiquement pour chaque page de commande configurée.</div>
         </div>
         <div class="rst-topbar__right">
           <button class="rst-btn" type="button" data-action="add-location">${escapeHTML(STR.addLocation)}</button>
@@ -1486,7 +1525,7 @@ window.Webflow.push(async function () {
           </label>
           <label class="full">
             <span class="rst-label">Page commande (path)</span>
-            <input class="rst-input" name="public_page_path" value="${escapeHTML(loc?.public_page_path || CONFIG.ORDER_PAGE_DEFAULT)}" />
+            <input class="rst-input" name="public_page_path" value="${escapeHTML(normalizePath(loc?.public_page_path || CONFIG.ORDER_PAGE_DEFAULT))}" />
           </label>
           <label>
             <span class="rst-label">Query key (auto)</span>

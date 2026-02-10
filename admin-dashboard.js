@@ -68,6 +68,17 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
   const state = {
     config: null,
     supabase: null,
+    context: {
+      userId: "",
+      orgId: "",
+      orgName: "",
+      role: "",
+      modules: {},
+      planName: "",
+      subscriptionStatus: "",
+      subscriptionActive: false,
+    },
+    moduleStats: {},
     charts: {
       trend: null,
       status: null,
@@ -109,6 +120,8 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
     lastSync: ".mbl-last-sync",
     filtersForm: ".mbl-filters",
     kpiArea: ".mbl-kpi-grid",
+    contextStrip: ".mbl-context-strip",
+    moduleNote: ".mbl-module-note",
     errorBox: ".mbl-error",
     refreshButton: ".mbl-refresh",
     exportButton: ".mbl-export",
@@ -263,6 +276,39 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
       max-width: 700px;
     }
 
+    .mbl-context-strip {
+      margin-top: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .mbl-context-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid #d7e4f1;
+      background: rgba(255, 255, 255, 0.95);
+      color: #244666;
+      border-radius: 999px;
+      padding: 5px 10px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+
+    .mbl-context-pill.is-warn {
+      border-color: #f7c788;
+      background: #fff7ec;
+      color: #9a5a00;
+    }
+
+    .mbl-context-pill.is-ok {
+      border-color: #9edcc7;
+      background: #eefcf6;
+      color: #0f766e;
+    }
+
     .mbl-header-actions {
       display: grid;
       grid-auto-flow: column;
@@ -369,6 +415,18 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 10px;
+    }
+
+    .mbl-module-note {
+      margin-top: 12px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid #d6e2ee;
+      background: #f8fbff;
+      color: #375676;
+      font-size: 13px;
+      font-weight: 600;
+      line-height: 1.45;
     }
 
     .mbl-kpi {
@@ -784,6 +842,370 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
     window.__mblDashboardSupabase = state.supabase;
   }
 
+  function boolFromAny(value) {
+    if (value === true) return true;
+    if (value === false) return false;
+    if (typeof value === "number") return value === 1;
+    const s = String(value || "").trim().toLowerCase();
+    return s === "true" || s === "1" || s === "yes" || s === "y";
+  }
+
+  function normalizeModulesMap(input) {
+    const out = {};
+    if (!input || typeof input !== "object") return out;
+    Object.keys(input).forEach((k) => {
+      out[k] = boolFromAny(input[k]);
+    });
+    return out;
+  }
+
+  function isSubscriptionRowActive(sub) {
+    if (!sub) return false;
+    const status = String(sub.status || "").trim().toLowerCase();
+    if (!["trialing", "active", "past_due"].includes(status)) return false;
+    const now = Date.now();
+    if (sub.ends_at) {
+      const endsAt = Date.parse(sub.ends_at);
+      if (Number.isFinite(endsAt) && endsAt <= now) return false;
+    }
+    if (status === "trialing" && sub.trial_ends_at) {
+      const trialEndsAt = Date.parse(sub.trial_ends_at);
+      if (Number.isFinite(trialEndsAt) && trialEndsAt <= now) return false;
+    }
+    return true;
+  }
+
+  async function resolveDashboardContext() {
+    const [{ data: sessionData }, { data: userData, error: userError }] = await Promise.all([
+      state.supabase.auth.getSession(),
+      state.supabase.auth.getUser(),
+    ]);
+    const user = userError ? sessionData?.session?.user : userData?.user || sessionData?.session?.user;
+    const userId = String(user?.id || "").trim();
+    if (!userId) {
+      return {
+        userId: "",
+        orgId: "",
+        orgName: "",
+        role: "",
+        modules: {},
+        planName: "",
+        subscriptionStatus: "",
+        subscriptionActive: false,
+      };
+    }
+
+    const memberRes = await state.supabase
+      .from("organization_members")
+      .select("organization_id, role, is_default, created_at")
+      .eq("user_id", userId)
+      .eq("is_active", true)
+      .order("is_default", { ascending: false })
+      .order("created_at", { ascending: true })
+      .limit(1);
+    if (memberRes.error) throw memberRes.error;
+
+    const member = memberRes.data?.[0] || null;
+    const orgId = String(member?.organization_id || "").trim();
+    if (!orgId) {
+      return {
+        userId,
+        orgId: "",
+        orgName: "",
+        role: String(member?.role || "").trim(),
+        modules: {},
+        planName: "",
+        subscriptionStatus: "",
+        subscriptionActive: false,
+      };
+    }
+
+    const [orgRes, entRes, subRes] = await Promise.all([
+      state.supabase.from("organizations").select("name").eq("id", orgId).maybeSingle(),
+      state.supabase
+        .from("organization_entitlements")
+        .select("modules")
+        .eq("organization_id", orgId)
+        .maybeSingle(),
+      state.supabase
+        .from("organization_subscriptions")
+        .select("plan_id, status, starts_at, ends_at, trial_ends_at")
+        .eq("organization_id", orgId)
+        .order("starts_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+
+    if (orgRes.error && !isMissingRelationError(orgRes.error)) throw orgRes.error;
+    if (entRes.error && !isMissingRelationError(entRes.error)) throw entRes.error;
+    if (subRes.error && !isMissingRelationError(subRes.error)) throw subRes.error;
+
+    const subscription = subRes.error ? null : subRes.data || null;
+    const subscriptionActive = isSubscriptionRowActive(subscription);
+    const subscriptionStatus = String(subscription?.status || "").trim().toLowerCase();
+
+    let planName = "";
+    let planModules = {};
+    const planId = String(subscription?.plan_id || "").trim();
+    if (planId) {
+      const planRes = await state.supabase.from("billing_plans").select("name, modules").eq("id", planId).maybeSingle();
+      if (planRes.error && !isMissingRelationError(planRes.error)) throw planRes.error;
+      if (!planRes.error && planRes.data) {
+        planName = String(planRes.data.name || "").trim();
+        planModules = normalizeModulesMap(planRes.data.modules);
+      }
+    }
+
+    const entModules = normalizeModulesMap(entRes.error ? {} : entRes.data?.modules);
+    const mergedModules = subscriptionActive ? { ...planModules, ...entModules } : {};
+
+    return {
+      userId,
+      orgId,
+      orgName: String(orgRes.data?.name || "").trim(),
+      role: String(member?.role || "").trim().toLowerCase(),
+      modules: mergedModules,
+      planName,
+      subscriptionStatus,
+      subscriptionActive,
+    };
+  }
+
+  function isMissingRelationError(error) {
+    const msg = String(error?.message || "").toLowerCase();
+    return msg.includes("does not exist") || msg.includes("relation") || msg.includes("column");
+  }
+
+  async function safeTableRows(table, selectColumns, mutator) {
+    let query = state.supabase.from(table).select(selectColumns);
+    if (typeof mutator === "function") query = mutator(query) || query;
+    const res = await query;
+    if (res.error) {
+      if (isMissingRelationError(res.error)) return [];
+      throw res.error;
+    }
+    return res.data || [];
+  }
+
+  function startOfToday() {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  function startOfMonth() {
+    const d = new Date();
+    d.setDate(1);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  function isSameOrAfter(dateInput, threshold) {
+    if (!dateInput) return false;
+    const ts = Date.parse(dateInput);
+    return Number.isFinite(ts) && ts >= threshold.getTime();
+  }
+
+  function isBeforeToday(dateInput) {
+    if (!dateInput) return false;
+    const ts = Date.parse(`${dateInput}T00:00:00`);
+    if (!Number.isFinite(ts)) return false;
+    return ts < startOfToday().getTime();
+  }
+
+  function isWithinDays(dateInput, days) {
+    if (!dateInput) return false;
+    const ts = Date.parse(`${dateInput}T00:00:00`);
+    if (!Number.isFinite(ts)) return false;
+    const now = startOfToday().getTime();
+    const delta = ts - now;
+    return delta >= 0 && delta <= days * 86400000;
+  }
+
+  async function fetchModuleStats(context) {
+    const modules = context?.modules || {};
+    const stats = {
+      billing: null,
+      crm: null,
+      transport: null,
+      fleet: null,
+      logistics: null,
+      restaurant: null,
+      pos: null,
+    };
+
+    if (modules.billing) {
+      const [factures, devis, clients] = await Promise.all([
+        safeTableRows("factures", "status,total_cents,due_date,paid_at,created_at", (q) =>
+          q.order("created_at", { ascending: false }).limit(6000)
+        ),
+        safeTableRows("devis", "status,total_cents,created_at", (q) => q.order("created_at", { ascending: false }).limit(6000)),
+        safeTableRows("clients", "id,is_active,created_at", (q) => q.limit(6000)),
+      ]);
+
+      const monthStart = startOfMonth();
+      let paidMonth = 0;
+      let openInvoices = 0;
+      let overdueInvoices = 0;
+      factures.forEach((f) => {
+        const status = normalizeStatus(f.status);
+        const total = toNumber(f.total_cents) / 100;
+        const isPaid = status === "paid";
+        const isOpen = ["issued", "sent", "partially_paid"].includes(status);
+        if (isOpen) openInvoices += 1;
+        if (isOpen && isBeforeToday(f.due_date)) overdueInvoices += 1;
+        if (isPaid && isSameOrAfter(f.paid_at || f.created_at, monthStart)) paidMonth += total;
+      });
+
+      const openQuotes = devis.filter((d) => ["draft", "sent", "accepted"].includes(normalizeStatus(d.status))).length;
+      const activeClients = clients.filter((c) => c.is_active !== false).length;
+
+      stats.billing = {
+        paidMonth,
+        openInvoices,
+        overdueInvoices,
+        openQuotes,
+        activeClients,
+      };
+    }
+
+    if (modules.crm) {
+      const deals = await safeTableRows("crm_deals", "status,amount_cents,updated_at,closed_at", (q) =>
+        q.order("updated_at", { ascending: false }).limit(6000)
+      );
+      let pipelineValue = 0;
+      let wonMonth = 0;
+      const monthStart = startOfMonth();
+      deals.forEach((d) => {
+        const status = normalizeStatus(d.status);
+        const amount = toNumber(d.amount_cents) / 100;
+        if (status === "open") pipelineValue += amount;
+        if (status === "won" && isSameOrAfter(d.closed_at || d.updated_at, monthStart)) wonMonth += amount;
+      });
+      stats.crm = {
+        openDeals: deals.filter((d) => normalizeStatus(d.status) === "open").length,
+        pipelineValue,
+        wonMonth,
+      };
+    }
+
+    if (modules.transport) {
+      const [shipments, tours] = await Promise.all([
+        safeTableRows("transport_shipments", "status,price_cents,distance_m,created_at", (q) =>
+          q.order("created_at", { ascending: false }).limit(6000)
+        ),
+        safeTableRows("transport_tours", "status,tour_date,created_at", (q) =>
+          q.order("created_at", { ascending: false }).limit(4000)
+        ),
+      ]);
+      const monthStart = startOfMonth();
+      let monthRevenue = 0;
+      let distanceKm = 0;
+      shipments.forEach((s) => {
+        if (isSameOrAfter(s.created_at, monthStart)) monthRevenue += toNumber(s.price_cents) / 100;
+        distanceKm += toNumber(s.distance_m) / 1000;
+      });
+      stats.transport = {
+        activeShipments: shipments.filter((s) => ["planned", "in_progress"].includes(normalizeStatus(s.status))).length,
+        monthRevenue,
+        distanceKm,
+        openTours: tours.filter((t) => ["planned", "in_progress"].includes(normalizeStatus(t.status))).length,
+      };
+    }
+
+    if (modules.fleet || modules.transport) {
+      const [vehicles, drivers] = await Promise.all([
+        safeTableRows(
+          "transport_vehicles",
+          "is_active,technical_inspection_due_at,insurance_expires_at,next_service_due_at",
+          (q) => q.limit(6000)
+        ),
+        safeTableRows("transport_drivers", "is_active,license_expiry,medical_visit_expires_at", (q) => q.limit(6000)),
+      ]);
+      let alerts30 = 0;
+      vehicles.forEach((v) => {
+        if (isWithinDays(v.technical_inspection_due_at, 30)) alerts30 += 1;
+        if (isWithinDays(v.insurance_expires_at, 30)) alerts30 += 1;
+        if (isWithinDays(v.next_service_due_at, 30)) alerts30 += 1;
+      });
+      drivers.forEach((d) => {
+        if (isWithinDays(d.license_expiry, 30)) alerts30 += 1;
+        if (isWithinDays(d.medical_visit_expires_at, 30)) alerts30 += 1;
+      });
+      stats.fleet = {
+        vehiclesActive: vehicles.filter((v) => v.is_active !== false).length,
+        driversActive: drivers.filter((d) => d.is_active !== false).length,
+        alerts30,
+      };
+    }
+
+    if (modules.logistics) {
+      const [levels, rules, warehouses] = await Promise.all([
+        safeTableRows("logistics_stock_levels", "warehouse_id,product_id,qty_on_hand,qty_reserved,stock_state", (q) => q.limit(10000)),
+        safeTableRows("logistics_reorder_rules", "warehouse_id,product_id,min_qty,is_active", (q) => q.eq("is_active", true).limit(6000)),
+        safeTableRows("logistics_warehouses", "id,is_active", (q) => q.limit(1000)),
+      ]);
+
+      const stockKeyQty = new Map();
+      let availableQty = 0;
+      levels.forEach((l) => {
+        const stateKey = normalizeStatus(l.stock_state || "available");
+        const freeQty = Math.max(0, toNumber(l.qty_on_hand) - toNumber(l.qty_reserved));
+        if (stateKey === "available") availableQty += freeQty;
+        const k = `${l.warehouse_id || ""}:${l.product_id || ""}`;
+        stockKeyQty.set(k, (stockKeyQty.get(k) || 0) + freeQty);
+      });
+
+      let lowStockAlerts = 0;
+      rules.forEach((r) => {
+        const k = `${r.warehouse_id || ""}:${r.product_id || ""}`;
+        const qty = stockKeyQty.get(k) || 0;
+        if (qty <= toNumber(r.min_qty)) lowStockAlerts += 1;
+      });
+
+      stats.logistics = {
+        activeWarehouses: warehouses.filter((w) => w.is_active !== false).length,
+        availableQty,
+        lowStockAlerts,
+      };
+    }
+
+    if (modules.restaurant || modules.billing) {
+      const orders = await safeTableRows("restaurant_orders", "source,status,total_cents,created_at,payment_status", (q) =>
+        q.order("created_at", { ascending: false }).limit(8000)
+      );
+      const today = startOfToday();
+      const todayOrders = orders.filter((o) => isSameOrAfter(o.created_at, today));
+      const todayRevenue = todayOrders
+        .filter((o) => normalizeStatus(o.status) !== "canceled")
+        .reduce((acc, o) => acc + toNumber(o.total_cents) / 100, 0);
+
+      if (modules.restaurant) {
+        const [items, locations] = await Promise.all([
+          safeTableRows("restaurant_menu_items", "is_active,available_for_qr,available_for_pos", (q) => q.limit(6000)),
+          safeTableRows("restaurant_locations", "id,is_active,public_is_open", (q) => q.limit(2000)),
+        ]);
+
+        stats.restaurant = {
+          todayOrders: todayOrders.length,
+          openOrders: orders.filter((o) => ["new", "confirmed", "preparing", "ready"].includes(normalizeStatus(o.status))).length,
+          todayRevenue,
+          activeMenus: items.filter((i) => i.is_active !== false).length,
+          activeLocations: locations.filter((l) => l.is_active !== false).length,
+        };
+      }
+
+      stats.pos = {
+        posTicketsToday: todayOrders.filter((o) => normalizeStatus(o.source) === "pos").length,
+        posRevenueToday: todayOrders
+          .filter((o) => normalizeStatus(o.source) === "pos" && normalizeStatus(o.status) !== "canceled")
+          .reduce((acc, o) => acc + toNumber(o.total_cents) / 100, 0),
+      };
+    }
+
+    return stats;
+  }
+
   function getGlobalConfig() {
     const cfg = window.__MBL_DASHBOARD_CFG__ || {};
     const base = window.__MBL_CFG__ || {};
@@ -847,6 +1269,7 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
             <p class="mbl-overline">Admin analytics</p>
             <h1 class="mbl-title">${escapeHtml(labels.title || "")}</h1>
             <p class="mbl-subtitle">${escapeHtml(labels.subtitle || "")}</p>
+            <div class="mbl-context-strip"></div>
           </div>
           <div class="mbl-header-actions">
             <button class="mbl-btn mbl-btn-ghost mbl-export" type="button">Exporter CSV</button>
@@ -855,7 +1278,7 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
           </div>
         </header>
 
-        <section class="mbl-filters mbl-card">
+        <section class="mbl-filters mbl-card mbl-interventions-only">
           <div class="mbl-filter">
             <label for="mbl-preset">Periode</label>
             <select id="mbl-preset" name="preset">
@@ -902,8 +1325,9 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
         <section class="mbl-error" hidden></section>
 
         <section class="mbl-kpi-grid"></section>
+        <section class="mbl-module-note" hidden></section>
 
-        <section class="mbl-analytics-grid">
+        <section class="mbl-analytics-grid mbl-interventions-only">
           <article class="mbl-card mbl-chart-card">
             <h2>CA / Couts / Benefice</h2>
             <div class="mbl-chart mbl-chart-trend"></div>
@@ -922,7 +1346,7 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
           </article>
         </section>
 
-        <section class="mbl-card mbl-table-card">
+        <section class="mbl-card mbl-table-card mbl-interventions-only">
           <div class="mbl-table-head">
             <h2>Interventions detaillees</h2>
             <span class="mbl-table-count">0 ligne</span>
@@ -1069,8 +1493,10 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
     clearError();
 
     try {
-      const payload = await fetchDashboardPayload();
+      state.context = await resolveDashboardContext();
+      const payload = await fetchDashboardPayload(state.context);
       state.data = payload;
+      state.moduleStats = payload.moduleStats || {};
       state.indices = buildIndices(payload);
       hydrateFilterOptions();
       updateDashboard();
@@ -1082,7 +1508,20 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
     }
   }
 
-  async function fetchDashboardPayload() {
+  async function fetchDashboardPayload(context) {
+    const moduleStats = await fetchModuleStats(context || {});
+    const hasInterventions = Boolean(context?.modules?.interventions);
+    if (!hasInterventions) {
+      return {
+        interventions: [],
+        expenses: [],
+        compensations: [],
+        assignees: [],
+        profiles: [],
+        moduleStats,
+      };
+    }
+
     let query = state.supabase
       .from("interventions")
       .select(
@@ -1092,7 +1531,19 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
       .limit(state.config.maxRows);
 
     const interventionsResult = await query;
-    if (interventionsResult.error) throw interventionsResult.error;
+    if (interventionsResult.error) {
+      if (isMissingRelationError(interventionsResult.error)) {
+        return {
+          interventions: [],
+          expenses: [],
+          compensations: [],
+          assignees: [],
+          profiles: [],
+          moduleStats,
+        };
+      }
+      throw interventionsResult.error;
+    }
     const interventions = interventionsResult.data || [];
 
     if (!interventions.length) {
@@ -1102,6 +1553,7 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
         compensations: [],
         assignees: [],
         profiles: [],
+        moduleStats,
       };
     }
 
@@ -1140,6 +1592,7 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
       compensations,
       assignees,
       profiles,
+      moduleStats,
     };
   }
 
@@ -1316,14 +1769,70 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
   }
 
   function updateDashboard() {
+    renderContextSummary();
     const rows = createEnrichedRows();
     const filtered = applyFilters(rows);
     const sorted = sortRows(filtered);
     state.filteredRows = sorted;
 
     renderKpis(sorted);
-    renderTable(sorted);
-    renderCharts(sorted);
+    if (Boolean(state.context?.modules?.interventions)) {
+      renderTable(sorted);
+      renderCharts(sorted);
+    } else {
+      updateTableCount(0);
+    }
+  }
+
+  function renderContextSummary() {
+    const root = getRoot(state.config.container);
+    if (!root) return;
+    const strip = root.querySelector(SELECTORS.contextStrip);
+    const note = root.querySelector(SELECTORS.moduleNote);
+    const interventionsEnabled = Boolean(state.context?.modules?.interventions);
+
+    root.querySelectorAll(".mbl-interventions-only").forEach((el) => {
+      el.style.display = interventionsEnabled ? "" : "none";
+    });
+
+    if (note) {
+      if (interventionsEnabled) {
+        note.hidden = true;
+        note.textContent = "";
+      } else {
+        note.hidden = false;
+        note.textContent =
+          "Le module Interventions n'est pas actif sur cet abonnement. Le dashboard affiche automatiquement les KPIs des modules activés (facturation, CRM, transport, logistique, restauration, POS).";
+      }
+    }
+
+    if (!strip) return;
+
+    const moduleLabels = {
+      billing: "Facturation",
+      interventions: "Interventions",
+      crm: "CRM",
+      transport: "Transport",
+      fleet: "Véhicules",
+      logistics: "Logistique",
+      restaurant: "Restauration",
+    };
+    const activeModules = Object.keys(state.context?.modules || {}).filter((k) => state.context.modules[k]);
+    const modulePreview = activeModules
+      .map((m) => moduleLabels[m] || m)
+      .slice(0, 4)
+      .join(", ");
+    const moduleSuffix = activeModules.length > 4 ? ` +${activeModules.length - 4}` : "";
+    const planLabel = state.context?.planName || "Sans plan";
+    const statusLabel = state.context?.subscriptionActive ? "Abonnement actif" : "Abonnement inactif";
+    const orgLabel = state.context?.orgName || "Organisation";
+
+    strip.innerHTML = `
+      <span class="mbl-context-pill ${state.context?.subscriptionActive ? "is-ok" : "is-warn"}">${escapeHtml(statusLabel)}</span>
+      <span class="mbl-context-pill">Plan: ${escapeHtml(planLabel)}</span>
+      <span class="mbl-context-pill">${escapeHtml(orgLabel)}</span>
+      <span class="mbl-context-pill">${escapeHtml(activeModules.length)} module(s): ${escapeHtml(modulePreview || "Aucun")}${escapeHtml(moduleSuffix)}</span>
+    `;
   }
 
   function createEnrichedRows() {
@@ -1434,18 +1943,74 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
     if (!mount) return;
 
     const stats = computeStats(rows);
-    const kpis = [
-      { label: "CA", value: money(stats.revenue), tone: "blue" },
-      { label: "Couts directs", value: money(stats.costs), tone: "amber" },
-      { label: "Benefice net", value: money(stats.profit), tone: stats.profit >= 0 ? "green" : "red" },
-      { label: "Marge", value: percent(stats.margin), tone: stats.margin >= 0 ? "green" : "red" },
-      { label: "Interventions", value: String(stats.count), tone: "slate" },
-      { label: "Terminees", value: String(stats.done), tone: "green" },
-      { label: "En cours", value: String(stats.inProgress), tone: "blue" },
-      { label: "Ticket moyen", value: money(stats.avgTicket), tone: "violet" },
-    ];
+    const modules = state.context?.modules || {};
+    const moduleStats = state.moduleStats || {};
+    const kpis = [];
 
-    mount.innerHTML = kpis
+    const activeModuleCount = Object.keys(modules).filter((k) => modules[k]).length;
+    kpis.push({ label: "Plan actif", value: state.context?.planName || "Sans plan", tone: "violet" });
+    kpis.push({ label: "Modules actifs", value: String(activeModuleCount), tone: "slate" });
+
+    if (modules.interventions) {
+      kpis.push({ label: "CA interventions", value: money(stats.revenue), tone: "blue" });
+      kpis.push({ label: "Benefice net", value: money(stats.profit), tone: stats.profit >= 0 ? "green" : "red" });
+      kpis.push({ label: "Interventions", value: String(stats.count), tone: "slate" });
+      kpis.push({ label: "En cours", value: String(stats.inProgress), tone: "blue" });
+      kpis.push({ label: "Ticket moyen", value: money(stats.avgTicket), tone: "violet" });
+    }
+
+    if (modules.billing && moduleStats.billing) {
+      kpis.push({ label: "Encaisse mois", value: money(moduleStats.billing.paidMonth), tone: "green" });
+      kpis.push({ label: "Factures ouvertes", value: String(moduleStats.billing.openInvoices), tone: "amber" });
+      kpis.push({ label: "Factures en retard", value: String(moduleStats.billing.overdueInvoices), tone: "red" });
+      kpis.push({ label: "Devis ouverts", value: String(moduleStats.billing.openQuotes), tone: "blue" });
+      kpis.push({ label: "Clients actifs", value: String(moduleStats.billing.activeClients), tone: "slate" });
+    }
+
+    if (modules.crm && moduleStats.crm) {
+      kpis.push({ label: "Opportunites ouvertes", value: String(moduleStats.crm.openDeals), tone: "blue" });
+      kpis.push({ label: "Pipeline CRM", value: money(moduleStats.crm.pipelineValue), tone: "violet" });
+      kpis.push({ label: "Gagne ce mois", value: money(moduleStats.crm.wonMonth), tone: "green" });
+    }
+
+    if (modules.transport && moduleStats.transport) {
+      kpis.push({ label: "Courses actives", value: String(moduleStats.transport.activeShipments), tone: "blue" });
+      kpis.push({ label: "CA transport mois", value: money(moduleStats.transport.monthRevenue), tone: "green" });
+      kpis.push({ label: "Distance planifiee", value: `${Math.round(toNumber(moduleStats.transport.distanceKm))} km`, tone: "amber" });
+      kpis.push({ label: "Tournees ouvertes", value: String(moduleStats.transport.openTours), tone: "slate" });
+    }
+
+    if ((modules.fleet || modules.transport) && moduleStats.fleet) {
+      kpis.push({ label: "Vehicules actifs", value: String(moduleStats.fleet.vehiclesActive), tone: "slate" });
+      kpis.push({ label: "Chauffeurs actifs", value: String(moduleStats.fleet.driversActive), tone: "slate" });
+      kpis.push({ label: "Alertes conformite (30j)", value: String(moduleStats.fleet.alerts30), tone: moduleStats.fleet.alerts30 > 0 ? "red" : "green" });
+    }
+
+    if (modules.logistics && moduleStats.logistics) {
+      kpis.push({ label: "Entrepots actifs", value: String(moduleStats.logistics.activeWarehouses), tone: "slate" });
+      kpis.push({ label: "Stock disponible", value: String(Math.round(toNumber(moduleStats.logistics.availableQty))), tone: "blue" });
+      kpis.push({ label: "Alertes reappro", value: String(moduleStats.logistics.lowStockAlerts), tone: moduleStats.logistics.lowStockAlerts > 0 ? "amber" : "green" });
+    }
+
+    if (modules.restaurant && moduleStats.restaurant) {
+      const avgTicket = moduleStats.restaurant.todayOrders
+        ? toNumber(moduleStats.restaurant.todayRevenue) / Math.max(1, toNumber(moduleStats.restaurant.todayOrders))
+        : 0;
+      kpis.push({ label: "Commandes jour", value: String(moduleStats.restaurant.todayOrders), tone: "blue" });
+      kpis.push({ label: "CA resto jour", value: money(moduleStats.restaurant.todayRevenue), tone: "green" });
+      kpis.push({ label: "Ticket moyen jour", value: money(avgTicket), tone: "violet" });
+      kpis.push({ label: "Commandes a traiter", value: String(moduleStats.restaurant.openOrders), tone: "amber" });
+    }
+
+    if ((modules.billing || modules.restaurant) && moduleStats.pos) {
+      kpis.push({ label: "Tickets POS jour", value: String(moduleStats.pos.posTicketsToday), tone: "blue" });
+      kpis.push({ label: "CA POS jour", value: money(moduleStats.pos.posRevenueToday), tone: "green" });
+    }
+
+    const maxCards = 16;
+    const visibleKpis = kpis.slice(0, maxCards);
+
+    mount.innerHTML = visibleKpis
       .map((kpi, index) => {
         return `
           <article class="mbl-card mbl-kpi tone-${kpi.tone}" style="--idx:${index}">
