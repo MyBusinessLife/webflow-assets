@@ -35,6 +35,10 @@ Order to run in Supabase SQL Editor:
 31. `031_restaurant_public_path_applications_default.sql`
 32. `032_restaurant_employee_role.sql`
 33. `033_auth_bootstrap_google_oauth_fix.sql`
+34. `034_auth_bootstrap_signup_fix_profiles_compat.sql`
+35. `035_plan_restaurant_pos.sql`
+36. `036_rental_short_stay_core.sql`
+37. `037_plan_rental_short_stay.sql`
 
 ## Important
 - Run each file in full, then validate before the next file.
