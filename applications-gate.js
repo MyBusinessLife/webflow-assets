@@ -126,12 +126,14 @@
   function isExcludedPage() {
     const page = String(document.documentElement.dataset.page || "").trim();
     if (page === "login" || page === "signup" || page === "abonnement") return true;
+    if (page === "restaurant-order") return true;
 
     const path = String(location.pathname || "");
     if (path === CONFIG.LOGIN_PATH) return true;
     if (path === CONFIG.SUBSCRIBE_PATH) return true;
     if (/^\/(applications|application)\/login\/?$/.test(path)) return true;
     if (/^\/(applications|application)\/signup\/?$/.test(path)) return true;
+    if (/^\/(applications|application)\/restaurant-order\/?$/.test(path)) return true;
 
     // Allow manual opt-out on any page (Webflow custom attribute).
     if (document.documentElement.hasAttribute("data-no-gate")) return true;

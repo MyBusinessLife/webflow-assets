@@ -11,7 +11,9 @@
   const APP_ROOT = `/${match[1]}`;
   const isLogin = new RegExp(`^\\/${match[1]}\\/login\\/?$`).test(p);
   const isSignup = new RegExp(`^\\/${match[1]}\\/signup\\/?$`).test(p);
+  const isPublicRestaurantOrder = new RegExp(`^\\/${match[1]}\\/restaurant-order\\/?$`).test(p);
   const isPublicAuthPage = isLogin || isSignup;
+  const isPublicPage = isPublicAuthPage || isPublicRestaurantOrder;
 
   const url = new URL(location.href);
   const DEBUG = url.searchParams.get("mbl_debug") === "1" || location.hostname.includes("webflow.io");
@@ -69,7 +71,7 @@
   try {
     document.documentElement.setAttribute("data-mbl-app", "1");
     if (isLogin) document.documentElement.setAttribute("data-mbl-login", "1");
-    if (isPublicAuthPage) document.documentElement.setAttribute("data-mbl-public", "1");
+    if (isPublicPage) document.documentElement.setAttribute("data-mbl-public", "1");
 
     if (!document.getElementById("mbl-app-protect-style")) {
       const st = document.createElement("style");
@@ -327,9 +329,16 @@
         path: p,
         isLogin,
         isSignup,
+        isPublicRestaurantOrder,
         hasSession: Boolean(session),
         userId: userId ? userId.slice(0, 8) + "..." : "",
       });
+
+      // --- PUBLIC RESTAURANT ORDER PAGE ---
+      if (isPublicRestaurantOrder) {
+        ready();
+        return;
+      }
 
       // --- LOGIN ---
       if (isLogin) {
