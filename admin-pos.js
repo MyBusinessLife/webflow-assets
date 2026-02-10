@@ -214,12 +214,25 @@ window.Webflow.push(async function () {
     }
   }
 
+  function detectTabletDevice() {
+    const ua = String(navigator.userAgent || "");
+    const platform = String(navigator.platform || "");
+    const touchPoints = Number(navigator.maxTouchPoints || 0);
+    const isIPad = /iPad/i.test(ua) || (platform === "MacIntel" && touchPoints > 1);
+    const isAndroidTablet = /Android/i.test(ua) && !/Mobile/i.test(ua);
+    const coarsePointer = window.matchMedia ? window.matchMedia("(pointer: coarse)").matches : false;
+    const shortSide = Math.min(window.innerWidth || 0, window.innerHeight || 0);
+    const longSide = Math.max(window.innerWidth || 0, window.innerHeight || 0);
+    const isTabletViewport = shortSide >= 700 && longSide >= 960;
+    return Boolean(isIPad || isAndroidTablet || (coarsePointer && isTabletViewport));
+  }
+
   function loadDisplayMode() {
     try {
       const raw = String(localStorage.getItem(CONFIG.DISPLAY_MODE_STORAGE_KEY) || "").trim().toLowerCase();
       if (raw === "tablet" || raw === "classic") return raw;
     } catch (_) {}
-    return "classic";
+    return detectTabletDevice() ? "tablet" : "classic";
   }
 
   function saveDisplayMode(mode) {
@@ -232,6 +245,17 @@ window.Webflow.push(async function () {
 
   function isTabletMode() {
     return state.displayMode === "tablet";
+  }
+
+  async function tryEnterFullscreen() {
+    const rootEl = document.documentElement;
+    if (!rootEl || document.fullscreenElement) return;
+    if (typeof rootEl.requestFullscreen !== "function") return;
+    try {
+      await rootEl.requestFullscreen();
+    } catch (_) {
+      // Browser can refuse without direct user gesture (expected on some devices).
+    }
   }
 
   async function ensureSupabaseJs() {
@@ -1012,10 +1036,55 @@ window.Webflow.push(async function () {
       html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-order-head__line.is-total {
         color: rgba(12,74,110,0.95);
       }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] {
+        width: 100vw;
+        max-width: none;
+        min-height: 100dvh;
+        border-radius: 0;
+        margin-top: 0;
+        margin-bottom: 0;
+        margin-left: calc(50% - 50vw);
+        margin-right: calc(50% - 50vw);
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-grid {
+        min-height: calc(100dvh - 150px);
+        align-items: stretch;
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-card {
+        height: 100%;
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] [data-panel-catalog] {
+        overflow: visible;
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] [data-panel-cart] {
+        overflow: auto;
+      }
+
+      html[data-page="admin-pos"] .pos-custom-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.4fr) 100px 140px 90px auto;
+        gap: 8px;
+        align-items: end;
+      }
+      html[data-page="admin-pos"] .pos-custom-grid > * {
+        min-width: 0;
+      }
+      html[data-page="admin-pos"] .pos-custom-grid .pos-btn {
+        width: 100%;
+      }
 
       @media (max-width: 1080px) {
         html[data-page="admin-pos"] .pos-grid { grid-template-columns: 1fr; }
         html[data-page="admin-pos"] .pos-cart-list { max-height: none; }
+        html[data-page="admin-pos"] .pos-custom-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        html[data-page="admin-pos"] .pos-custom-grid [data-custom="name"] {
+          grid-column: 1 / -1;
+        }
+        html[data-page="admin-pos"] .pos-custom-grid [data-action="add-custom"] {
+          grid-column: 1 / -1;
+        }
       }
       @media (max-width: 760px) {
         html[data-page="admin-pos"] .pos-head {
@@ -1027,6 +1096,9 @@ window.Webflow.push(async function () {
         }
         html[data-page="admin-pos"] .pos-scan__row { grid-template-columns: 1fr 88px; }
         html[data-page="admin-pos"] .pos-scan__row .pos-btn { grid-column: 1 / -1; }
+        html[data-page="admin-pos"] .pos-custom-grid {
+          grid-template-columns: 1fr;
+        }
       }
     `;
     document.head.appendChild(st);
@@ -1621,7 +1693,7 @@ window.Webflow.push(async function () {
 
       <div class="pos-block" style="margin-top:10px;">
         <div class="pos-card__title" style="margin:0 0 8px;">Ligne libre</div>
-        <div style="display:grid;grid-template-columns:1.2fr .6fr .8fr .6fr auto;gap:8px;align-items:end;">
+        <div class="pos-custom-grid">
           <label><input class="pos-input" data-custom="name" placeholder="Designation" /></label>
           <label><input class="pos-input" data-custom="qty" type="number" step="0.001" placeholder="Qt" value="1" /></label>
           <label><input class="pos-input" data-custom="price" type="number" step="0.01" placeholder="PU HT" /></label>
@@ -2022,11 +2094,15 @@ window.Webflow.push(async function () {
     renderCartPanel(els);
     bindHardwareScanner(els);
 
-    els.btnToggleTabletMode?.addEventListener("click", () => {
-      saveDisplayMode(isTabletMode() ? "classic" : "tablet");
+    els.btnToggleTabletMode?.addEventListener("click", async () => {
+      const nextMode = isTabletMode() ? "classic" : "tablet";
+      saveDisplayMode(nextMode);
       const next = renderApp();
       bindUI(next);
       showAlert(next, isTabletMode() ? "Mode tablette active." : "Mode classique active.", "ok");
+      if (nextMode === "tablet") {
+        await tryEnterFullscreen();
+      }
     });
 
     els.btnClear?.addEventListener("click", () => {
@@ -2074,6 +2150,11 @@ window.Webflow.push(async function () {
 
     const els = renderApp();
     bindUI(els);
+    if (isTabletMode() && detectTabletDevice()) {
+      setTimeout(() => {
+        tryEnterFullscreen();
+      }, 350);
+    }
     log("ready", { orgId: state.orgId, hasBilling: state.hasBilling, hasRestaurant: state.hasRestaurant, displayMode: state.displayMode });
   } catch (e) {
     warn("boot error", e);
