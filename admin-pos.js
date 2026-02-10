@@ -44,6 +44,7 @@ window.Webflow.push(async function () {
 
     CURRENCY: String(root.dataset.currency || "EUR").trim() || "EUR",
     SCANNER_IDLE_MS: Math.max(40, Number(root.dataset.scannerIdleMs || 95) || 95),
+    DISPLAY_MODE_STORAGE_KEY: String(root.dataset.displayModeStorageKey || "mbl-pos-display-mode"),
   };
 
   const STR = {
@@ -65,6 +66,8 @@ window.Webflow.push(async function () {
     tabMenus: "Menus",
     tabProducts: "Produits",
     tabCode: "Code",
+    modeTabletOn: "Mode tablette: actif",
+    modeTabletOff: "Mode tablette",
 
     save: "Enregistrer",
     createOrder: "Creer la commande",
@@ -77,6 +80,7 @@ window.Webflow.push(async function () {
     loadError: "Impossible de charger les donnees POS.",
     scannerHint: "Douchette USB: scanner puis Entree. Saisie manuelle possible.",
     scannerNotFound: "Aucun article trouve pour ce code-barres/SKU.",
+    imageHint: "Touchez la carte pour ajouter",
   };
 
   const state = {
@@ -111,6 +115,7 @@ window.Webflow.push(async function () {
       lastTs: 0,
       bound: false,
     },
+    displayMode: loadDisplayMode(),
   };
 
   function escapeHTML(input) {
@@ -202,6 +207,26 @@ window.Webflow.push(async function () {
     } catch (_) {
       location.assign(target);
     }
+  }
+
+  function loadDisplayMode() {
+    try {
+      const raw = String(localStorage.getItem(CONFIG.DISPLAY_MODE_STORAGE_KEY) || "").trim().toLowerCase();
+      if (raw === "tablet" || raw === "classic") return raw;
+    } catch (_) {}
+    return "classic";
+  }
+
+  function saveDisplayMode(mode) {
+    const safe = mode === "tablet" ? "tablet" : "classic";
+    state.displayMode = safe;
+    try {
+      localStorage.setItem(CONFIG.DISPLAY_MODE_STORAGE_KEY, safe);
+    } catch (_) {}
+  }
+
+  function isTabletMode() {
+    return state.displayMode === "tablet";
   }
 
   async function ensureSupabaseJs() {
@@ -345,6 +370,12 @@ window.Webflow.push(async function () {
         align-items:flex-start;
         gap: 12px;
       }
+      html[data-page="admin-pos"] .pos-head__actions {
+        display:flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
       html[data-page="admin-pos"] .pos-title { margin:0; font-size: 24px; font-weight: 1000; letter-spacing: -0.02em; }
       html[data-page="admin-pos"] .pos-subtitle { margin: 4px 0 0; color: var(--pos-muted); font-weight: 800; }
 
@@ -481,6 +512,11 @@ window.Webflow.push(async function () {
         border-color: rgba(34,197,94,0.36);
         color: rgba(21,128,61,0.96);
       }
+      html[data-page="admin-pos"] .pos-btn--tablet[aria-pressed="true"] {
+        background: rgba(14,165,233,0.18);
+        border-color: rgba(14,165,233,0.44);
+        color: rgba(12,74,110,0.98);
+      }
 
       html[data-page="admin-pos"] .pos-tabs { display:flex; gap: 8px; }
       html[data-page="admin-pos"] .pos-tab {
@@ -504,6 +540,10 @@ window.Webflow.push(async function () {
         grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
         gap: 10px;
       }
+      html[data-page="admin-pos"] .pos-catalog.pos-catalog--tablet {
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        gap: 12px;
+      }
       html[data-page="admin-pos"] .pos-item {
         border: 1px solid rgba(15,23,42,0.11);
         border-radius: 14px;
@@ -511,6 +551,69 @@ window.Webflow.push(async function () {
         padding: 10px;
         display:grid;
         gap: 8px;
+      }
+      html[data-page="admin-pos"] .pos-item--tablet {
+        padding: 0;
+        overflow: hidden;
+        gap: 0;
+        cursor: pointer;
+      }
+      html[data-page="admin-pos"] .pos-item--tablet:hover {
+        border-color: rgba(14,165,233,0.38);
+        box-shadow: 0 14px 26px rgba(2,6,23,0.10);
+      }
+      html[data-page="admin-pos"] .pos-item__media {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 4/3;
+        overflow: hidden;
+        background: linear-gradient(135deg, rgba(14,165,233,0.20), rgba(2,6,23,0.08));
+      }
+      html[data-page="admin-pos"] .pos-item__img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+      html[data-page="admin-pos"] .pos-item__placeholder {
+        width: 100%;
+        height: 100%;
+        display: grid;
+        place-items: center;
+        color: rgba(12,74,110,0.96);
+        font-weight: 1000;
+        font-size: 22px;
+        letter-spacing: -0.02em;
+      }
+      html[data-page="admin-pos"] .pos-item__overlay {
+        position: absolute;
+        inset: auto 0 0 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        background: linear-gradient(180deg, rgba(15,23,42,0), rgba(15,23,42,0.72));
+        color: #fff;
+      }
+      html[data-page="admin-pos"] .pos-item__overlay strong {
+        font-size: 13px;
+        font-weight: 900;
+      }
+      html[data-page="admin-pos"] .pos-item__overlay span {
+        font-size: 11px;
+        font-weight: 800;
+        opacity: 0.9;
+      }
+      html[data-page="admin-pos"] .pos-item__body {
+        display: grid;
+        gap: 8px;
+        padding: 10px;
+      }
+      html[data-page="admin-pos"] .pos-item__cta {
+        font-size: 11px;
+        font-weight: 900;
+        color: rgba(12,74,110,0.95);
       }
       html[data-page="admin-pos"] .pos-item__title {
         margin:0;
@@ -631,6 +734,13 @@ window.Webflow.push(async function () {
         html[data-page="admin-pos"] .pos-cart-list { max-height: none; }
       }
       @media (max-width: 760px) {
+        html[data-page="admin-pos"] .pos-head {
+          flex-direction: column;
+          align-items: stretch;
+        }
+        html[data-page="admin-pos"] .pos-head__actions {
+          justify-content: flex-start;
+        }
         html[data-page="admin-pos"] .pos-scan__row { grid-template-columns: 1fr 88px; }
         html[data-page="admin-pos"] .pos-scan__row .pos-btn { grid-column: 1 / -1; }
       }
@@ -695,6 +805,7 @@ window.Webflow.push(async function () {
   }
 
   function makeMenuRow(it) {
+    const meta = it?.metadata && typeof it.metadata === "object" ? it.metadata : {};
     return {
       kind: "menu_item",
       id: String(it.id),
@@ -704,8 +815,9 @@ window.Webflow.push(async function () {
       unit_price_cents: Number(it.price_cents || 0),
       vat_rate: Number(it.vat_rate || 10),
       badge: "Menu",
-      barcode: String(it?.metadata?.barcode || "").trim(),
-      sku: String(it?.metadata?.sku || "").trim(),
+      barcode: String(meta.barcode || "").trim(),
+      sku: String(meta.sku || "").trim(),
+      image_url: String(meta.image_url || meta.image || meta.photo_url || meta.cover_url || "").trim(),
     };
   }
 
@@ -721,7 +833,23 @@ window.Webflow.push(async function () {
       badge: "Produit",
       barcode: String(p.barcode || "").trim(),
       sku: String(p.sku || "").trim(),
+      image_url: String(p.image_url || p.photo_url || p.thumbnail_url || "").trim(),
     };
+  }
+
+  function resolveCatalogImageUrl(row) {
+    const src = String(row?.image_url || "").trim();
+    if (!src) return "";
+    if (/^https?:\/\//i.test(src)) return src;
+    if (src.startsWith("data:image/")) return src;
+    return "";
+  }
+
+  function rowInitials(row) {
+    const words = String(row?.name || "").trim().split(/\s+/).filter(Boolean);
+    if (!words.length) return "POS";
+    if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+    return `${words[0].slice(0, 1)}${words[1].slice(0, 1)}`.toUpperCase();
   }
 
   function buildCatalogRows() {
@@ -871,13 +999,16 @@ window.Webflow.push(async function () {
 
   function renderApp() {
     root.innerHTML = `
-      <section class="pos-shell">
+      <section class="pos-shell${isTabletMode() ? " pos-shell--tablet" : ""}" data-display-mode="${isTabletMode() ? "tablet" : "classic"}">
         <header class="pos-head">
           <div>
             <h1 class="pos-title">${escapeHTML(STR.title)}</h1>
             <p class="pos-subtitle">${escapeHTML(STR.subtitle)}</p>
           </div>
-          <div class="pos-topbar__right">
+          <div class="pos-head__actions">
+            <button type="button" class="pos-btn pos-btn--tablet" data-action="toggle-tablet-mode" aria-pressed="${isTabletMode() ? "true" : "false"}">
+              ${escapeHTML(isTabletMode() ? STR.modeTabletOn : STR.modeTabletOff)}
+            </button>
             <button type="button" class="pos-btn" data-action="clear-cart">Vider panier</button>
             <a href="${escapeHTML(normalizePath(CONFIG.RESTAURANT_PATH))}" class="pos-btn">Commandes resto</a>
           </div>
@@ -897,6 +1028,7 @@ window.Webflow.push(async function () {
       panelCatalog: root.querySelector("[data-panel-catalog]"),
       panelCart: root.querySelector("[data-panel-cart]"),
       btnClear: root.querySelector('[data-action="clear-cart"]'),
+      btnToggleTabletMode: root.querySelector('[data-action="toggle-tablet-mode"]'),
     };
   }
 
@@ -906,6 +1038,7 @@ window.Webflow.push(async function () {
       .join("");
 
     const rows = buildCatalogRows();
+    const tabletMode = isTabletMode();
 
     els.panelCatalog.innerHTML = `
       <h3 class="pos-card__title">Catalogue</h3>
@@ -949,16 +1082,33 @@ window.Webflow.push(async function () {
     }>${escapeHTML(STR.tabProducts)}</button>
       </div>
 
-      <div class="pos-catalog" data-catalog-list>
+      <div class="pos-catalog${tabletMode ? " pos-catalog--tablet" : ""}" data-catalog-list>
         ${
           rows.length
             ? rows
                 .map(
                   (row) => `
-                  <article class="pos-item" data-item-kind="${escapeHTML(row.kind)}" data-item-id="${escapeHTML(row.id)}" data-item-loc="${escapeHTML(
+                  <article class="pos-item${tabletMode ? " pos-item--tablet" : ""}" data-item-kind="${escapeHTML(row.kind)}" data-item-id="${escapeHTML(row.id)}" data-item-loc="${escapeHTML(
                     row.location_id || ""
-                  )}">
-                    <div>
+                  )}" ${tabletMode ? 'data-action="add-item-card"' : ""}>
+                    ${
+                      tabletMode
+                        ? `
+                      <div class="pos-item__media">
+                        ${
+                          resolveCatalogImageUrl(row)
+                            ? `<img class="pos-item__img" src="${escapeHTML(resolveCatalogImageUrl(row))}" alt="${escapeHTML(row.name)}" loading="lazy" />`
+                            : `<div class="pos-item__placeholder">${escapeHTML(rowInitials(row))}</div>`
+                        }
+                        <div class="pos-item__overlay">
+                          <strong>${escapeHTML(formatMoney(row.unit_price_cents, CONFIG.CURRENCY))}</strong>
+                          <span>${escapeHTML(STR.imageHint)}</span>
+                        </div>
+                      </div>
+                    `
+                        : ""
+                    }
+                    <div class="pos-item__body">
                       <h4 class="pos-item__title">${escapeHTML(row.name)}</h4>
                       ${row.description ? `<div class="pos-item__meta">${escapeHTML(row.description)}</div>` : ""}
                     </div>
@@ -1028,7 +1178,7 @@ window.Webflow.push(async function () {
     });
 
     els.panelCatalog.querySelectorAll("[data-item-id]").forEach((card) => {
-      card.querySelector('[data-action="add-item"]')?.addEventListener("click", () => {
+      const addCurrentRow = () => {
         const kind = String(card.getAttribute("data-item-kind") || "").trim();
         const id = String(card.getAttribute("data-item-id") || "").trim();
         const loc = String(card.getAttribute("data-item-loc") || "").trim();
@@ -1036,6 +1186,18 @@ window.Webflow.push(async function () {
         if (!row) return;
         addCatalogRowToCart(row);
         renderCartPanel(els);
+        showAlert(els, `${row.name} ajoute.`, "ok");
+      };
+
+      card.querySelector('[data-action="add-item"]')?.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        addCurrentRow();
+      });
+
+      card.querySelector('[data-action="add-item-card"]')?.addEventListener("click", (e) => {
+        if (e.target && e.target.closest && e.target.closest('[data-action="add-item"]')) return;
+        addCurrentRow();
       });
     });
   }
@@ -1456,19 +1618,19 @@ window.Webflow.push(async function () {
         (async () => {
           let res = await state.supabase
             .from(CONFIG.PRODUCTS_TABLE)
-            .select("id, name, sku, barcode, price_cents, description, is_active")
+            .select("id, name, sku, barcode, price_cents, description, image_url, photo_url, thumbnail_url, is_active")
             .eq("organization_id", state.orgId)
             .eq("is_active", true)
             .order("name", { ascending: true });
           if (res.error && isMissingColumnError(res.error)) {
             res = await state.supabase
               .from(CONFIG.PRODUCTS_TABLE)
-              .select("id, name, sku, price_cents, description, is_active")
+              .select("id, name, sku, barcode, price_cents, description, is_active")
               .eq("organization_id", state.orgId)
               .eq("is_active", true)
               .order("name", { ascending: true });
             if (!res.error && Array.isArray(res.data)) {
-              res.data = res.data.map((row) => ({ ...row, barcode: "" }));
+              res.data = res.data.map((row) => ({ ...row, barcode: "", image_url: "", photo_url: "", thumbnail_url: "" }));
             }
           }
           return res;
@@ -1498,6 +1660,25 @@ window.Webflow.push(async function () {
     if (!state.hasBilling && state.activeTab === "products") {
       state.activeTab = state.hasRestaurant ? "menus" : "all";
     }
+  }
+
+  function bindUI(els) {
+    renderCatalogPanel(els);
+    renderCartPanel(els);
+    bindHardwareScanner(els);
+
+    els.btnToggleTabletMode?.addEventListener("click", () => {
+      saveDisplayMode(isTabletMode() ? "classic" : "tablet");
+      const next = renderApp();
+      bindUI(next);
+      showAlert(next, isTabletMode() ? "Mode tablette active." : "Mode classique active.", "ok");
+    });
+
+    els.btnClear?.addEventListener("click", () => {
+      state.cart = [];
+      renderCartPanel(els);
+      showAlert(els, "Panier vide.", "ok");
+    });
   }
 
   injectStyles();
@@ -1537,17 +1718,8 @@ window.Webflow.push(async function () {
     await loadData();
 
     const els = renderApp();
-    renderCatalogPanel(els);
-    renderCartPanel(els);
-    bindHardwareScanner(els);
-
-    els.btnClear?.addEventListener("click", () => {
-      state.cart = [];
-      renderCartPanel(els);
-      showAlert(els, "Panier vide.", "ok");
-    });
-
-    log("ready", { orgId: state.orgId, hasBilling: state.hasBilling, hasRestaurant: state.hasRestaurant });
+    bindUI(els);
+    log("ready", { orgId: state.orgId, hasBilling: state.hasBilling, hasRestaurant: state.hasRestaurant, displayMode: state.displayMode });
   } catch (e) {
     warn("boot error", e);
     renderBlocking({ title: STR.loadError, body: e?.message || STR.loadError });
