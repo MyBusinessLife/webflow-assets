@@ -868,7 +868,7 @@ alter table public.purchase_receipt_lines force row level security;
 
 do $$
 begin
-  -- Sequences: admin only
+  -- Sequences: members can use (needed for numbering), admins can manage
   if not exists (
     select 1 from pg_policies where schemaname='public' and tablename='purchase_order_sequences' and policyname='purchase_order_sequences_select_admin'
   ) then
@@ -876,6 +876,15 @@ begin
       on public.purchase_order_sequences
       for select
       using (app.is_org_admin(organization_id) and app.org_has_module(organization_id,'purchases'));
+  end if;
+
+  if not exists (
+    select 1 from pg_policies where schemaname='public' and tablename='purchase_order_sequences' and policyname='purchase_order_sequences_select_member'
+  ) then
+    create policy purchase_order_sequences_select_member
+      on public.purchase_order_sequences
+      for select
+      using (app.is_org_member(organization_id) and app.org_has_module(organization_id,'purchases'));
   end if;
 
   if not exists (
@@ -888,7 +897,26 @@ begin
       with check (app.is_org_admin(organization_id) and app.org_has_module(organization_id,'purchases'));
   end if;
 
-  -- Suppliers: members read, admins write
+  if not exists (
+    select 1 from pg_policies where schemaname='public' and tablename='purchase_order_sequences' and policyname='purchase_order_sequences_insert_member'
+  ) then
+    create policy purchase_order_sequences_insert_member
+      on public.purchase_order_sequences
+      for insert
+      with check (app.is_org_member(organization_id) and app.org_has_module(organization_id,'purchases'));
+  end if;
+
+  if not exists (
+    select 1 from pg_policies where schemaname='public' and tablename='purchase_order_sequences' and policyname='purchase_order_sequences_update_member'
+  ) then
+    create policy purchase_order_sequences_update_member
+      on public.purchase_order_sequences
+      for update
+      using (app.is_org_member(organization_id) and app.org_has_module(organization_id,'purchases'))
+      with check (app.is_org_member(organization_id) and app.org_has_module(organization_id,'purchases'));
+  end if;
+
+  -- Suppliers: members read/write, delete reserved to admins
   if not exists (
     select 1 from pg_policies where schemaname='public' and tablename='purchase_suppliers' and policyname='purchase_suppliers_select'
   ) then
@@ -896,6 +924,25 @@ begin
       on public.purchase_suppliers
       for select
       using (app.is_org_member(organization_id) and app.org_has_module(organization_id,'purchases'));
+  end if;
+
+  if not exists (
+    select 1 from pg_policies where schemaname='public' and tablename='purchase_suppliers' and policyname='purchase_suppliers_insert_member'
+  ) then
+    create policy purchase_suppliers_insert_member
+      on public.purchase_suppliers
+      for insert
+      with check (app.is_org_member(organization_id) and app.org_has_module(organization_id,'purchases'));
+  end if;
+
+  if not exists (
+    select 1 from pg_policies where schemaname='public' and tablename='purchase_suppliers' and policyname='purchase_suppliers_update_member'
+  ) then
+    create policy purchase_suppliers_update_member
+      on public.purchase_suppliers
+      for update
+      using (app.is_org_member(organization_id) and app.org_has_module(organization_id,'purchases'))
+      with check (app.is_org_member(organization_id) and app.org_has_module(organization_id,'purchases'));
   end if;
 
   if not exists (
@@ -908,7 +955,16 @@ begin
       with check (app.is_org_admin(organization_id) and app.org_has_module(organization_id,'purchases'));
   end if;
 
-  -- Purchase orders + lines: members read, admins write
+  if not exists (
+    select 1 from pg_policies where schemaname='public' and tablename='purchase_suppliers' and policyname='purchase_suppliers_delete_admin'
+  ) then
+    create policy purchase_suppliers_delete_admin
+      on public.purchase_suppliers
+      for delete
+      using (app.is_org_admin(organization_id) and app.org_has_module(organization_id,'purchases'));
+  end if;
+
+  -- Purchase orders + lines: members read/write, delete reserved to admins
   if not exists (
     select 1 from pg_policies where schemaname='public' and tablename='purchase_orders' and policyname='purchase_orders_select'
   ) then
@@ -916,6 +972,25 @@ begin
       on public.purchase_orders
       for select
       using (app.is_org_member(organization_id) and app.org_has_module(organization_id,'purchases'));
+  end if;
+
+  if not exists (
+    select 1 from pg_policies where schemaname='public' and tablename='purchase_orders' and policyname='purchase_orders_insert_member'
+  ) then
+    create policy purchase_orders_insert_member
+      on public.purchase_orders
+      for insert
+      with check (app.is_org_member(organization_id) and app.org_has_module(organization_id,'purchases'));
+  end if;
+
+  if not exists (
+    select 1 from pg_policies where schemaname='public' and tablename='purchase_orders' and policyname='purchase_orders_update_member'
+  ) then
+    create policy purchase_orders_update_member
+      on public.purchase_orders
+      for update
+      using (app.is_org_member(organization_id) and app.org_has_module(organization_id,'purchases'))
+      with check (app.is_org_member(organization_id) and app.org_has_module(organization_id,'purchases'));
   end if;
 
   if not exists (
@@ -929,12 +1004,40 @@ begin
   end if;
 
   if not exists (
+    select 1 from pg_policies where schemaname='public' and tablename='purchase_orders' and policyname='purchase_orders_delete_admin'
+  ) then
+    create policy purchase_orders_delete_admin
+      on public.purchase_orders
+      for delete
+      using (app.is_org_admin(organization_id) and app.org_has_module(organization_id,'purchases'));
+  end if;
+
+  if not exists (
     select 1 from pg_policies where schemaname='public' and tablename='purchase_order_lines' and policyname='purchase_order_lines_select'
   ) then
     create policy purchase_order_lines_select
       on public.purchase_order_lines
       for select
       using (app.is_org_member(organization_id) and app.org_has_module(organization_id,'purchases'));
+  end if;
+
+  if not exists (
+    select 1 from pg_policies where schemaname='public' and tablename='purchase_order_lines' and policyname='purchase_order_lines_insert_member'
+  ) then
+    create policy purchase_order_lines_insert_member
+      on public.purchase_order_lines
+      for insert
+      with check (app.is_org_member(organization_id) and app.org_has_module(organization_id,'purchases'));
+  end if;
+
+  if not exists (
+    select 1 from pg_policies where schemaname='public' and tablename='purchase_order_lines' and policyname='purchase_order_lines_update_member'
+  ) then
+    create policy purchase_order_lines_update_member
+      on public.purchase_order_lines
+      for update
+      using (app.is_org_member(organization_id) and app.org_has_module(organization_id,'purchases'))
+      with check (app.is_org_member(organization_id) and app.org_has_module(organization_id,'purchases'));
   end if;
 
   if not exists (
@@ -947,7 +1050,16 @@ begin
       with check (app.is_org_admin(organization_id) and app.org_has_module(organization_id,'purchases'));
   end if;
 
-  -- Receipts: members read, admins write
+  if not exists (
+    select 1 from pg_policies where schemaname='public' and tablename='purchase_order_lines' and policyname='purchase_order_lines_delete_admin'
+  ) then
+    create policy purchase_order_lines_delete_admin
+      on public.purchase_order_lines
+      for delete
+      using (app.is_org_admin(organization_id) and app.org_has_module(organization_id,'purchases'));
+  end if;
+
+  -- Receipts: members read/write, delete reserved to admins
   if not exists (
     select 1 from pg_policies where schemaname='public' and tablename='purchase_receipts' and policyname='purchase_receipts_select'
   ) then
@@ -955,6 +1067,25 @@ begin
       on public.purchase_receipts
       for select
       using (app.is_org_member(organization_id) and app.org_has_module(organization_id,'purchases'));
+  end if;
+
+  if not exists (
+    select 1 from pg_policies where schemaname='public' and tablename='purchase_receipts' and policyname='purchase_receipts_insert_member'
+  ) then
+    create policy purchase_receipts_insert_member
+      on public.purchase_receipts
+      for insert
+      with check (app.is_org_member(organization_id) and app.org_has_module(organization_id,'purchases'));
+  end if;
+
+  if not exists (
+    select 1 from pg_policies where schemaname='public' and tablename='purchase_receipts' and policyname='purchase_receipts_update_member'
+  ) then
+    create policy purchase_receipts_update_member
+      on public.purchase_receipts
+      for update
+      using (app.is_org_member(organization_id) and app.org_has_module(organization_id,'purchases'))
+      with check (app.is_org_member(organization_id) and app.org_has_module(organization_id,'purchases'));
   end if;
 
   if not exists (
@@ -968,12 +1099,40 @@ begin
   end if;
 
   if not exists (
+    select 1 from pg_policies where schemaname='public' and tablename='purchase_receipts' and policyname='purchase_receipts_delete_admin'
+  ) then
+    create policy purchase_receipts_delete_admin
+      on public.purchase_receipts
+      for delete
+      using (app.is_org_admin(organization_id) and app.org_has_module(organization_id,'purchases'));
+  end if;
+
+  if not exists (
     select 1 from pg_policies where schemaname='public' and tablename='purchase_receipt_lines' and policyname='purchase_receipt_lines_select'
   ) then
     create policy purchase_receipt_lines_select
       on public.purchase_receipt_lines
       for select
       using (app.is_org_member(organization_id) and app.org_has_module(organization_id,'purchases'));
+  end if;
+
+  if not exists (
+    select 1 from pg_policies where schemaname='public' and tablename='purchase_receipt_lines' and policyname='purchase_receipt_lines_insert_member'
+  ) then
+    create policy purchase_receipt_lines_insert_member
+      on public.purchase_receipt_lines
+      for insert
+      with check (app.is_org_member(organization_id) and app.org_has_module(organization_id,'purchases'));
+  end if;
+
+  if not exists (
+    select 1 from pg_policies where schemaname='public' and tablename='purchase_receipt_lines' and policyname='purchase_receipt_lines_update_member'
+  ) then
+    create policy purchase_receipt_lines_update_member
+      on public.purchase_receipt_lines
+      for update
+      using (app.is_org_member(organization_id) and app.org_has_module(organization_id,'purchases'))
+      with check (app.is_org_member(organization_id) and app.org_has_module(organization_id,'purchases'));
   end if;
 
   if not exists (
@@ -984,6 +1143,15 @@ begin
       for all
       using (app.is_org_admin(organization_id) and app.org_has_module(organization_id,'purchases'))
       with check (app.is_org_admin(organization_id) and app.org_has_module(organization_id,'purchases'));
+  end if;
+
+  if not exists (
+    select 1 from pg_policies where schemaname='public' and tablename='purchase_receipt_lines' and policyname='purchase_receipt_lines_delete_admin'
+  ) then
+    create policy purchase_receipt_lines_delete_admin
+      on public.purchase_receipt_lines
+      for delete
+      using (app.is_org_admin(organization_id) and app.org_has_module(organization_id,'purchases'));
   end if;
 end
 $$;
