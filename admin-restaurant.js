@@ -126,17 +126,6 @@ window.Webflow.push(async function () {
     return String(input || "").trim().toLowerCase();
   }
 
-  function slugify(input) {
-    return String(input || "")
-      .trim()
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/(^-|-$)/g, "")
-      .slice(0, 60);
-  }
-
   function formatMoney(cents, currency = CONFIG.CURRENCY) {
     const n = Number(cents || 0) / 100;
     return n.toLocaleString("fr-FR", { style: "currency", currency: currency || "EUR" });
@@ -178,9 +167,9 @@ window.Webflow.push(async function () {
   function orderPublicUrl(loc) {
     const path = normalizePath(loc.public_page_path || CONFIG.ORDER_PAGE_DEFAULT);
     const key = String(loc.public_query_key || "loc").trim() || "loc";
-    const slug = String(loc.slug || "").trim();
+    const token = String(loc.public_access_key || loc.slug || "").trim();
     const u = new URL(path, location.origin);
-    u.searchParams.set(key, slug);
+    if (token) u.searchParams.set(key, token);
     return u.toString();
   }
 
@@ -1141,7 +1130,7 @@ window.Webflow.push(async function () {
             <div class="rst-item__row">
               <div>
                 <h3 class="rst-card__title" style="margin:0;">${escapeHTML(loc.name)}</h3>
-                <div class="rst-item__meta">Slug: ${escapeHTML(loc.slug)}</div>
+                <div class="rst-item__meta">Slug interne: ${escapeHTML(loc.slug)}</div>
               </div>
               <span class="rst-pill"><span class="rst-dot"></span>${loc.public_is_open ? "Ouvert" : "Ferme"}</span>
             </div>
@@ -1156,12 +1145,12 @@ window.Webflow.push(async function () {
                   <input class="rst-input" data-k="public_page_path" value="${escapeHTML(loc.public_page_path || CONFIG.ORDER_PAGE_DEFAULT)}" />
                 </label>
                 <label>
-                  <span class="rst-label">Query key</span>
-                  <input class="rst-input" data-k="public_query_key" value="${escapeHTML(loc.public_query_key || "loc")}" />
+                  <span class="rst-label">Query key (auto)</span>
+                  <input class="rst-input" data-k="public_query_key" value="${escapeHTML(loc.public_query_key || "")}" readonly />
                 </label>
                 <label>
-                  <span class="rst-label">Slug du lieu</span>
-                  <input class="rst-input" data-k="slug" value="${escapeHTML(loc.slug || "")}" />
+                  <span class="rst-label">Cle publique (auto)</span>
+                  <input class="rst-input" data-k="public_access_key" value="${escapeHTML(loc.public_access_key || "")}" readonly />
                 </label>
                 <label>
                   <span class="rst-label">Statut public</span>
@@ -1176,6 +1165,7 @@ window.Webflow.push(async function () {
                 <button class="rst-btn" type="button" data-action="copy-url">Copier URL</button>
                 <a class="rst-btn" href="${escapeHTML(qrImg)}" target="_blank" rel="noopener">Ouvrir QR</a>
                 <button class="rst-btn rst-btn--primary" type="button" data-action="save-qr">Enregistrer</button>
+                <button class="rst-btn" type="button" data-action="regen-link">Regenerer lien</button>
                 <button class="rst-btn" type="button" data-action="edit-location">Modifier lieu</button>
               </div>
             </div>
@@ -1207,9 +1197,7 @@ window.Webflow.push(async function () {
 
       card.querySelector('[data-action="copy-url"]')?.addEventListener("click", async () => {
         const rawPath = card.querySelector('[data-k="public_page_path"]')?.value || CONFIG.ORDER_PAGE_DEFAULT;
-        const rawKey = card.querySelector('[data-k="public_query_key"]')?.value || "loc";
-        const rawSlug = card.querySelector('[data-k="slug"]')?.value || loc.slug;
-        const tmpLoc = { ...loc, public_page_path: rawPath, public_query_key: rawKey, slug: rawSlug };
+        const tmpLoc = { ...loc, public_page_path: rawPath };
         const u = orderPublicUrl(tmpLoc);
         try {
           await navigator.clipboard.writeText(u);
@@ -1225,18 +1213,28 @@ window.Webflow.push(async function () {
       card.querySelector('[data-action="save-qr"]')?.addEventListener("click", async () => {
         const payload = {
           public_page_path: normalizePath(card.querySelector('[data-k="public_page_path"]')?.value || CONFIG.ORDER_PAGE_DEFAULT),
-          public_query_key: String(card.querySelector('[data-k="public_query_key"]')?.value || "loc").trim() || "loc",
-          slug: slugify(card.querySelector('[data-k="slug"]')?.value || loc.slug),
           public_is_open: card.querySelector('[data-k="public_is_open"]')?.value === "1",
           updated_at: new Date().toISOString(),
         };
 
-        if (!payload.slug) {
-          showAlert(els, "Slug invalide.", "error");
+        const { error } = await state.supabase.from(CONFIG.LOCATIONS_TABLE).update(payload).eq("id", loc.id);
+        if (error) {
+          showAlert(els, error.message || STR.loadError, "error");
           return;
         }
+        await reloadAndRender(els, STR.saved);
+      });
 
-        const { error } = await state.supabase.from(CONFIG.LOCATIONS_TABLE).update(payload).eq("id", loc.id);
+      card.querySelector('[data-action="regen-link"]')?.addEventListener("click", async () => {
+        if (!confirm("Regenerer la query key et la cle publique de ce QR ?")) return;
+        const { error } = await state.supabase
+          .from(CONFIG.LOCATIONS_TABLE)
+          .update({
+            public_query_key: "",
+            public_access_key: "",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", loc.id);
         if (error) {
           showAlert(els, error.message || STR.loadError, "error");
           return;
@@ -1281,10 +1279,6 @@ window.Webflow.push(async function () {
             <input class="rst-input" name="name" value="${escapeHTML(loc?.name || "")}" required />
           </label>
           <label>
-            <span class="rst-label">Slug</span>
-            <input class="rst-input" name="slug" value="${escapeHTML(loc?.slug || "")}" placeholder="restaurant-centre-ville" required />
-          </label>
-          <label>
             <span class="rst-label">Mode de service</span>
             <select class="rst-select" name="service_mode">
               <option value="mixed"${clean(loc?.service_mode) === "mixed" ? " selected" : ""}>Mixte</option>
@@ -1301,8 +1295,12 @@ window.Webflow.push(async function () {
             <input class="rst-input" name="public_page_path" value="${escapeHTML(loc?.public_page_path || CONFIG.ORDER_PAGE_DEFAULT)}" />
           </label>
           <label>
-            <span class="rst-label">Query key QR</span>
-            <input class="rst-input" name="public_query_key" value="${escapeHTML(loc?.public_query_key || "loc")}" />
+            <span class="rst-label">Query key (auto)</span>
+            <input class="rst-input" name="public_query_key" value="${escapeHTML(loc?.public_query_key || "auto")}" readonly />
+          </label>
+          <label>
+            <span class="rst-label">Cle publique (auto)</span>
+            <input class="rst-input" name="public_access_key" value="${escapeHTML(loc?.public_access_key || "auto")}" readonly />
           </label>
           <label>
             <span class="rst-label">Commande publique</span>
@@ -1313,16 +1311,6 @@ window.Webflow.push(async function () {
           </label>
         </form>
       `,
-      onAfterOpen: () => {
-        const form = els.modalBody.querySelector("[data-location-form]");
-        if (!form) return;
-        if (!isEdit) {
-          form.name.addEventListener("input", () => {
-            if (String(form.slug.value || "").trim()) return;
-            form.slug.value = slugify(form.name.value || "");
-          });
-        }
-      },
       onSave: async () => {
         const form = els.modalBody.querySelector("[data-location-form]");
         if (!form) return false;
@@ -1330,17 +1318,15 @@ window.Webflow.push(async function () {
         const payload = {
           organization_id: state.orgId,
           name: String(form.name.value || "").trim(),
-          slug: slugify(form.slug.value || ""),
           service_mode: String(form.service_mode.value || "mixed").trim(),
           currency: String(form.currency.value || CONFIG.CURRENCY).trim().toUpperCase() || CONFIG.CURRENCY,
           public_page_path: normalizePath(form.public_page_path.value || CONFIG.ORDER_PAGE_DEFAULT),
-          public_query_key: String(form.public_query_key.value || "loc").trim() || "loc",
           public_is_open: form.public_is_open.value === "1",
           updated_at: new Date().toISOString(),
         };
 
-        if (!payload.name || !payload.slug) {
-          showAlert(els, "Nom et slug requis.", "error");
+        if (!payload.name) {
+          showAlert(els, "Nom requis.", "error");
           return false;
         }
 

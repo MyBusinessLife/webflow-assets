@@ -1070,7 +1070,7 @@ window.Webflow.push(async function () {
     { group: "Stock", key: "inventory_categories", label: "Catégories", requires: ["billing"] },
 
     { group: "Restauration", key: "restaurant_admin", label: "Gestion restaurant", requires: ["restaurant"] },
-    { group: "Restauration", key: "pos", label: "POS", requiresAny: ["billing", "restaurant"] },
+    { group: "Commerce", key: "pos", label: "POS", requiresAny: ["billing", "restaurant"] },
 
     { group: "Interventions", key: "interventions_admin", label: "Gestion interventions", requires: ["interventions"] },
     { group: "Interventions", key: "interventions_tech", label: "Espace technicien", requires: ["interventions"] },

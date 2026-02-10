@@ -122,6 +122,24 @@ window.Webflow.push(async function () {
       if (v) return v;
     }
 
+    // Auto-detect generated dynamic query key (rk_xxxxx...).
+    for (const [k, v] of url.searchParams.entries()) {
+      if (/^rk_[a-z0-9_]{6,}$/i.test(String(k || "").trim())) {
+        const value = String(v || "").trim();
+        if (value) return value;
+      }
+    }
+
+    // Last fallback: first non-technical param value.
+    for (const [k, v] of url.searchParams.entries()) {
+      const key = clean(k);
+      if (!key) continue;
+      if (key === "source" || key === "src") continue;
+      if (key.startsWith("utm_")) continue;
+      const value = String(v || "").trim();
+      if (value) return value;
+    }
+
     return "";
   }
 
