@@ -422,12 +422,13 @@ window.Webflow.push(async function () {
   async function resolveInvoicePdfUrl(invoice) {
     if (!invoice) return "";
 
+    const bucket = String(invoice.pdf_bucket || CONFIG.BUCKET || "").trim() || CONFIG.BUCKET;
     const path = String(invoice.pdf_path || "").trim();
     if (path) {
-      const signed = await supabase.storage.from(CONFIG.BUCKET).createSignedUrl(path, CONFIG.PDF_SIGNED_URL_TTL);
+      const signed = await supabase.storage.from(bucket).createSignedUrl(path, CONFIG.PDF_SIGNED_URL_TTL);
       if (!signed.error && signed.data?.signedUrl) return signed.data.signedUrl;
 
-      const pub = supabase.storage.from(CONFIG.BUCKET).getPublicUrl(path);
+      const pub = supabase.storage.from(bucket).getPublicUrl(path);
       const pubUrl = pub?.data?.publicUrl || "";
       if (pubUrl) return pubUrl;
     }
@@ -494,7 +495,8 @@ window.Webflow.push(async function () {
     }
 
     if (invoice?.pdf_path) {
-      await supabase.storage.from(CONFIG.BUCKET).remove([invoice.pdf_path]);
+      const bucket = String(invoice.pdf_bucket || CONFIG.BUCKET || "").trim() || CONFIG.BUCKET;
+      await supabase.storage.from(bucket).remove([invoice.pdf_path]);
     }
     return true;
   }

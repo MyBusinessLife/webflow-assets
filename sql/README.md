@@ -44,6 +44,8 @@ Order to run in Supabase SQL Editor:
 40. `040_purchases_core.sql`
 41. `041_loyalty_core.sql`
 42. `042_activity_feed_core.sql`
+43. `043_documents_storage_unification.sql`
+44. `044_document_sequences_unified.sql`
 
 ## Important
 - Run each file in full, then validate before the next file.

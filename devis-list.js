@@ -397,12 +397,13 @@ window.Webflow.push(async function () {
   async function resolveQuotePdfUrl(quote) {
     if (!quote) return "";
 
+    const bucket = String(quote.pdf_bucket || CONFIG.BUCKET || "").trim() || CONFIG.BUCKET;
     const path = String(quote.pdf_path || "").trim();
     if (path) {
-      const signed = await supabase.storage.from(CONFIG.BUCKET).createSignedUrl(path, CONFIG.PDF_SIGNED_URL_TTL);
+      const signed = await supabase.storage.from(bucket).createSignedUrl(path, CONFIG.PDF_SIGNED_URL_TTL);
       if (!signed.error && signed.data?.signedUrl) return signed.data.signedUrl;
 
-      const pub = supabase.storage.from(CONFIG.BUCKET).getPublicUrl(path);
+      const pub = supabase.storage.from(bucket).getPublicUrl(path);
       const pubUrl = pub?.data?.publicUrl || "";
       if (pubUrl) return pubUrl;
     }
@@ -548,7 +549,8 @@ window.Webflow.push(async function () {
     }
 
     if (quote?.pdf_path) {
-      await supabase.storage.from(CONFIG.BUCKET).remove([quote.pdf_path]);
+      const bucket = String(quote.pdf_bucket || CONFIG.BUCKET || "").trim() || CONFIG.BUCKET;
+      await supabase.storage.from(bucket).remove([quote.pdf_path]);
     }
     return true;
   }

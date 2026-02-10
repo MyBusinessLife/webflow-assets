@@ -162,10 +162,8 @@ window.Webflow.push(async function () {
       "contact_name",
       "converted_facture_id",
     ]);
-    state.nextReference = await loadNextReference();
     hydrateDraft();
     await applyAutoPrefillFromContext();
-    ensureReference();
     renderItems();
     updateTotals();
     updatePreview();
@@ -1308,14 +1306,20 @@ window.Webflow.push(async function () {
       seen.add(uniqueKey);
       const res = await upsertQuoteRow(candidate);
       if (!res.error) {
-        state.quoteId = res.data?.id || state.quoteId || null;
+        const row = res.data || {};
+        state.quoteId = row.id || state.quoteId || null;
         if (candidate.status !== undefined) state.statusField = "status";
         if (candidate.quote_status !== undefined) state.statusField = "quote_status";
         if (candidate.state !== undefined) state.statusField = "state";
         state.draft.quote_status = String(
           candidate.status ?? candidate.quote_status ?? candidate.state ?? mode
         );
-        return { ok: true, mode: state.draft.quote_status };
+        if (row.reference) {
+          state.draft.reference = String(row.reference || "").trim();
+          if (els?.ref) els.ref.value = state.draft.reference;
+        }
+        if (row.issue_date) state.draft.issue_date = String(row.issue_date || "").slice(0, 10);
+        return { ok: true, mode: state.draft.quote_status, row };
       }
       lastError = res.error;
       if (isPermissionDenied(res.error)) {
@@ -1338,32 +1342,55 @@ window.Webflow.push(async function () {
   }
 
   async function upsertQuoteRow(payload) {
-    if (state.quoteId) {
-      const updatePayload = { ...payload, updated_at: new Date().toISOString() };
-      delete updatePayload.created_at;
-      delete updatePayload.created_by;
-      const upd = await supabase
-        .from(CONFIG.QUOTES_TABLE)
-        .update(updatePayload)
-        .eq("id", state.quoteId)
-        .select("id")
-        .maybeSingle();
-      return upd;
+    const selects = [
+      "id,reference,status,issue_date,sent_at,accepted_at,rejected_at,canceled_at,expired_at,pdf_path,pdf_url,pdf_bucket,created_at,updated_at",
+      "id,reference,status,pdf_path,pdf_url,created_at,updated_at",
+      "id,reference,status",
+      "id",
+    ];
+
+    const tryRun = async (sel) => {
+      if (state.quoteId) {
+        const updatePayload = { ...payload, updated_at: new Date().toISOString() };
+        delete updatePayload.created_at;
+        delete updatePayload.created_by;
+        return await supabase
+          .from(CONFIG.QUOTES_TABLE)
+          .update(updatePayload)
+          .eq("id", state.quoteId)
+          .select(sel)
+          .maybeSingle();
+      }
+      return await supabase.from(CONFIG.QUOTES_TABLE).insert(payload).select(sel).maybeSingle();
+    };
+
+    let last = null;
+    for (const sel of selects) {
+      const res = await tryRun(sel);
+      if (!res?.error) return res;
+      last = res;
+      if (!isMissingColumnError(res.error)) return res;
     }
-    return supabase.from(CONFIG.QUOTES_TABLE).insert(payload).select("id").maybeSingle();
+    return last || { data: null, error: new Error("upsert_failed") };
   }
 
   async function updateQuotePdfReference(uploaded) {
     if (!state.quoteId || !uploaded?.path) return;
 
     const nowIso = new Date().toISOString();
-    const base = { pdf_path: uploaded.path };
+    const base = { pdf_path: uploaded.path, pdf_bucket: uploaded.bucket || CONFIG.BUCKET };
+    const baseNoBucket = { pdf_path: uploaded.path };
     const withUrl = uploaded.url ? { ...base, pdf_url: uploaded.url } : null;
+    const withUrlNoBucket = uploaded.url ? { ...baseNoBucket, pdf_url: uploaded.url } : null;
     const variants = [
       withUrl ? { ...withUrl, updated_at: nowIso } : null,
+      withUrlNoBucket ? { ...withUrlNoBucket, updated_at: nowIso } : null,
       withUrl ? withUrl : null,
+      withUrlNoBucket ? withUrlNoBucket : null,
       { ...base, updated_at: nowIso },
+      { ...baseNoBucket, updated_at: nowIso },
       base,
+      baseNoBucket,
     ].filter(Boolean);
 
     for (const payload of variants) {
@@ -1373,28 +1400,49 @@ window.Webflow.push(async function () {
     }
   }
 
+  function pdfPathFor(bucket, orgId, docType, entityId, fileName) {
+    const b = String(bucket || "").trim();
+    const org = String(orgId || "").trim();
+    const dt = String(docType || "").trim();
+    const id = String(entityId || "").trim();
+    const fn = String(fileName || "").trim();
+    if (!id || !fn) return "";
+
+    if (b === "documents-files") {
+      // Requires org segment for RLS policies.
+      if (!org) return "";
+      return `documents/${org}/${dt || "docs"}/${id}/${fn}`;
+    }
+
+    // Legacy buckets keep their own top-level prefix (devis/, factures/, ...).
+    if (org) return `${dt}/${org}/${id}/${fn}`;
+    return `${dt}/${id}/${fn}`;
+  }
+
   async function uploadPdfToStorage(blob) {
     const quotePart = state.quoteId || randomId();
-    const fileName = `${Date.now()}_${randomId()}.pdf`;
     const orgPart = asUuid(state.organizationId);
-    const candidates = orgPart
-      ? [`devis/${orgPart}/${quotePart}/${fileName}`]
-      : [`devis/${quotePart}/${fileName}`];
+    const bucket = String(CONFIG.BUCKET || "devis-files").trim() || "devis-files";
+    const ref = String(state.draft.reference || "").trim();
+    const safeRef = ref ? ref.replace(/[^a-z0-9_-]+/gi, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") : "";
+    const fileName = `${safeRef || `${Date.now()}_${randomId()}`}.pdf`;
+    const path = pdfPathFor(bucket, orgPart, "devis", quotePart, fileName);
+    const candidates = path ? [path] : [];
 
     let denied = false;
     let lastError = null;
     for (const path of candidates) {
-      const up = await supabase.storage.from(CONFIG.BUCKET).upload(path, blob, {
+      const up = await supabase.storage.from(bucket).upload(path, blob, {
         cacheControl: "3600",
         upsert: true,
         contentType: "application/pdf",
       });
       if (!up.error) {
-        const { data } = supabase.storage.from(CONFIG.BUCKET).getPublicUrl(path);
-        return { path, url: data?.publicUrl || "" };
+        const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+        return { bucket, path, url: data?.publicUrl || "" };
       }
       lastError = up.error;
-      warn("PDF upload failed", { bucket: CONFIG.BUCKET, path, error: up.error });
+      warn("PDF upload failed", { bucket, path, error: up.error });
       if (isPermissionDenied(up.error)) denied = true;
     }
 
@@ -1402,14 +1450,15 @@ window.Webflow.push(async function () {
     return { error: lastError };
   }
 
-  async function resolvePdfUrlFromPath(path) {
+  async function resolvePdfUrlFromPath(path, bucketOverride) {
     const clean = String(path || "").trim();
     if (!clean) return "";
+    const bucket = String(bucketOverride || CONFIG.BUCKET || "").trim() || "devis-files";
 
-    const signed = await supabase.storage.from(CONFIG.BUCKET).createSignedUrl(clean, 300);
+    const signed = await supabase.storage.from(bucket).createSignedUrl(clean, 300);
     if (!signed.error && signed.data?.signedUrl) return signed.data.signedUrl;
 
-    const pub = supabase.storage.from(CONFIG.BUCKET).getPublicUrl(clean);
+    const pub = supabase.storage.from(bucket).getPublicUrl(clean);
     return pub?.data?.publicUrl || "";
   }
 
@@ -1425,7 +1474,6 @@ window.Webflow.push(async function () {
     els.btnReset.addEventListener("click", () => {
       state.draft = defaultDraft();
       hydrateDraft();
-      ensureReference();
       renderItems();
       updateTotals();
       updatePreview();
@@ -1446,7 +1494,7 @@ window.Webflow.push(async function () {
         const uploaded = await uploadPdfToStorage(blob);
 
         if (uploaded?.path) {
-          const bestUrl = uploaded.url || (await resolvePdfUrlFromPath(uploaded.path));
+          const bestUrl = uploaded.url || (await resolvePdfUrlFromPath(uploaded.path, uploaded.bucket));
           state.pdf = { ...uploaded, url: bestUrl || uploaded.url || "" };
           if (bestUrl) {
             els.previewLink.href = bestUrl;
@@ -1480,9 +1528,6 @@ window.Webflow.push(async function () {
           showToast("success", STR.msgPdfOnly);
         }
 
-        if (saved?.ok) {
-          state.nextReference = bumpReference(state.draft.reference) || (await loadNextReference());
-        }
       } catch (e) {
         console.error(e);
         if (isPermissionDenied(e)) {
