@@ -40,6 +40,9 @@ Order to run in Supabase SQL Editor:
 36. `036_rental_short_stay_core.sql`
 37. `037_plan_rental_short_stay.sql`
 38. `038_auth_bootstrap_no_gen_random_bytes.sql`
+39. `039_plan_ultimate_include_rental.sql`
+40. `040_purchases_core.sql`
+41. `041_loyalty_core.sql`
 
 ## Important
 - Run each file in full, then validate before the next file.

@@ -1062,6 +1062,7 @@ window.Webflow.push(async function () {
     { group: "CRM", key: "crm", label: "CRM", requires: ["billing"] },
 
     { group: "Facturation", key: "billing_clients", label: "Clients", requires: ["billing"] },
+    { group: "Facturation", key: "loyalty", label: "Fidélité", requires: ["billing", "loyalty"] },
     { group: "Facturation", key: "billing_quotes", label: "Devis", requires: ["billing"] },
     { group: "Facturation", key: "billing_invoices", label: "Factures", requires: ["billing"] },
     { group: "Facturation", key: "billing_payments", label: "Paiements", requires: ["billing"] },
@@ -1079,6 +1080,7 @@ window.Webflow.push(async function () {
     { group: "Transport", key: "transport_driver", label: "Espace chauffeur", requires: ["transport"] },
 
     { group: "Logistique", key: "logistics", label: "Logistique", requires: ["logistics"] },
+    { group: "Achats", key: "purchases", label: "Achats", requires: ["purchases"] },
   ];
 
   function groupBy(items, keyFn) {

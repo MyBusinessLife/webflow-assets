@@ -43,6 +43,7 @@
 
     // Logistics / WMS
     "admin-logistics": ["logistics"],
+    "admin-purchases": ["purchases"],
 
     // Transport
     // Fleet is available for all plans except Starter. Transport itself remains a separate module.
@@ -57,6 +58,7 @@
     "devis-list": ["billing"],
     facture: ["billing"],
     "factures-list": ["billing"],
+    "admin-loyalty": ["billing", "loyalty"],
 
     // Payments (billing)
     "admin-paiements": ["billing"],
@@ -93,6 +95,7 @@
 
     // CRM
     "admin-crm": "crm",
+    "admin-loyalty": "loyalty",
 
     // Billing
     clients: "billing_clients",
@@ -119,6 +122,7 @@
 
     // Logistics
     "admin-logistics": "logistics",
+    "admin-purchases": "purchases",
 
     // Fleet / Transport
     "admin-transport": "fleet",
