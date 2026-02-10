@@ -375,6 +375,8 @@ window.Webflow.push(async function () {
     const l = state.listing;
     if (!l) return;
 
+    syncFormStateFromDom();
+
     const calc = computeTotals();
     if (!calc.ok) {
       showToast("warn", calc.reason || STR.invalidDates);
@@ -418,6 +420,28 @@ window.Webflow.push(async function () {
       render();
       showToast("error", "Impossible d'envoyer la demande.");
     }
+  }
+
+  function syncFormStateFromDom() {
+    const shell = ui.root.querySelector(".rb-shell");
+    if (!shell) return;
+
+    const getVal = (field) => shell.querySelector(`[data-field="${field}"]`)?.value;
+    const checkIn = String(getVal("checkIn") || "").trim();
+    const checkOut = String(getVal("checkOut") || "").trim();
+    const guests = Number(getVal("guests") || state.guests || 1);
+    const guestName = String(getVal("guestName") || "");
+    const guestEmail = String(getVal("guestEmail") || "");
+    const guestPhone = String(getVal("guestPhone") || "");
+    const note = String(getVal("note") || "");
+
+    if (checkIn) state.checkIn = checkIn;
+    if (checkOut) state.checkOut = checkOut;
+    if (Number.isFinite(guests)) state.guests = guests;
+    state.guestName = guestName;
+    state.guestEmail = guestEmail;
+    state.guestPhone = guestPhone;
+    state.note = note;
   }
 
   function renderSuccess() {
