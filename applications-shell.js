@@ -9,7 +9,8 @@
   const APP_ROOT_MATCH = match ? `/${match[1]}` : "";
 
   const isPublicRestaurantOrder = /^(\/applications|\/application)\/restaurant-order\/?$/.test(path);
-  if (isPublicRestaurantOrder) return;
+  const isPublicRentalBook = /^(\/applications|\/application)\/rental-book\/?$/.test(path);
+  if (isPublicRestaurantOrder || isPublicRentalBook) return;
 
   const isAuthPage = /^(\/applications|\/application)\/(login|signup)\/?$/.test(path);
   if (isAuthPage) return;

@@ -136,6 +136,7 @@
     if (/^\/(applications|application)\/login\/?$/.test(path)) return true;
     if (/^\/(applications|application)\/signup\/?$/.test(path)) return true;
     if (/^\/(applications|application)\/restaurant-order\/?$/.test(path)) return true;
+    if (/^\/(applications|application)\/rental-book\/?$/.test(path)) return true;
 
     // Allow manual opt-out on any page (Webflow custom attribute).
     if (document.documentElement.hasAttribute("data-no-gate")) return true;
@@ -294,6 +295,9 @@
     if (/\/pos\/?$/.test(p) || /\/admin\/pos\/?$/.test(p)) {
       return normalizeModuleRule(PAGE_REQUIRED_MODULES["admin-pos"]);
     }
+    if (/\/rental\/?$/.test(p) || /\/admin\/rental\/?$/.test(p)) {
+      return normalizeModuleRule(PAGE_REQUIRED_MODULES["admin-rental"]);
+    }
 
     // If unknown page under /applications, require an active subscription (no module check).
     return { all: [], any: [] };
@@ -328,6 +332,7 @@
     const p = String(location.pathname || "");
     if (/\/restaurant\/?$/.test(p) || /\/admin\/restaurant\/?$/.test(p)) return PAGE_REQUIRED_PERMS["admin-restaurant"];
     if (/\/pos\/?$/.test(p) || /\/admin\/pos\/?$/.test(p)) return PAGE_REQUIRED_PERMS["admin-pos"];
+    if (/\/rental\/?$/.test(p) || /\/admin\/rental\/?$/.test(p)) return PAGE_REQUIRED_PERMS["admin-rental"];
     return "";
   }
 

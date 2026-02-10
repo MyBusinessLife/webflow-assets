@@ -12,8 +12,9 @@
   const isLogin = new RegExp(`^\\/${match[1]}\\/login\\/?$`).test(p);
   const isSignup = new RegExp(`^\\/${match[1]}\\/signup\\/?$`).test(p);
   const isPublicRestaurantOrder = new RegExp(`^\\/${match[1]}\\/restaurant-order\\/?$`).test(p);
+  const isPublicRentalBook = new RegExp(`^\\/${match[1]}\\/rental-book\\/?$`).test(p);
   const isPublicAuthPage = isLogin || isSignup;
-  const isPublicPage = isPublicAuthPage || isPublicRestaurantOrder;
+  const isPublicPage = isPublicAuthPage || isPublicRestaurantOrder || isPublicRentalBook;
 
   const url = new URL(location.href);
   const DEBUG = url.searchParams.get("mbl_debug") === "1" || location.hostname.includes("webflow.io");
@@ -540,12 +541,13 @@
         isLogin,
         isSignup,
         isPublicRestaurantOrder,
+        isPublicRentalBook,
         hasSession: Boolean(session),
         userId: userId ? userId.slice(0, 8) + "..." : "",
       });
 
-      // --- PUBLIC RESTAURANT ORDER PAGE ---
-      if (isPublicRestaurantOrder) {
+      // --- PUBLIC PAGES (no login required) ---
+      if (isPublicRestaurantOrder || isPublicRentalBook) {
         ready();
         return;
       }
