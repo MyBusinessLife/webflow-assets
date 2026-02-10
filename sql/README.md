@@ -39,6 +39,7 @@ Order to run in Supabase SQL Editor:
 35. `035_plan_restaurant_pos.sql`
 36. `036_rental_short_stay_core.sql`
 37. `037_plan_rental_short_stay.sql`
+38. `038_auth_bootstrap_no_gen_random_bytes.sql`
 
 ## Important
 - Run each file in full, then validate before the next file.
