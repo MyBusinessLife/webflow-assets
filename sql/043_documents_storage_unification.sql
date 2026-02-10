@@ -162,16 +162,15 @@ BEGIN
         bucket_id = 'documents-files'
         and split_part(name, '/', 1) = 'documents'
         and split_part(name, '/', 2) ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
-        and exists (
-          select 1
-          from public.organization_members om
-          where om.user_id = auth.uid()
-            and om.is_active = true
-            and om.organization_id = split_part(name, '/', 2)::uuid
-            and lower(coalesce(om.role, '')) in ('owner','admin','manager')
-        )
-      );
-  END IF;
+	        and exists (
+	          select 1
+	          from public.organization_members om
+	          where om.user_id = auth.uid()
+	            and om.is_active = true
+	            and om.organization_id = split_part(name, '/', 2)::uuid
+	            and lower(coalesce(om.role::text, '')) in ('owner','admin','manager')
+	        )
+	      );
+	  END IF;
 END
 $$;
-
