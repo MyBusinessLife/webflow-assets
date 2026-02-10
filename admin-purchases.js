@@ -754,8 +754,13 @@ window.Webflow.push(async function () {
         if (lInsRes.error) throw lInsRes.error;
 
         // 3) Post receipt (creates stock movements + updates PO qty/status)
-        const postRes = await state.supabase.rpc("post_purchase_receipt", { p_receipt: receiptId });
-        if (postRes.error) throw postRes.error;
+        // Function is defined in schema "app" (sql/040). Call with schema prefix for safety.
+        let postRes = await state.supabase.rpc("app.post_purchase_receipt", { p_receipt: receiptId });
+        if (postRes.error) {
+          const fallback = await state.supabase.rpc("post_purchase_receipt", { p_receipt: receiptId });
+          if (fallback.error) throw fallback.error;
+          postRes = fallback;
+        }
 
         closeModal(els);
         await loadOrders();
