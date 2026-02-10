@@ -1421,6 +1421,9 @@ window.Webflow.push(async function () {
         contentType: "application/pdf",
       });
       if (!up.error) {
+        // documents-files is private by default: keep url empty and rely on signed URLs.
+        if (bucket === "documents-files") return { bucket, path, url: "" };
+
         const { data } = supabase.storage.from(bucket).getPublicUrl(path);
         return { bucket, path, url: data?.publicUrl || "" };
       }
