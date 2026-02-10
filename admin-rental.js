@@ -65,7 +65,9 @@ window.Webflow.push(async function () {
     openLink: "Ouvrir",
     tabListing: "Annonce",
     tabBookings: "Reservations",
+    tabCalendar: "Calendrier",
     bookingsTitle: "Reservations",
+    calendarTitle: "Calendrier",
     blocksTitle: "Bloquer des dates",
     createBlock: "Bloquer",
     createManual: "Ajouter une reservation",
@@ -92,6 +94,14 @@ window.Webflow.push(async function () {
     moduleMissingCta: "Gerer mon abonnement",
     overlapError: "Ces dates ne sont pas disponibles (chevauchement).",
     validationError: "Verifie les champs obligatoires.",
+    calendarSelectHint: "Clique sur un jour pour selectionner une periode, puis bloque ou ajoute une reservation.",
+    calendarClear: "Effacer selection",
+    calendarBlock: "Bloquer la periode",
+    calendarMonthPrev: "Mois precedent",
+    calendarMonthNext: "Mois suivant",
+    calendarToday: "Ce mois",
+    statsOccupancy: "Occupation",
+    statsRevenue: "CA confirme",
   };
 
   const state = {
@@ -113,6 +123,33 @@ window.Webflow.push(async function () {
     resRangeTo: "",
     resLoading: false,
     reservationsForListing: "",
+    resLoadedKey: "",
+
+    drafts: {
+      block_from: "",
+      block_to: "",
+      block_note: "",
+      manual_from: "",
+      manual_to: "",
+      guest_name: "",
+      guest_email: "",
+      guest_phone: "",
+      guests_count: 1,
+      manual_status: "confirmed",
+      manual_note: "",
+    },
+
+    calendar: {
+      month: "", // YYYY-MM-01
+      listingId: "",
+      loadedFor: "",
+      loading: false,
+      items: [],
+      selectionStart: "",
+      selectionEnd: "",
+      note: "",
+      focusedResId: "",
+    },
 
     editing: null, // current listing draft
   };
@@ -138,50 +175,52 @@ window.Webflow.push(async function () {
 
   async function boot() {
     setLoading(true);
+    try {
+      const sessionRes = await state.supabase.auth.getSession();
+      const session = sessionRes?.data?.session || null;
+      state.user = session?.user || null;
 
-    const sessionRes = await state.supabase.auth.getSession();
-    const session = sessionRes?.data?.session || null;
-    state.user = session?.user || null;
+      if (!state.user) {
+        ui.mount.innerHTML = renderCtaCard(STR.needLoginTitle, STR.needLoginBody, STR.needLoginCta, CONFIG.LOGIN_PATH);
+        return;
+      }
 
-    if (!state.user) {
+      const member = await fetchDefaultMembership(state.user.id);
+      state.orgId = member?.organization_id || "";
+      state.orgRole = String(member?.role || "").trim().toLowerCase();
+      state.isAdmin = isAdminRole(state.orgRole);
+
+      if (!state.orgId) {
+        ui.mount.innerHTML = renderErrorCard("Organisation introuvable.", "Ton compte n'est rattache a aucune organisation.");
+        return;
+      }
+
+      state.modules = await fetchModules(state.orgId);
+      if (!state.modules?.rental) {
+        ui.mount.innerHTML = renderCtaCard(STR.moduleMissingTitle, STR.moduleMissingBody, STR.moduleMissingCta, CONFIG.SUBSCRIBE_PATH);
+        return;
+      }
+
+      if (!state.isAdmin) {
+        ui.mount.innerHTML = renderErrorCard(STR.notAllowedTitle, STR.notAllowedBody);
+        return;
+      }
+
+      // default reservations range + calendar month
+      const now = new Date();
+      state.resRangeFrom = toISODate(now);
+      state.resRangeTo = toISODate(addDays(now, CONFIG.DEFAULT_RANGE_DAYS));
+      state.calendar.month = toISODate(firstDayOfMonth(now));
+
+      bindGlobalEvents();
+
+      await loadListings();
+    } catch (e) {
+      warn("boot fatal", e);
+      ui.mount.innerHTML = renderErrorCard("Erreur", "Impossible de charger la gestion hotellerie.");
+    } finally {
       setLoading(false);
-      ui.mount.innerHTML = renderCtaCard(STR.needLoginTitle, STR.needLoginBody, STR.needLoginCta, CONFIG.LOGIN_PATH);
-      return;
     }
-
-    const member = await fetchDefaultMembership(state.user.id);
-    state.orgId = member?.organization_id || "";
-    state.orgRole = String(member?.role || "").trim().toLowerCase();
-    state.isAdmin = isAdminRole(state.orgRole);
-
-    if (!state.orgId) {
-      setLoading(false);
-      ui.mount.innerHTML = renderErrorCard("Organisation introuvable.", "Ton compte n'est rattache a aucune organisation.");
-      return;
-    }
-
-    state.modules = await fetchModules(state.orgId);
-    if (!state.modules?.rental) {
-      setLoading(false);
-      ui.mount.innerHTML = renderCtaCard(STR.moduleMissingTitle, STR.moduleMissingBody, STR.moduleMissingCta, CONFIG.SUBSCRIBE_PATH);
-      return;
-    }
-
-    if (!state.isAdmin) {
-      setLoading(false);
-      ui.mount.innerHTML = renderErrorCard(STR.notAllowedTitle, STR.notAllowedBody);
-      return;
-    }
-
-    bindGlobalEvents();
-
-    // default reservations range
-    const now = new Date();
-    state.resRangeFrom = toISODate(now);
-    state.resRangeTo = toISODate(addDays(now, CONFIG.DEFAULT_RANGE_DAYS));
-
-    await loadListings();
-    setLoading(false);
   }
 
   function setLoading(on) {
@@ -235,6 +274,16 @@ window.Webflow.push(async function () {
     state.selectedListingId = id;
     state.activeTab = "listing";
     state.editing = cloneListingForEdit(findListingById(id));
+    state.reservations = [];
+    state.reservationsForListing = "";
+    state.resLoadedKey = "";
+    state.calendar.items = [];
+    state.calendar.listingId = "";
+    state.calendar.loadedFor = "";
+    state.calendar.selectionStart = "";
+    state.calendar.selectionEnd = "";
+    state.calendar.note = "";
+    state.calendar.focusedResId = "";
     renderListings();
     renderDetail();
   }
@@ -246,6 +295,12 @@ window.Webflow.push(async function () {
   function newListing() {
     state.selectedListingId = "";
     state.activeTab = "listing";
+    state.reservations = [];
+    state.reservationsForListing = "";
+    state.resLoadedKey = "";
+    state.calendar.items = [];
+    state.calendar.listingId = "";
+    state.calendar.loadedFor = "";
     state.editing = {
       id: "",
       public_id: "",
@@ -464,6 +519,7 @@ window.Webflow.push(async function () {
       <div class="rent-tabs">
         <button class="rent-tab ${state.activeTab === "listing" ? "is-active" : ""}" type="button" data-action="tab" data-tab="listing">${escapeHtml(STR.tabListing)}</button>
         <button class="rent-tab ${state.activeTab === "bookings" ? "is-active" : ""}" type="button" data-action="tab" data-tab="bookings" ${isExisting ? "" : "disabled"}>${escapeHtml(STR.tabBookings)}</button>
+        <button class="rent-tab ${state.activeTab === "calendar" ? "is-active" : ""}" type="button" data-action="tab" data-tab="calendar" ${isExisting ? "" : "disabled"}>${escapeHtml(STR.tabCalendar)}</button>
       </div>
 
       <div class="rent-tabpanes">
@@ -473,14 +529,16 @@ window.Webflow.push(async function () {
         <div class="rent-pane ${state.activeTab === "bookings" ? "is-active" : ""}" data-pane="bookings">
           ${renderReservationsPane(l)}
         </div>
+        <div class="rent-pane ${state.activeTab === "calendar" ? "is-active" : ""}" data-pane="calendar">
+          ${renderCalendarPane(l)}
+        </div>
       </div>
     `;
 
     bindDetailEvents(detail);
 
-    if (state.activeTab === "bookings" && l.id) {
-      loadReservationsIfNeeded(l.id);
-    }
+    if (state.activeTab === "bookings" && l.id) loadReservationsIfNeeded(l.id);
+    if (state.activeTab === "calendar" && l.id) loadCalendarIfNeeded(l.id);
   }
 
   function renderListingForm(l) {
@@ -601,46 +659,321 @@ window.Webflow.push(async function () {
             <div class="rent-card__title">${escapeHtml(STR.blocksTitle)}</div>
             <div class="rent-mini">
               <div class="rent-fields rent-fields--3">
-                ${fieldDate("Debut", "block_from", "")}
-                ${fieldDate("Fin", "block_to", "")}
+                ${fieldDate("Debut", "block_from", state.drafts.block_from)}
+                ${fieldDate("Fin", "block_to", state.drafts.block_to)}
                 <div class="rent-field">
                   <div class="rent-label">&nbsp;</div>
                   <button class="rent-btn rent-btn--primary" type="button" data-action="create-block">${escapeHtml(STR.createBlock)}</button>
                 </div>
               </div>
               <div class="rent-fields">
-                ${fieldText("Note", "block_note", "", "Ex: travaux / maintenance")}
+                ${fieldText("Note", "block_note", state.drafts.block_note, "Ex: travaux / maintenance")}
               </div>
               <div class="rent-divider"></div>
               <div class="rent-card__title">${escapeHtml(STR.createManual)}</div>
               <div class="rent-fields rent-fields--2">
-                ${fieldDate("Check-in *", "manual_from", "")}
-                ${fieldDate("Check-out *", "manual_to", "")}
+                ${fieldDate("Check-in *", "manual_from", state.drafts.manual_from)}
+                ${fieldDate("Check-out *", "manual_to", state.drafts.manual_to)}
               </div>
               <div class="rent-fields rent-fields--3">
-                ${fieldText("Nom *", "guest_name", "", "Nom")}
-                ${fieldText("Email *", "guest_email", "", "email@domaine.com")}
-                ${fieldText("Telephone", "guest_phone", "", "+33...")}
+                ${fieldText("Nom *", "guest_name", state.drafts.guest_name, "Nom")}
+                ${fieldText("Email *", "guest_email", state.drafts.guest_email, "email@domaine.com")}
+                ${fieldText("Telephone", "guest_phone", state.drafts.guest_phone, "+33...")}
               </div>
               <div class="rent-fields rent-fields--3">
-                ${fieldNumber("Voyageurs", "guests_count", 1, 1, 99, 1)}
+                ${fieldNumber("Voyageurs", "guests_count", state.drafts.guests_count, 1, 99, 1)}
                 ${fieldSelect("Statut", "manual_status", [
                   { v: "confirmed", l: STR.statusConfirmed },
                   { v: "pending", l: STR.statusPending },
-                ])}
+                ], state.drafts.manual_status)}
                 <div class="rent-field">
                   <div class="rent-label">&nbsp;</div>
                   <button class="rent-btn rent-btn--primary" type="button" data-action="create-manual">${escapeHtml(STR.create)}</button>
                 </div>
               </div>
               <div class="rent-fields">
-                ${fieldText("Note", "manual_note", "", "")}
+                ${fieldText("Note", "manual_note", state.drafts.manual_note, "")}
               </div>
             </div>
           </div>
         </div>
       </div>
     `;
+  }
+
+  function renderCalendarPane(listing) {
+    const listingId = String(listing?.id || "").trim();
+    const month = normalizeMonthISO(state.calendar.month || toISODate(firstDayOfMonth(new Date())));
+    const key = `${listingId}:${month}`;
+    const loading = Boolean(state.calendar.loading && state.calendar.listingId === listingId);
+
+    const grid = buildMonthGrid(month);
+    const meta = buildCalendarMetaMap(state.calendar.items || []);
+    const sel = getCalendarSelection();
+    const stats = computeCalendarStats(state.calendar.items || [], month, listing.currency || CONFIG.DEFAULT_CURRENCY);
+
+    const monthLabel = formatMonthFR(month);
+    const statusLegend = `
+      <div class="rent-cal-legend">
+        <span class="rent-cal-legend__item"><span class="rent-cal-dot is-confirmed"></span> ${escapeHtml(STR.statusConfirmed)}</span>
+        <span class="rent-cal-legend__item"><span class="rent-cal-dot is-pending"></span> ${escapeHtml(STR.statusPending)}</span>
+        <span class="rent-cal-legend__item"><span class="rent-cal-dot is-blocked"></span> ${escapeHtml(STR.statusBlocked)}</span>
+      </div>
+    `;
+
+    return `
+      <div class="rent-cal">
+        <div class="rent-cal__head">
+          <div class="rent-cal__title">
+            <div class="rent-cal__kicker">${escapeHtml(STR.calendarTitle)}</div>
+            <div class="rent-cal__month">${escapeHtml(monthLabel)}</div>
+            ${statusLegend}
+          </div>
+
+          <div class="rent-cal__headRight">
+            <div class="rent-cal__stats">
+              <div class="rent-stat">
+                <div class="rent-stat__label">${escapeHtml(STR.statsOccupancy)}</div>
+                <div class="rent-stat__value">${escapeHtml(stats.occupancyLabel)}</div>
+              </div>
+              <div class="rent-stat">
+                <div class="rent-stat__label">${escapeHtml(STR.statsRevenue)}</div>
+                <div class="rent-stat__value">${escapeHtml(stats.revenueLabel)}</div>
+              </div>
+            </div>
+
+            <div class="rent-cal__nav">
+              <button class="rent-btn rent-btn--ghost rent-btn--xs" type="button" data-action="cal-prev" aria-label="${escapeAttr(
+                STR.calendarMonthPrev
+              )}">←</button>
+              <button class="rent-btn rent-btn--ghost rent-btn--xs" type="button" data-action="cal-today">${escapeHtml(STR.calendarToday)}</button>
+              <button class="rent-btn rent-btn--ghost rent-btn--xs" type="button" data-action="cal-next" aria-label="${escapeAttr(
+                STR.calendarMonthNext
+              )}">→</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="rent-cal__hint">${escapeHtml(STR.calendarSelectHint)}</div>
+
+        <div class="rent-cal__layout">
+          <div class="rent-cal__panel rent-cal__panel--grid">
+            ${loading ? `<div class="rent-muted">Chargement du calendrier...</div>` : ""}
+            ${renderCalendarGrid(grid, meta, sel)}
+          </div>
+
+          <div class="rent-cal__panel rent-cal__panel--side">
+            ${renderCalendarSide(listing, sel, key, loading)}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderCalendarGrid(grid, metaMap, sel) {
+    const today = toISODate(new Date());
+
+    const weekdays = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
+    const wd = weekdays.map((d) => `<div class="rent-cal-wd">${escapeHtml(d)}</div>`).join("");
+
+    const start = sel.start;
+    const end = sel.endExclusive; // exclusive
+    const endDay = sel.endDay; // last selected day (inclusive) or ""
+
+    const daysHtml = grid
+      .map((d) => {
+        const iso = d.iso;
+        const inMonth = d.inMonth;
+        const m = metaMap[iso] || null;
+
+        const hasBlocked = Boolean(m?.blocked);
+        const hasConfirmed = Number(m?.confirmed || 0) > 0;
+        const hasPending = Number(m?.pending || 0) > 0;
+
+        const tone = hasBlocked ? "blocked" : hasConfirmed ? "confirmed" : hasPending ? "pending" : "free";
+
+        const isToday = iso === today;
+        const isStart = start && iso === start;
+        const isEnd = endDay && iso === endDay;
+        const isInSel = start && end && iso >= start && iso < end;
+
+        const dots = `
+          <div class="rent-cal-dots" aria-hidden="true">
+            ${hasConfirmed ? `<span class="rent-cal-dot is-confirmed"></span>` : ""}
+            ${hasPending ? `<span class="rent-cal-dot is-pending"></span>` : ""}
+            ${hasBlocked ? `<span class="rent-cal-dot is-blocked"></span>` : ""}
+          </div>
+        `;
+
+        const labelParts = [];
+        labelParts.push(`${iso}`);
+        if (!inMonth) labelParts.push("(autre mois)");
+        if (hasBlocked) labelParts.push("bloque");
+        if (hasConfirmed) labelParts.push(`${m.confirmed} confirme`);
+        if (hasPending) labelParts.push(`${m.pending} en attente`);
+
+        return `
+          <button
+            class="rent-cal-day ${inMonth ? "" : "is-out"} ${isToday ? "is-today" : ""} ${isInSel ? "is-selected" : ""} ${
+              isStart ? "is-start" : ""
+            } ${isEnd ? "is-end" : ""} is-${tone}"
+            type="button"
+            data-action="cal-day"
+            data-date="${escapeAttr(iso)}"
+            ${inMonth ? "" : "disabled"}
+            aria-label="${escapeAttr(labelParts.join(" "))}"
+          >
+            <div class="rent-cal-day__num">${escapeHtml(String(d.day))}</div>
+            ${dots}
+          </button>
+        `;
+      })
+      .join("");
+
+    return `
+      <div class="rent-cal-grid">
+        <div class="rent-cal-weekdays">${wd}</div>
+        <div class="rent-cal-days">${daysHtml}</div>
+      </div>
+    `;
+  }
+
+  function renderCalendarSide(listing, sel, key, loading) {
+    const listingId = String(listing?.id || "").trim();
+    const canAct = Boolean(sel.start && sel.endExclusive && sel.endExclusive > sel.start);
+    const nights = canAct ? diffNights(sel.start, sel.endExclusive) : 0;
+    const selectionLabel = sel.start
+      ? canAct
+        ? `${toFRDate(sel.start)} → ${toFRDate(sel.endExclusive)} (${nights} nuit${nights > 1 ? "s" : ""})`
+        : `${toFRDate(sel.start)} (choisis le check-out)`
+      : "Aucune selection";
+
+    const listTitle = sel.start ? "Evenements sur la selection" : "Evenements a venir";
+    const items = getCalendarItemsForSide(state.calendar.items || [], sel);
+
+    return `
+      <div class="rent-cal-side">
+        <div class="rent-card rent-card--flat">
+          <div class="rent-card__title">Selection</div>
+          <div class="rent-cal-side__sel">${escapeHtml(selectionLabel)}</div>
+          <div class="rent-fields">
+            ${fieldText("Note (optionnel)", "cal_note", state.calendar.note, "Ex: maintenance / demande client")}
+          </div>
+          <div class="rent-cal-side__actions">
+            <button class="rent-btn rent-btn--ghost rent-btn--xs" type="button" data-action="cal-clear" ${sel.start ? "" : "disabled"}>${escapeHtml(
+              STR.calendarClear
+            )}</button>
+            <button class="rent-btn rent-btn--primary rent-btn--xs" type="button" data-action="cal-block" ${canAct && !loading ? "" : "disabled"}>${escapeHtml(
+              STR.calendarBlock
+            )}</button>
+          </div>
+
+          <div class="rent-divider"></div>
+
+          <div class="rent-card__title">Ajouter une reservation</div>
+          <div class="rent-fields rent-fields--3">
+            ${fieldText("Nom *", "guest_name", state.drafts.guest_name, "Nom")}
+            ${fieldText("Email *", "guest_email", state.drafts.guest_email, "email@domaine.com")}
+            ${fieldText("Telephone", "guest_phone", state.drafts.guest_phone, "+33...")}
+          </div>
+          <div class="rent-fields rent-fields--3">
+            ${fieldNumber("Voyageurs", "guests_count", state.drafts.guests_count, 1, 99, 1)}
+            ${fieldSelect(
+              "Statut",
+              "manual_status",
+              [
+                { v: "confirmed", l: STR.statusConfirmed },
+                { v: "pending", l: STR.statusPending },
+              ],
+              state.drafts.manual_status
+            )}
+            <div class="rent-field">
+              <div class="rent-label">&nbsp;</div>
+              <button class="rent-btn rent-btn--primary" type="button" data-action="cal-manual" ${canAct && !loading ? "" : "disabled"}>${escapeHtml(
+                STR.create
+              )}</button>
+            </div>
+          </div>
+          <div class="rent-fields">
+            ${fieldText("Note", "manual_note", state.drafts.manual_note, "")}
+          </div>
+          <div class="rent-cal-side__micro">
+            ${escapeHtml(sel.start && canAct ? `Dates: ${toFRDate(sel.start)} → ${toFRDate(sel.endExclusive)}` : "Selectionne une periode dans le calendrier")}
+          </div>
+        </div>
+
+        <div class="rent-card rent-card--flat">
+          <div class="rent-card__title">${escapeHtml(listTitle)}</div>
+          <div class="rent-cal-side__list">
+            ${
+              loading && state.calendar.loadedFor !== key
+                ? `<div class="rent-muted">Chargement...</div>`
+                : items.length
+                  ? items.map((r) => renderCalendarResRow(r, listing.currency || CONFIG.DEFAULT_CURRENCY)).join("")
+                  : `<div class="rent-muted">Aucun evenement.</div>`
+            }
+          </div>
+          <div class="rent-cal-side__foot">
+            <button class="rent-btn rent-btn--ghost rent-btn--xs" type="button" data-action="cal-open-bookings" ${listingId ? "" : "disabled"}>Voir les reservations</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderCalendarResRow(r, currency) {
+    const isBlock = String(r.kind) === "block";
+    const kind = isBlock ? STR.kindBlock : STR.kindBooking;
+    const status = String(r.status || "").trim().toLowerCase();
+    const tone = statusTone(status);
+    const statusLabel = statusLabelFr(status);
+    const focused = state.calendar.focusedResId && String(state.calendar.focusedResId) === String(r.id);
+
+    const date = `${escapeHtml(toFRDate(r.check_in))} → ${escapeHtml(toFRDate(r.check_out))}`;
+    const total = centsToMoney(r.total_cents, r.currency || currency);
+    const who = isBlock ? escapeHtml(r.note || "") : escapeHtml(r.guest_name || "");
+    const meta = isBlock ? "" : `${escapeHtml(String(r.guests_count || 1))} pers.`;
+    const actions = renderReservationActions(r);
+
+    return `
+      <div class="rent-cal-res ${focused ? "is-focused" : ""}" data-action="cal-focus" data-res-id="${escapeAttr(r.id)}">
+        <div class="rent-cal-res__top">
+          <div class="rent-cal-res__who">${who || escapeHtml(kind)}</div>
+          <div class="rent-badge rent-badge--${tone}">${escapeHtml(statusLabel)}</div>
+        </div>
+        <div class="rent-cal-res__date">${date}</div>
+        <div class="rent-cal-res__meta">${escapeHtml(kind)}${meta ? ` • ${meta}` : ""}${isBlock ? "" : ` • ${escapeHtml(total)}`}</div>
+        <div class="rent-cal-res__actions">${actions}</div>
+      </div>
+    `;
+  }
+
+  function getCalendarSelection() {
+    const start = isISODate(state.calendar.selectionStart) ? state.calendar.selectionStart : "";
+    const end = isISODate(state.calendar.selectionEnd) ? state.calendar.selectionEnd : "";
+    const endExclusive = start && end && end > start ? end : start ? "" : "";
+    const endDay = endExclusive ? addDaysISO(endExclusive, -1) : "";
+    return { start, end, endExclusive, endDay };
+  }
+
+  function getCalendarItemsForSide(items, sel) {
+    const arr = Array.isArray(items) ? items : [];
+    const start = sel.start;
+    const end = sel.endExclusive;
+
+    if (start) {
+      const rangeStart = start;
+      const rangeEnd = end || addDaysISO(start, 1);
+      return arr.filter((r) => overlapsRange(r, rangeStart, rangeEnd)).sort((a, b) => String(a.check_in || "").localeCompare(String(b.check_in || "")));
+    }
+
+    const today = toISODate(new Date());
+    return arr
+      .filter((r) => String(r.status || "").toLowerCase() !== "canceled" && String(r.status || "").toLowerCase() !== "declined")
+      .filter((r) => String(r.check_out || "") > today)
+      .slice()
+      .sort((a, b) => String(a.check_in || "").localeCompare(String(b.check_in || "")))
+      .slice(0, 8);
   }
 
   function renderReservationsList() {
@@ -719,6 +1052,96 @@ window.Webflow.push(async function () {
         return;
       }
 
+      if (action === "cal-prev" || action === "cal-next" || action === "cal-today") {
+        const l = state.editing;
+        if (!l?.id) return;
+
+        const base = parseISODate(normalizeMonthISO(state.calendar.month || toISODate(firstDayOfMonth(new Date()))));
+        let next = base;
+        if (action === "cal-prev") next = addMonths(base, -1);
+        if (action === "cal-next") next = addMonths(base, 1);
+        if (action === "cal-today") next = firstDayOfMonth(new Date());
+
+        state.calendar.month = toISODate(firstDayOfMonth(next));
+        state.calendar.selectionStart = "";
+        state.calendar.selectionEnd = "";
+        state.calendar.note = "";
+        state.calendar.focusedResId = "";
+
+        await loadCalendar(l.id, state.calendar.month, true);
+        return;
+      }
+
+      if (action === "cal-day") {
+        const iso = String(btn.dataset.date || "").trim();
+        if (!isISODate(iso)) return;
+
+        const start = isISODate(state.calendar.selectionStart) ? state.calendar.selectionStart : "";
+        const end = isISODate(state.calendar.selectionEnd) ? state.calendar.selectionEnd : "";
+
+        state.calendar.focusedResId = "";
+
+        if (!start || end) {
+          state.calendar.selectionStart = iso;
+          state.calendar.selectionEnd = "";
+          renderDetail();
+          return;
+        }
+
+        if (iso < start) {
+          state.calendar.selectionStart = iso;
+          state.calendar.selectionEnd = "";
+          renderDetail();
+          return;
+        }
+
+        if (iso === start) {
+          state.calendar.selectionEnd = addDaysISO(start, 1);
+          renderDetail();
+          return;
+        }
+
+        state.calendar.selectionEnd = iso;
+        renderDetail();
+        return;
+      }
+
+      if (action === "cal-clear") {
+        state.calendar.selectionStart = "";
+        state.calendar.selectionEnd = "";
+        state.calendar.note = "";
+        state.calendar.focusedResId = "";
+        renderDetail();
+        return;
+      }
+
+      if (action === "cal-block") {
+        const l = state.editing;
+        if (!l?.id) return;
+        await createBlockFromCalendarSelection(l);
+        return;
+      }
+
+      if (action === "cal-manual") {
+        const l = state.editing;
+        if (!l?.id) return;
+        await createManualBookingFromCalendarSelection(l);
+        return;
+      }
+
+      if (action === "cal-focus") {
+        const resId = String(btn.dataset.resId || "").trim();
+        state.calendar.focusedResId = resId;
+        renderDetail();
+        return;
+      }
+
+      if (action === "cal-open-bookings") {
+        state.activeTab = "bookings";
+        renderDetail();
+        return;
+      }
+
       if (action === "copy-link") {
         const l = state.editing;
         if (!l?.public_id) return;
@@ -784,6 +1207,20 @@ window.Webflow.push(async function () {
     ui.mount.addEventListener("input", (e) => {
       const field = e.target?.dataset?.field;
       if (!field) return;
+      if (field === "cal_note") {
+        state.calendar.note = e.target.value || "";
+        return;
+      }
+
+      if (Object.prototype.hasOwnProperty.call(state.drafts, field)) {
+        if (e.target.type === "number") {
+          state.drafts[field] = Math.max(0, Number(e.target.value || 0));
+        } else {
+          state.drafts[field] = e.target.value || "";
+        }
+        return;
+      }
+
       if (!state.editing) return;
 
       if (field === "gallery_urls_text") {
@@ -815,6 +1252,22 @@ window.Webflow.push(async function () {
 
       const field = e.target?.dataset?.field;
       if (!field) return;
+
+      if (field === "cal_note") {
+        state.calendar.note = e.target.value || "";
+        return;
+      }
+
+      if (Object.prototype.hasOwnProperty.call(state.drafts, field)) {
+        if (e.target.type === "number") {
+          const val = e.target.value;
+          state.drafts[field] = val === "" ? 0 : Math.max(0, Number(val));
+        } else {
+          state.drafts[field] = e.target.value || "";
+        }
+        return;
+      }
+
       if (!state.editing) return;
 
       // Normalize numeric inputs (number/date/select)
@@ -909,22 +1362,26 @@ window.Webflow.push(async function () {
   async function loadReservationsIfNeeded(listingId) {
     const id = String(listingId || "").trim();
     if (!id) return;
-    if (state.reservationsForListing === id && state.reservations.length) return;
+    const from = state.resRangeFrom || toISODate(new Date());
+    const to = state.resRangeTo || toISODate(addDays(new Date(), CONFIG.DEFAULT_RANGE_DAYS));
+    const key = `${id}:${from}:${to}`;
+    if (state.resLoadedKey === key && !state.resLoading) return;
+    if (state.resLoading && state.reservationsForListing === id) return;
     await loadReservations(id, true);
   }
 
   async function loadReservations(listingId, force) {
     const id = String(listingId || "").trim();
     if (!id) return;
-    if (!force && state.reservationsForListing === id && !state.resLoading) return;
+    const from = state.resRangeFrom || toISODate(new Date());
+    const to = state.resRangeTo || toISODate(addDays(new Date(), CONFIG.DEFAULT_RANGE_DAYS));
+    const key = `${id}:${from}:${to}`;
+    if (!force && state.resLoadedKey === key && !state.resLoading) return;
 
     state.resLoading = true;
     state.reservationsForListing = id;
     state.reservations = [];
     renderDetail();
-
-    const from = state.resRangeFrom || toISODate(new Date());
-    const to = state.resRangeTo || toISODate(addDays(new Date(), CONFIG.DEFAULT_RANGE_DAYS));
 
     const { data, error } = await state.supabase
       .from(CONFIG.RESERVATIONS_TABLE)
@@ -939,12 +1396,182 @@ window.Webflow.push(async function () {
     if (error) {
       warn("reservations load error", error);
       showToast("error", "Impossible de charger les reservations.");
+      state.resLoadedKey = key;
       renderDetail();
       return;
     }
 
     state.reservations = Array.isArray(data) ? data : [];
+    state.resLoadedKey = key;
     renderDetail();
+  }
+
+  async function loadCalendarIfNeeded(listingId) {
+    const id = String(listingId || "").trim();
+    if (!id) return;
+    const month = normalizeMonthISO(state.calendar.month || toISODate(firstDayOfMonth(new Date())));
+    const key = `${id}:${month}`;
+    if (state.calendar.loadedFor === key && !state.calendar.loading) return;
+    if (state.calendar.loading && state.calendar.listingId === id) return;
+    await loadCalendar(id, month, true);
+  }
+
+  async function loadCalendar(listingId, monthIso, force) {
+    const id = String(listingId || "").trim();
+    if (!id) return;
+    const month = normalizeMonthISO(monthIso || state.calendar.month || toISODate(firstDayOfMonth(new Date())));
+    const key = `${id}:${month}`;
+    if (!force && state.calendar.loadedFor === key && !state.calendar.loading) return;
+
+    state.calendar.loading = true;
+    state.calendar.listingId = id;
+    state.calendar.month = month;
+    state.calendar.items = [];
+    renderDetail();
+
+    const monthStart = month;
+    const monthEnd = toISODate(firstDayOfMonth(addMonths(parseISODate(monthStart), 1)));
+
+    const { data, error } = await state.supabase
+      .from(CONFIG.RESERVATIONS_TABLE)
+      .select("*")
+      .eq("listing_id", id)
+      .eq("organization_id", state.orgId)
+      .gt("check_out", monthStart)
+      .lt("check_in", monthEnd)
+      .order("check_in", { ascending: true });
+
+    state.calendar.loading = false;
+    state.calendar.loadedFor = key;
+
+    if (error) {
+      warn("calendar load error", error);
+      showToast("error", "Impossible de charger le calendrier.");
+      renderDetail();
+      return;
+    }
+
+    state.calendar.items = Array.isArray(data) ? data : [];
+    renderDetail();
+  }
+
+  async function createBlockFromCalendarSelection(listing) {
+    const sel = getCalendarSelection();
+    const from = sel.start;
+    const to = sel.endExclusive;
+    const note = String(state.calendar.note || "").trim();
+
+    if (!from || !to || to <= from) {
+      showToast("warn", STR.validationError);
+      return;
+    }
+
+    try {
+      const payload = {
+        organization_id: state.orgId,
+        listing_id: listing.id,
+        kind: "block",
+        source: "manual",
+        status: "blocked",
+        payment_status: "unpaid",
+        check_in: from,
+        check_out: to,
+        nights: Math.max(1, diffNights(from, to)),
+        guests_count: 1,
+        note: note || null,
+        currency: listing.currency || CONFIG.DEFAULT_CURRENCY,
+        subtotal_cents: 0,
+        cleaning_fee_cents: 0,
+        taxes_cents: 0,
+        total_cents: 0,
+      };
+
+      const { error } = await state.supabase.from(CONFIG.RESERVATIONS_TABLE).insert(payload);
+      if (error) throw error;
+
+      showToast("success", STR.created);
+      state.calendar.selectionStart = "";
+      state.calendar.selectionEnd = "";
+      state.calendar.note = "";
+      state.calendar.focusedResId = "";
+      await loadCalendar(listing.id, state.calendar.month, true);
+    } catch (e) {
+      warn("calendar create block error", e);
+      if (isOverlapError(e)) showToast("warn", STR.overlapError);
+      else showToast("error", "Impossible de creer le blocage.");
+    }
+  }
+
+  async function createManualBookingFromCalendarSelection(listing) {
+    const sel = getCalendarSelection();
+    const from = sel.start;
+    const to = sel.endExclusive;
+
+    const guestName = String(state.drafts.guest_name || "").trim();
+    const guestEmail = String(state.drafts.guest_email || "").trim();
+    const guestPhone = String(state.drafts.guest_phone || "").trim();
+    const guests = Math.max(1, Number(state.drafts.guests_count || 1) || 1);
+    const status = String(state.drafts.manual_status || "confirmed");
+    const note = String(state.drafts.manual_note || "").trim();
+
+    if (!from || !to || to <= from) return showToast("warn", STR.validationError);
+    if (!guestName || !guestEmail) return showToast("warn", STR.validationError);
+
+    const nights = Math.max(1, diffNights(from, to));
+    if (nights < Number(listing.min_nights || 1)) return showToast("warn", `Min ${listing.min_nights || 1} nuit(s).`);
+    if (listing.max_nights && nights > Number(listing.max_nights)) return showToast("warn", `Max ${listing.max_nights} nuit(s).`);
+    if (guests > Number(listing.max_guests || 99)) return showToast("warn", `Max ${listing.max_guests} voyageurs.`);
+
+    const subtotal = nights * Number(listing.nightly_price_cents || 0);
+    const cleaning = Number(listing.cleaning_fee_cents || 0);
+    const vatRate = Number(listing.vat_rate || 0);
+    const taxes = vatRate > 0 ? Math.round((subtotal + cleaning) * (vatRate / 100)) : 0;
+    const total = subtotal + cleaning + taxes;
+
+    try {
+      const payload = {
+        organization_id: state.orgId,
+        listing_id: listing.id,
+        kind: "booking",
+        source: "manual",
+        status: status === "pending" ? "pending" : "confirmed",
+        payment_status: "unpaid",
+        check_in: from,
+        check_out: to,
+        nights,
+        guests_count: guests,
+        guest_name: guestName,
+        guest_email: guestEmail,
+        guest_phone: guestPhone || null,
+        note: note || null,
+        currency: listing.currency || CONFIG.DEFAULT_CURRENCY,
+        subtotal_cents: subtotal,
+        cleaning_fee_cents: cleaning,
+        taxes_cents: taxes,
+        total_cents: total,
+      };
+
+      const { error } = await state.supabase.from(CONFIG.RESERVATIONS_TABLE).insert(payload);
+      if (error) throw error;
+
+      showToast("success", STR.created);
+
+      // reset selection + manual draft (keep status)
+      state.calendar.selectionStart = "";
+      state.calendar.selectionEnd = "";
+      state.calendar.focusedResId = "";
+      state.drafts.manual_note = "";
+      state.drafts.guest_name = "";
+      state.drafts.guest_email = "";
+      state.drafts.guest_phone = "";
+      state.drafts.guests_count = 1;
+
+      await loadCalendar(listing.id, state.calendar.month, true);
+    } catch (e) {
+      warn("calendar create manual booking error", e);
+      if (isOverlapError(e)) showToast("warn", STR.overlapError);
+      else showToast("error", "Impossible de creer la reservation.");
+    }
   }
 
   async function createBlockFromUI(listing) {
@@ -984,6 +1611,9 @@ window.Webflow.push(async function () {
       if (error) throw error;
 
       showToast("success", STR.created);
+      state.drafts.block_from = "";
+      state.drafts.block_to = "";
+      state.drafts.block_note = "";
       await loadReservations(listing.id, true);
     } catch (e) {
       warn("create block error", e);
@@ -1046,6 +1676,13 @@ window.Webflow.push(async function () {
       if (error) throw error;
 
       showToast("success", STR.created);
+      state.drafts.manual_from = "";
+      state.drafts.manual_to = "";
+      state.drafts.guest_name = "";
+      state.drafts.guest_email = "";
+      state.drafts.guest_phone = "";
+      state.drafts.manual_note = "";
+      state.drafts.guests_count = 1;
       await loadReservations(listing.id, true);
     } catch (e) {
       warn("create manual booking error", e);
@@ -1077,7 +1714,11 @@ window.Webflow.push(async function () {
         .eq("organization_id", state.orgId);
       if (error) throw error;
 
-      await loadReservations(listing.id, true);
+      if (state.activeTab === "calendar") {
+        await loadCalendar(listing.id, state.calendar.month, true);
+      } else {
+        await loadReservations(listing.id, true);
+      }
     } catch (e) {
       warn("reservation status error", e);
       showToast("error", "Action impossible.");
@@ -1153,13 +1794,19 @@ window.Webflow.push(async function () {
     `;
   }
 
-  function fieldSelect(label, field, options) {
+  function fieldSelect(label, field, options, value) {
     const opts = Array.isArray(options) ? options : [];
+    const current = value === null || value === undefined ? "" : String(value);
     return `
       <label class="rent-field">
         <div class="rent-label">${escapeHtml(label)}</div>
         <select class="rent-input" data-field="${escapeAttr(field)}">
-          ${opts.map((o) => `<option value="${escapeAttr(o.v)}">${escapeHtml(o.l)}</option>`).join("")}
+          ${opts
+            .map((o) => {
+              const v = String(o.v);
+              return `<option value="${escapeAttr(v)}" ${v === current ? "selected" : ""}>${escapeHtml(o.l)}</option>`;
+            })
+            .join("")}
         </select>
       </label>
     `;
@@ -1351,10 +1998,70 @@ window.Webflow.push(async function () {
     return `${yyyy}-${mm}-${dd}`;
   }
 
+  function isISODate(s) {
+    return /^\d{4}-\d{2}-\d{2}$/.test(String(s || "").trim());
+  }
+
+  function parseISODate(iso) {
+    const s = String(iso || "").trim();
+    const d = new Date(s.length >= 10 ? s.slice(0, 10) + "T00:00:00" : s);
+    return d;
+  }
+
+  function firstDayOfMonth(d) {
+    const dt = d instanceof Date ? new Date(d) : new Date();
+    dt.setHours(0, 0, 0, 0);
+    dt.setDate(1);
+    return dt;
+  }
+
+  function addMonths(d, delta) {
+    const dt = d instanceof Date ? new Date(d) : new Date();
+    dt.setHours(0, 0, 0, 0);
+    dt.setDate(1);
+    dt.setMonth(dt.getMonth() + Number(delta || 0));
+    return dt;
+  }
+
   function addDays(d, days) {
     const dt = d instanceof Date ? new Date(d) : new Date();
     dt.setDate(dt.getDate() + Number(days || 0));
     return dt;
+  }
+
+  function addDaysISO(iso, days) {
+    if (!isISODate(iso)) return "";
+    return toISODate(addDays(parseISODate(iso), Number(days || 0)));
+  }
+
+  function normalizeMonthISO(iso) {
+    const s = String(iso || "").trim();
+    if (!isISODate(s)) return toISODate(firstDayOfMonth(new Date()));
+    return toISODate(firstDayOfMonth(parseISODate(s)));
+  }
+
+  function formatMonthFR(monthIso) {
+    const d = parseISODate(normalizeMonthISO(monthIso));
+    if (Number.isNaN(d.getTime())) return String(monthIso || "");
+    const raw = new Intl.DateTimeFormat("fr-FR", { month: "long", year: "numeric" }).format(d);
+    return raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : raw;
+  }
+
+  function buildMonthGrid(monthIso) {
+    const monthStart = parseISODate(normalizeMonthISO(monthIso));
+    const month = monthStart.getMonth();
+    const dowMon0 = (monthStart.getDay() + 6) % 7; // Monday=0 ... Sunday=6
+    const gridStart = addDays(monthStart, -dowMon0);
+    const days = [];
+    for (let i = 0; i < 42; i++) {
+      const d = addDays(gridStart, i);
+      days.push({
+        iso: toISODate(d),
+        inMonth: d.getMonth() === month,
+        day: d.getDate(),
+      });
+    }
+    return days;
   }
 
   function toFRDate(iso) {
@@ -1369,6 +2076,88 @@ window.Webflow.push(async function () {
     const b = new Date(String(to) + "T00:00:00");
     const ms = b.getTime() - a.getTime();
     return Math.round(ms / (1000 * 60 * 60 * 24));
+  }
+
+  function overlapsRange(r, rangeStart, rangeEnd) {
+    const a = String(r?.check_in || "").slice(0, 10);
+    const b = String(r?.check_out || "").slice(0, 10);
+    if (!isISODate(a) || !isISODate(b) || !isISODate(rangeStart) || !isISODate(rangeEnd)) return false;
+    return b > rangeStart && a < rangeEnd;
+  }
+
+  function overlapNights(checkIn, checkOut, rangeStart, rangeEnd) {
+    const a = String(checkIn || "").slice(0, 10);
+    const b = String(checkOut || "").slice(0, 10);
+    if (!isISODate(a) || !isISODate(b) || !isISODate(rangeStart) || !isISODate(rangeEnd)) return 0;
+    const from = a > rangeStart ? a : rangeStart;
+    const to = b < rangeEnd ? b : rangeEnd;
+    if (to <= from) return 0;
+    return Math.max(0, diffNights(from, to));
+  }
+
+  function buildCalendarMetaMap(items) {
+    const map = Object.create(null);
+    const arr = Array.isArray(items) ? items : [];
+
+    arr.forEach((r) => {
+      const kind = String(r?.kind || "").trim().toLowerCase();
+      const status = String(r?.status || "").trim().toLowerCase();
+      const from = String(r?.check_in || "").slice(0, 10);
+      const to = String(r?.check_out || "").slice(0, 10);
+      if (!isISODate(from) || !isISODate(to)) return;
+
+      const show =
+        (kind === "block" && status === "blocked") ||
+        (kind === "booking" && (status === "confirmed" || status === "pending"));
+      if (!show) return;
+
+      const a = parseISODate(from);
+      const b = parseISODate(to);
+      if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return;
+
+      for (let d = new Date(a); d < b; d.setDate(d.getDate() + 1)) {
+        const iso = toISODate(d);
+        const m = map[iso] || (map[iso] = { blocked: false, confirmed: 0, pending: 0 });
+        if (kind === "block" && status === "blocked") m.blocked = true;
+        if (kind === "booking" && status === "confirmed") m.confirmed += 1;
+        if (kind === "booking" && status === "pending") m.pending += 1;
+      }
+    });
+
+    return map;
+  }
+
+  function computeCalendarStats(items, monthIso, currency) {
+    const monthStart = normalizeMonthISO(monthIso);
+    const monthEnd = toISODate(firstDayOfMonth(addMonths(parseISODate(monthStart), 1)));
+    const nightsInMonth = Math.max(0, diffNights(monthStart, monthEnd));
+
+    let bookedNights = 0;
+    let revenueCents = 0;
+
+    (Array.isArray(items) ? items : []).forEach((r) => {
+      const kind = String(r?.kind || "").trim().toLowerCase();
+      const status = String(r?.status || "").trim().toLowerCase();
+      if (kind !== "booking" || status !== "confirmed") return;
+
+      const ci = String(r?.check_in || "").slice(0, 10);
+      const co = String(r?.check_out || "").slice(0, 10);
+      if (!isISODate(ci) || !isISODate(co)) return;
+
+      const totalNights = Math.max(1, Number(r?.nights || diffNights(ci, co) || 1));
+      const inNights = overlapNights(ci, co, monthStart, monthEnd);
+      bookedNights += inNights;
+
+      const totalCents = toInt(r?.total_cents);
+      const prorated = totalNights > 0 ? Math.round(totalCents * (inNights / totalNights)) : totalCents;
+      revenueCents += prorated;
+    });
+
+    const pct = nightsInMonth > 0 ? Math.round((bookedNights / nightsInMonth) * 100) : 0;
+    return {
+      occupancyLabel: `${pct}% (${bookedNights}/${nightsInMonth} nuits)`,
+      revenueLabel: centsToMoney(revenueCents, currency),
+    };
   }
 
   function centsToMoney(cents, currency) {
@@ -1906,6 +2695,9 @@ window.Webflow.push(async function () {
         padding: 12px;
         box-shadow: 0 14px 40px rgba(2,6,23,0.06);
       }
+      html[data-page="admin-rental"] .rent-card--flat{
+        background: rgba(255,255,255,0.72);
+      }
       html[data-page="admin-rental"] .rent-card--center{
         max-width: 640px;
         margin: 28px auto 0;
@@ -1963,6 +2755,251 @@ window.Webflow.push(async function () {
 
       html[data-page="admin-rental"] .rent-muted{ color: rgba(2,6,23,0.56); font-weight: 700; }
 
+      /* Calendar */
+      html[data-page="admin-rental"] .rent-cal{ display:grid; gap: 12px; }
+      html[data-page="admin-rental"] .rent-cal__head{
+        display:flex;
+        align-items:flex-end;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      html[data-page="admin-rental"] .rent-cal__kicker{
+        font-size: 12px;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+        color: rgba(2,6,23,0.55);
+        font-weight: 800;
+      }
+      html[data-page="admin-rental"] .rent-cal__month{
+        font-family: "Space Grotesk", "Manrope";
+        font-size: 18px;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        margin-top: 3px;
+      }
+      html[data-page="admin-rental"] .rent-cal__headRight{
+        display:flex;
+        align-items:flex-end;
+        gap: 12px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+      html[data-page="admin-rental"] .rent-cal__stats{ display:flex; gap: 10px; flex-wrap: wrap; }
+      html[data-page="admin-rental"] .rent-stat{
+        border: 1px solid rgba(148,163,184,0.22);
+        background: rgba(255,255,255,0.68);
+        border-radius: 14px;
+        padding: 10px 12px;
+        min-width: 160px;
+      }
+      html[data-page="admin-rental"] .rent-stat__label{
+        font-size: 12px;
+        font-weight: 900;
+        color: rgba(2,6,23,0.55);
+      }
+      html[data-page="admin-rental"] .rent-stat__value{
+        margin-top: 6px;
+        font-weight: 900;
+        color: rgba(2,6,23,0.82);
+      }
+      html[data-page="admin-rental"] .rent-cal__nav{ display:flex; gap: 8px; }
+      html[data-page="admin-rental"] .rent-cal__hint{
+        padding: 10px 12px;
+        border-radius: 14px;
+        border: 1px dashed rgba(148,163,184,0.45);
+        background: rgba(255,255,255,0.55);
+        color: rgba(2,6,23,0.64);
+        font-weight: 800;
+      }
+      html[data-page="admin-rental"] .rent-cal-legend{
+        margin-top: 8px;
+        display:flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        color: rgba(2,6,23,0.62);
+        font-weight: 800;
+        font-size: 12px;
+      }
+      html[data-page="admin-rental"] .rent-cal-legend__item{
+        display:inline-flex;
+        align-items:center;
+        gap: 8px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(148,163,184,0.20);
+        background: rgba(255,255,255,0.60);
+      }
+      html[data-page="admin-rental"] .rent-cal-dot{
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        display:inline-block;
+        box-shadow: 0 0 0 3px rgba(2,6,23,0.06);
+      }
+      html[data-page="admin-rental"] .rent-cal-dot.is-confirmed{ background: var(--rent-primary); }
+      html[data-page="admin-rental"] .rent-cal-dot.is-pending{ background: rgba(245,158,11,0.98); }
+      html[data-page="admin-rental"] .rent-cal-dot.is-blocked{ background: rgba(220,38,38,0.98); }
+
+      html[data-page="admin-rental"] .rent-cal__layout{
+        display:grid;
+        grid-template-columns: 1.15fr .85fr;
+        gap: 12px;
+        align-items: start;
+      }
+      html[data-page="admin-rental"] .rent-cal__panel{
+        border: 1px solid rgba(148,163,184,0.22);
+        background: rgba(255,255,255,0.60);
+        border-radius: 16px;
+        padding: 12px;
+        box-shadow: 0 14px 40px rgba(2,6,23,0.06);
+      }
+
+      html[data-page="admin-rental"] .rent-cal-grid{ display:grid; gap: 10px; }
+      html[data-page="admin-rental"] .rent-cal-weekdays{
+        display:grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 8px;
+      }
+      html[data-page="admin-rental"] .rent-cal-wd{
+        font-size: 12px;
+        font-weight: 900;
+        color: rgba(2,6,23,0.58);
+        text-align:center;
+      }
+      html[data-page="admin-rental"] .rent-cal-days{
+        display:grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 8px;
+      }
+      html[data-page="admin-rental"] .rent-cal-day{
+        border: 1px solid rgba(148,163,184,0.22);
+        background: rgba(255,255,255,0.75);
+        border-radius: 16px;
+        padding: 10px;
+        min-height: 78px;
+        display:flex;
+        flex-direction: column;
+        justify-content: space-between;
+        align-items: flex-start;
+        cursor: pointer;
+        text-align:left;
+        transition: transform .14s ease, box-shadow .18s ease, border-color .18s ease;
+      }
+      html[data-page="admin-rental"] .rent-cal-day:hover{
+        transform: translateY(-1px);
+        border-color: rgba(14,165,233,0.55);
+        box-shadow: 0 14px 32px rgba(2,6,23,0.10);
+      }
+      html[data-page="admin-rental"] .rent-cal-day:disabled{
+        opacity: .45;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+      }
+      html[data-page="admin-rental"] .rent-cal-day.is-today{
+        border-color: rgba(14,165,233,0.85);
+        box-shadow: 0 0 0 4px rgba(14,165,233,0.10);
+      }
+      html[data-page="admin-rental"] .rent-cal-day.is-selected{
+        border-color: rgba(14,165,233,0.75);
+        background: linear-gradient(180deg, rgba(14,165,233,0.12), rgba(255,255,255,0.78));
+      }
+      html[data-page="admin-rental"] .rent-cal-day.is-start,
+      html[data-page="admin-rental"] .rent-cal-day.is-end{
+        border-color: rgba(14,165,233,0.95);
+        box-shadow: 0 0 0 4px rgba(14,165,233,0.14);
+      }
+      html[data-page="admin-rental"] .rent-cal-day.is-confirmed{
+        background: linear-gradient(180deg, rgba(14,165,233,0.10), rgba(255,255,255,0.80));
+      }
+      html[data-page="admin-rental"] .rent-cal-day.is-pending{
+        background: linear-gradient(180deg, rgba(245,158,11,0.10), rgba(255,255,255,0.80));
+      }
+      html[data-page="admin-rental"] .rent-cal-day.is-blocked{
+        background: linear-gradient(180deg, rgba(220,38,38,0.10), rgba(255,255,255,0.80));
+      }
+      html[data-page="admin-rental"] .rent-cal-day__num{
+        font-weight: 900;
+        color: rgba(2,6,23,0.82);
+      }
+      html[data-page="admin-rental"] .rent-cal-dots{
+        display:flex;
+        align-items:center;
+        gap: 6px;
+      }
+
+      html[data-page="admin-rental"] .rent-cal-side{ display:grid; gap: 12px; }
+      html[data-page="admin-rental"] .rent-cal-side__sel{
+        margin-top: 8px;
+        font-weight: 900;
+        color: rgba(2,6,23,0.74);
+      }
+      html[data-page="admin-rental"] .rent-cal-side__actions{ margin-top: 8px; display:flex; gap: 8px; flex-wrap: wrap; }
+      html[data-page="admin-rental"] .rent-cal-side__micro{
+        margin-top: 8px;
+        font-size: 12px;
+        color: rgba(2,6,23,0.60);
+        font-weight: 800;
+      }
+      html[data-page="admin-rental"] .rent-cal-side__list{
+        margin-top: 10px;
+        display:grid;
+        gap: 10px;
+        max-height: 46vh;
+        overflow: auto;
+        padding-right: 2px;
+      }
+      html[data-page="admin-rental"] .rent-cal-side__foot{
+        margin-top: 10px;
+        display:flex;
+        justify-content: flex-end;
+      }
+
+      html[data-page="admin-rental"] .rent-cal-res{
+        border: 1px solid rgba(148,163,184,0.22);
+        background: rgba(255,255,255,0.78);
+        border-radius: 16px;
+        padding: 10px;
+        cursor: pointer;
+      }
+      html[data-page="admin-rental"] .rent-cal-res:hover{
+        border-color: rgba(14,165,233,0.55);
+        box-shadow: 0 14px 34px rgba(2,6,23,0.10);
+      }
+      html[data-page="admin-rental"] .rent-cal-res.is-focused{
+        border-color: rgba(14,165,233,0.95);
+        box-shadow: 0 0 0 4px rgba(14,165,233,0.12);
+      }
+      html[data-page="admin-rental"] .rent-cal-res__top{
+        display:flex;
+        align-items:flex-start;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      html[data-page="admin-rental"] .rent-cal-res__who{
+        font-weight: 900;
+        color: rgba(2,6,23,0.86);
+      }
+      html[data-page="admin-rental"] .rent-cal-res__date{
+        margin-top: 6px;
+        font-weight: 900;
+        color: rgba(2,6,23,0.68);
+      }
+      html[data-page="admin-rental"] .rent-cal-res__meta{
+        margin-top: 6px;
+        color: rgba(2,6,23,0.60);
+        font-weight: 800;
+        font-size: 12px;
+      }
+      html[data-page="admin-rental"] .rent-cal-res__actions{
+        margin-top: 8px;
+        display:flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+
       html[data-page="admin-rental"] .rent-toasts{
         position: fixed;
         right: 16px;
@@ -1989,6 +3026,9 @@ window.Webflow.push(async function () {
         html[data-page="admin-rental"] .rent-grid{ grid-template-columns: 1fr; }
         html[data-page="admin-rental"] .rent-list{ max-height: none; }
         html[data-page="admin-rental"] .rent-bookings__grid{ grid-template-columns: 1fr; }
+        html[data-page="admin-rental"] .rent-cal__layout{ grid-template-columns: 1fr; }
+        html[data-page="admin-rental"] .rent-cal-side__list{ max-height: none; }
+        html[data-page="admin-rental"] .rent-cal-day{ min-height: 66px; }
         html[data-page="admin-rental"] .rent-fields--2,
         html[data-page="admin-rental"] .rent-fields--3,
         html[data-page="admin-rental"] .rent-fields--4{ grid-template-columns: 1fr; }
