@@ -31,6 +31,7 @@ Order to run in Supabase SQL Editor:
 27. `027_org_profile_branding.sql`
 28. `028_restaurant_pos_core.sql`
 29. `029_restaurant_public_links_and_pos_scope.sql`
+30. `030_restaurant_media_storage.sql`
 
 ## Important
 - Run each file in full, then validate before the next file.

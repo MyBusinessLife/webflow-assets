@@ -38,6 +38,8 @@ window.Webflow.push(async function () {
     ORDERS_TABLE: "restaurant_orders",
     ORDER_LINES_TABLE: "restaurant_order_lines",
     PRODUCTS_TABLE: "products",
+    MENU_IMAGE_BUCKET: String(root.dataset.menuImageBucket || "restaurant-media").trim() || "restaurant-media",
+    MENU_IMAGE_PATH_PREFIX: String(root.dataset.menuImagePrefix || "menu-images").trim() || "menu-images",
 
     ORDER_PAGE_DEFAULT: String(root.dataset.orderPagePath || "/restaurant-order").trim() || "/restaurant-order",
     CURRENCY: String(root.dataset.currency || "EUR").trim() || "EUR",
@@ -64,6 +66,8 @@ window.Webflow.push(async function () {
     saved: "Enregistre",
     deleted: "Supprime",
     copyOk: "Lien copie",
+    qrDisabled: "QR supprime",
+    qrEnabled: "QR active",
 
     tabCatalog: "Menus",
     tabOrders: "Commandes",
@@ -171,6 +175,61 @@ window.Webflow.push(async function () {
     const u = new URL(path, location.origin);
     if (token) u.searchParams.set(key, token);
     return u.toString();
+  }
+
+  function sanitizeFileName(name) {
+    return String(name || "")
+      .trim()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9._-]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .toLowerCase()
+      .slice(0, 64);
+  }
+
+  function isMissingColumnError(err) {
+    const msg = String(err?.message || "").toLowerCase();
+    return msg.includes("column") && msg.includes("does not exist");
+  }
+
+  async function uploadMenuImage(file, itemId) {
+    if (!file) return null;
+    if (!state.supabase) throw new Error("Supabase non initialise.");
+    if (!state.orgId) throw new Error("Organisation introuvable.");
+    if (!itemId) throw new Error("Item invalide pour upload image.");
+    if (!String(file.type || "").startsWith("image/")) {
+      throw new Error("Le fichier doit etre une image.");
+    }
+    if (Number(file.size || 0) > 10 * 1024 * 1024) {
+      throw new Error("L'image depasse 10 Mo.");
+    }
+
+    const rawName = String(file.name || "image");
+    const ext = (() => {
+      const parts = rawName.split(".");
+      if (parts.length > 1) return sanitizeFileName(parts.pop()) || "jpg";
+      if (file.type.includes("/")) return sanitizeFileName(file.type.split("/")[1]) || "jpg";
+      return "jpg";
+    })();
+
+    const base = sanitizeFileName(rawName.replace(/\.[^.]+$/, "")) || "menu";
+    const filename = `${base}-${Date.now()}.${ext}`;
+    const path = `${CONFIG.MENU_IMAGE_PATH_PREFIX}/${state.orgId}/${itemId}/${filename}`;
+
+    const up = await state.supabase.storage.from(CONFIG.MENU_IMAGE_BUCKET).upload(path, file, {
+      cacheControl: "3600",
+      upsert: true,
+      contentType: file.type || "image/jpeg",
+    });
+    if (up.error) throw up.error;
+
+    const pub = state.supabase.storage.from(CONFIG.MENU_IMAGE_BUCKET).getPublicUrl(path);
+    const publicUrl = String(pub?.data?.publicUrl || "").trim();
+    if (!publicUrl) throw new Error("URL publique image indisponible.");
+
+    return { publicUrl, path };
   }
 
   async function ensureSupabaseJs() {
@@ -399,6 +458,10 @@ window.Webflow.push(async function () {
         box-shadow: 0 10px 22px rgba(2,6,23,0.10);
       }
       html[data-page="admin-restaurant"] .rst-btn:disabled { opacity: .6; cursor:not-allowed; transform:none; box-shadow:none; }
+      html[data-page="admin-restaurant"] .rst-btn[aria-disabled="true"] {
+        opacity: .6;
+        pointer-events: none;
+      }
       html[data-page="admin-restaurant"] .rst-btn--primary {
         background: linear-gradient(180deg, rgba(14,165,233,0.98), rgba(2,132,199,0.98));
         color: #fff;
@@ -515,24 +578,96 @@ window.Webflow.push(async function () {
 
       html[data-page="admin-restaurant"] .rst-qr-grid {
         display:grid;
-        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-        gap: 12px;
+        grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+        gap: 14px;
       }
       html[data-page="admin-restaurant"] .rst-qr {
         display:grid;
+        gap: 12px;
+        border: 1px solid rgba(14,165,233,0.16);
+        border-radius: 14px;
+        padding: 10px;
+        background: linear-gradient(180deg, rgba(255,255,255,0.95), rgba(240,249,255,0.82));
+      }
+      html[data-page="admin-restaurant"] .rst-qr__top {
+        display:grid;
+        grid-template-columns: 190px 1fr;
         gap: 10px;
+        align-items: start;
       }
       html[data-page="admin-restaurant"] .rst-qr__img {
-        width: 180px;
-        height: 180px;
+        width: 190px;
+        height: 190px;
         border-radius: 12px;
         border: 1px solid rgba(15,23,42,0.12);
         background: #fff;
+        object-fit: cover;
       }
       html[data-page="admin-restaurant"] .rst-qr__url {
         word-break: break-all;
         font-size: 12px;
         color: rgba(2,6,23,0.70);
+        margin-top: 4px;
+      }
+      html[data-page="admin-restaurant"] .rst-qr__muted {
+        font-size: 12px;
+        color: rgba(2,6,23,0.58);
+        font-weight: 800;
+      }
+      html[data-page="admin-restaurant"] .rst-qr__placeholder {
+        width: 190px;
+        height: 190px;
+        border-radius: 12px;
+        border: 1px dashed rgba(15,23,42,0.24);
+        background: rgba(241,245,249,0.88);
+        color: rgba(15,23,42,0.55);
+        font-size: 12px;
+        font-weight: 900;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        text-align:center;
+        padding: 10px;
+      }
+      html[data-page="admin-restaurant"] .rst-qr__fields {
+        display:grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+      html[data-page="admin-restaurant"] .rst-qr__fields .full {
+        grid-column: 1 / -1;
+      }
+      html[data-page="admin-restaurant"] .rst-qr__actions {
+        display:flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      html[data-page="admin-restaurant"] .rst-item__thumb {
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        border-radius: 10px;
+        border: 1px solid rgba(15,23,42,0.10);
+        object-fit: cover;
+        background: rgba(241,245,249,0.92);
+      }
+
+      html[data-page="admin-restaurant"] .rst-image-preview {
+        width: 100%;
+        max-height: 220px;
+        border-radius: 12px;
+        border: 1px solid rgba(15,23,42,0.12);
+        background: rgba(248,250,252,0.92);
+        object-fit: contain;
+      }
+      html[data-page="admin-restaurant"] .rst-image-preview.is-empty {
+        min-height: 120px;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        color: rgba(2,6,23,0.58);
+        font-size: 12px;
+        font-weight: 800;
       }
 
       html[data-page="admin-restaurant"] .rst-modal {
@@ -596,9 +731,13 @@ window.Webflow.push(async function () {
 
       @media (max-width: 980px) {
         html[data-page="admin-restaurant"] .rst-grid { grid-template-columns: 1fr; }
+        html[data-page="admin-restaurant"] .rst-qr__top { grid-template-columns: 1fr; }
+        html[data-page="admin-restaurant"] .rst-qr__img,
+        html[data-page="admin-restaurant"] .rst-qr__placeholder { width: 100%; height: auto; aspect-ratio: 1 / 1; }
       }
       @media (max-width: 780px) {
         html[data-page="admin-restaurant"] .rst-form { grid-template-columns: 1fr; }
+        html[data-page="admin-restaurant"] .rst-qr__fields { grid-template-columns: 1fr; }
       }
     `;
     document.head.appendChild(st);
@@ -912,6 +1051,11 @@ window.Webflow.push(async function () {
                       const recipeCount = state.recipes.filter((r) => r.menu_item_id === it.id).length;
                       return `
                         <article class="rst-item" data-item-id="${escapeHTML(it.id)}">
+                          ${
+                            it.image_url
+                              ? `<img class="rst-item__thumb" src="${escapeHTML(it.image_url)}" alt="${escapeHTML(it.name || "Item")}" loading="lazy" />`
+                              : ""
+                          }
                           <div class="rst-item__row">
                             <div>
                               <h4 class="rst-item__title">${escapeHTML(it.name || "Item")}</h4>
@@ -1123,8 +1267,10 @@ window.Webflow.push(async function () {
   function renderQrPane(els) {
     const cards = state.locations
       .map((loc) => {
-        const publicUrl = orderPublicUrl(loc);
-        const qrImg = qrUrlForText(publicUrl);
+        const hasLinkData = Boolean(String(loc.public_query_key || "").trim()) && Boolean(String(loc.public_access_key || "").trim());
+        const isPublished = Boolean(loc.public_is_open) && hasLinkData;
+        const publicUrl = isPublished ? orderPublicUrl(loc) : "";
+        const qrImg = isPublished ? qrUrlForText(publicUrl) : "";
         return `
           <article class="rst-card" data-qr-location="${escapeHTML(loc.id)}">
             <div class="rst-item__row">
@@ -1132,14 +1278,23 @@ window.Webflow.push(async function () {
                 <h3 class="rst-card__title" style="margin:0;">${escapeHTML(loc.name)}</h3>
                 <div class="rst-item__meta">Slug interne: ${escapeHTML(loc.slug)}</div>
               </div>
-              <span class="rst-pill"><span class="rst-dot"></span>${loc.public_is_open ? "Ouvert" : "Ferme"}</span>
+              <span class="rst-pill"><span class="rst-dot"></span>${isPublished ? "QR actif" : "QR supprime"}</span>
             </div>
 
             <div class="rst-qr" style="margin-top:10px;">
-              <img class="rst-qr__img" src="${escapeHTML(qrImg)}" alt="QR ${escapeHTML(loc.name)}" />
-              <div class="rst-qr__url">${escapeHTML(publicUrl)}</div>
+              <div class="rst-qr__top">
+                ${
+                  hasLinkData && isPublished
+                    ? `<img class="rst-qr__img" src="${escapeHTML(qrImg)}" alt="QR ${escapeHTML(loc.name)}" />`
+                    : `<div class="rst-qr__placeholder">QR desactive.<br/>Tu peux le reactiver quand tu veux.</div>`
+                }
+                <div>
+                  <div class="rst-qr__muted">URL publique</div>
+                  <div class="rst-qr__url">${escapeHTML(publicUrl || "Aucune URL active.")}</div>
+                </div>
+              </div>
 
-              <div class="rst-form" style="margin-top:6px;">
+              <div class="rst-qr__fields">
                 <label class="full">
                   <span class="rst-label">Page de commande (path)</span>
                   <input class="rst-input" data-k="public_page_path" value="${escapeHTML(loc.public_page_path || CONFIG.ORDER_PAGE_DEFAULT)}" />
@@ -1152,8 +1307,8 @@ window.Webflow.push(async function () {
                   <span class="rst-label">Cle publique (auto)</span>
                   <input class="rst-input" data-k="public_access_key" value="${escapeHTML(loc.public_access_key || "")}" readonly />
                 </label>
-                <label>
-                  <span class="rst-label">Statut public</span>
+                <label class="full">
+                  <span class="rst-label">Statut de commande publique</span>
                   <select class="rst-select" data-k="public_is_open">
                     <option value="1"${loc.public_is_open ? " selected" : ""}>Ouvert</option>
                     <option value="0"${!loc.public_is_open ? " selected" : ""}>Ferme</option>
@@ -1161,11 +1316,12 @@ window.Webflow.push(async function () {
                 </label>
               </div>
 
-              <div class="rst-actions-inline">
-                <button class="rst-btn" type="button" data-action="copy-url">Copier URL</button>
-                <a class="rst-btn" href="${escapeHTML(qrImg)}" target="_blank" rel="noopener">Ouvrir QR</a>
+              <div class="rst-qr__actions">
+                <button class="rst-btn" type="button" data-action="copy-url" ${isPublished ? "" : "disabled"}>Copier URL</button>
+                <a class="rst-btn" href="${escapeHTML(qrImg || "#")}" target="_blank" rel="noopener" ${isPublished ? "" : "aria-disabled=\"true\""}>Ouvrir QR</a>
                 <button class="rst-btn rst-btn--primary" type="button" data-action="save-qr">Enregistrer</button>
                 <button class="rst-btn" type="button" data-action="regen-link">Regenerer lien</button>
+                <button class="rst-btn rst-btn--danger" type="button" data-action="toggle-qr">${isPublished ? "Supprimer QR" : "Activer QR"}</button>
                 <button class="rst-btn" type="button" data-action="edit-location">Modifier lieu</button>
               </div>
             </div>
@@ -1227,7 +1383,7 @@ window.Webflow.push(async function () {
 
       card.querySelector('[data-action="regen-link"]')?.addEventListener("click", async () => {
         if (!confirm("Regenerer la query key et la cle publique de ce QR ?")) return;
-        const { error } = await state.supabase
+        let { error } = await state.supabase
           .from(CONFIG.LOCATIONS_TABLE)
           .update({
             public_query_key: "",
@@ -1235,11 +1391,49 @@ window.Webflow.push(async function () {
             updated_at: new Date().toISOString(),
           })
           .eq("id", loc.id);
+        if (error && isMissingColumnError(error)) {
+          // Backward compatibility if migration 029 is not applied yet.
+          error = null;
+        }
         if (error) {
           showAlert(els, error.message || STR.loadError, "error");
           return;
         }
         await reloadAndRender(els, STR.saved);
+      });
+
+      card.querySelector('[data-action="toggle-qr"]')?.addEventListener("click", async () => {
+        const isPublished = Boolean(loc.public_is_open) && Boolean(String(loc.public_query_key || "").trim()) && Boolean(String(loc.public_access_key || "").trim());
+        const shouldEnable = !isPublished;
+        if (!shouldEnable) {
+          if (!confirm("Supprimer ce QR ? Les commandes publiques seront bloquees.")) return;
+        }
+
+        let patch = {
+          public_is_open: shouldEnable,
+          updated_at: new Date().toISOString(),
+        };
+        if (shouldEnable) {
+          patch.public_query_key = "";
+          patch.public_access_key = "";
+        } else {
+          patch.public_query_key = "";
+          patch.public_access_key = "";
+        }
+
+        let { error } = await state.supabase.from(CONFIG.LOCATIONS_TABLE).update(patch).eq("id", loc.id);
+        if (error && isMissingColumnError(error)) {
+          const fallback = await state.supabase
+            .from(CONFIG.LOCATIONS_TABLE)
+            .update({ public_is_open: shouldEnable, updated_at: new Date().toISOString() })
+            .eq("id", loc.id);
+          error = fallback.error;
+        }
+        if (error) {
+          showAlert(els, error.message || STR.loadError, "error");
+          return;
+        }
+        await reloadAndRender(els, shouldEnable ? STR.qrEnabled : STR.qrDisabled);
       });
     });
   }
@@ -1505,6 +1699,21 @@ window.Webflow.push(async function () {
             <span class="rst-label">Image URL (optionnel)</span>
             <input class="rst-input" name="image_url" value="${escapeHTML(item?.image_url || "")}" />
           </label>
+          <label class="full">
+            <span class="rst-label">Uploader une image (stockage integre)</span>
+            <input class="rst-input" name="image_file" type="file" accept="image/*" />
+            <div class="rst-item__meta">Format image uniquement. Stockage: bucket ${escapeHTML(CONFIG.MENU_IMAGE_BUCKET)}.</div>
+          </label>
+          <div class="full" data-image-preview-wrap>
+            ${
+              item?.image_url
+                ? `<img class="rst-image-preview" data-image-preview src="${escapeHTML(item.image_url)}" alt="${escapeHTML(item?.name || "Image menu")}" />`
+                : `<div class="rst-image-preview is-empty" data-image-preview>Apercu image</div>`
+            }
+          </div>
+          <div class="full rst-actions-inline">
+            <button type="button" class="rst-btn" data-action="clear-image">Supprimer image</button>
+          </div>
           <label>
             <span class="rst-label">Preparation (minutes)</span>
             <input class="rst-input" name="prep_minutes" type="number" value="${escapeHTML(String(item?.prep_minutes ?? ""))}" />
@@ -1522,6 +1731,52 @@ window.Webflow.push(async function () {
           </label>
         </form>
       `,
+      onAfterOpen: () => {
+        const f = els.modalBody.querySelector("[data-item-form]");
+        if (!f) return;
+        const fileInput = f.querySelector('[name="image_file"]');
+        const preview = f.querySelector("[data-image-preview]");
+        const clearBtn = f.querySelector('[data-action="clear-image"]');
+
+        const setPreview = (src) => {
+          if (!preview) return;
+          if (!src) {
+            preview.className = "rst-image-preview is-empty";
+            preview.removeAttribute("src");
+            preview.textContent = "Apercu image";
+            return;
+          }
+          preview.className = "rst-image-preview";
+          preview.textContent = "";
+          preview.setAttribute("src", src);
+        };
+
+        fileInput?.addEventListener("change", () => {
+          const file = fileInput.files?.[0];
+          if (!file) {
+            setPreview(String(f.image_url.value || "").trim());
+            return;
+          }
+          if (!String(file.type || "").startsWith("image/")) {
+            showAlert(els, "Le fichier selectionne n'est pas une image.", "error");
+            fileInput.value = "";
+            return;
+          }
+          const localUrl = URL.createObjectURL(file);
+          setPreview(localUrl);
+        });
+
+        f.image_url?.addEventListener("input", () => {
+          if (fileInput?.files?.length) return;
+          setPreview(String(f.image_url.value || "").trim());
+        });
+
+        clearBtn?.addEventListener("click", () => {
+          f.image_url.value = "";
+          if (fileInput) fileInput.value = "";
+          setPreview("");
+        });
+      },
       onSave: async () => {
         const f = els.modalBody.querySelector("[data-item-form]");
         if (!f) return false;
@@ -1548,22 +1803,56 @@ window.Webflow.push(async function () {
           is_active: f.is_active.value === "1",
           updated_at: new Date().toISOString(),
         };
+        const imageFile = f.image_file?.files?.[0] || null;
 
         if (!payload.name) {
           showAlert(els, "Nom requis.", "error");
           return false;
         }
 
-        let res;
-        if (isEdit) res = await state.supabase.from(CONFIG.ITEMS_TABLE).update(payload).eq("id", item.id);
-        else res = await state.supabase.from(CONFIG.ITEMS_TABLE).insert(payload);
+        let rowId = isEdit ? asUuid(item.id) : "";
+        let saveWarn = "";
 
-        if (res.error) {
-          showAlert(els, res.error.message || STR.loadError, "error");
-          return false;
+        if (isEdit) {
+          const patch = { ...payload };
+          if (imageFile) delete patch.image_url;
+          const up = await state.supabase.from(CONFIG.ITEMS_TABLE).update(patch).eq("id", item.id);
+          if (up.error) {
+            showAlert(els, up.error.message || STR.loadError, "error");
+            return false;
+          }
+        } else {
+          const toInsert = { ...payload };
+          if (imageFile) delete toInsert.image_url;
+          const ins = await state.supabase.from(CONFIG.ITEMS_TABLE).insert(toInsert).select("id").single();
+          if (ins.error) {
+            showAlert(els, ins.error.message || STR.loadError, "error");
+            return false;
+          }
+          rowId = asUuid(ins.data?.id);
         }
 
-        await reloadAndRender(els, STR.saved);
+        if (imageFile && rowId) {
+          try {
+            const uploaded = await uploadMenuImage(imageFile, rowId);
+            if (uploaded?.publicUrl) {
+              const pic = await state.supabase
+                .from(CONFIG.ITEMS_TABLE)
+                .update({ image_url: uploaded.publicUrl, updated_at: new Date().toISOString() })
+                .eq("id", rowId);
+              if (pic.error) throw pic.error;
+            }
+          } catch (e) {
+            const msg = String(e?.message || "").toLowerCase();
+            if (msg.includes("bucket")) {
+              saveWarn = "Element enregistre, mais upload image impossible. Verifie la migration SQL 030 (bucket restaurant-media).";
+            } else {
+              saveWarn = `Element enregistre, mais upload image impossible: ${String(e?.message || "erreur")}`;
+            }
+          }
+        }
+
+        await reloadAndRender(els, saveWarn || STR.saved);
         return true;
       },
       onDelete: async () => {
