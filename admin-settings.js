@@ -58,7 +58,7 @@ window.Webflow.push(async function () {
   };
 
   const STR = {
-    title: "Settings",
+    title: "Paramètres",
     subtitle: "Paramètres de ton organisation et de la facturation",
     loadError: "Impossible de charger les paramètres.",
     loginRequired: "Connexion requise.",
@@ -71,8 +71,10 @@ window.Webflow.push(async function () {
     sectionBranding: "Branding & interface",
     sectionSub: "Abonnement",
     sectionUsers: "Utilisateurs & accès",
+    sectionActivity: "Activité & audit",
     tabGeneral: "Paramètres",
     tabUsers: "Utilisateurs",
+    tabActivity: "Activité",
     usersEmpty: "Aucun utilisateur pour cette organisation.",
     usersEdit: "Accès",
     usersSave: "Enregistrer",
@@ -93,6 +95,8 @@ window.Webflow.push(async function () {
     inviteError: "Impossible de gerer l'invitation.",
     inviteSchemaMissing: "Migration 026 manquante: systeme d'invitations indisponible.",
     brandingSchemaMissing: "Migration 027 manquante: personnalisation visuelle indisponible.",
+    activitySchemaMissing: "Migration 042 manquante: journal d'activité indisponible.",
+    activityEmpty: "Aucune activité récente.",
     save: "Enregistrer",
   };
 
@@ -578,6 +582,44 @@ window.Webflow.push(async function () {
       .set-pill.is-warn .dot { background:#f59e0b; }
       .set-pill.is-muted .dot { background:#94a3b8; }
 
+      .set-activity { display:flex; flex-direction: column; gap: 10px; }
+      .set-evt {
+        display:flex;
+        gap: 12px;
+        align-items:flex-start;
+        border: 1px solid rgba(15,23,42,0.10);
+        background: rgba(255,255,255,0.86);
+        border-radius: 14px;
+        padding: 12px 12px;
+      }
+      .set-evt__dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        margin-top: 6px;
+        flex: 0 0 auto;
+        background: rgba(2,6,23,0.22);
+      }
+      .set-evt.is-success .set-evt__dot { background: #22c55e; }
+      .set-evt.is-warning .set-evt__dot { background: #f59e0b; }
+      .set-evt.is-error .set-evt__dot { background: #ef4444; }
+      .set-evt__title { font-weight: 950; color: rgba(2,6,23,0.84); }
+      .set-evt__meta { margin-top: 4px; color: rgba(2,6,23,0.62); font-weight: 800; font-size: 12px; }
+      .set-evt__code {
+        margin-top: 8px;
+        display:inline-flex;
+        gap: 8px;
+        align-items:center;
+        padding: 6px 8px;
+        border-radius: 999px;
+        border: 1px solid rgba(15,23,42,0.10);
+        background: rgba(255,255,255,0.94);
+        font-size: 11px;
+        font-weight: 900;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        color: rgba(2,6,23,0.70);
+      }
+
       /* Modal (users) */
       .set-modal { position: fixed; inset: 0; z-index: 2147483646; display:none; }
       .set-modal.is-open { display:block; }
@@ -746,6 +788,7 @@ window.Webflow.push(async function () {
           <div class="mbl-settings__tabs" data-tabs>
             <button type="button" class="set-tab is-active" data-tab="general">${escapeHTML(STR.tabGeneral)}</button>
             <button type="button" class="set-tab" data-tab="users">${escapeHTML(STR.tabUsers)}</button>
+            <button type="button" class="set-tab" data-tab="activity">${escapeHTML(STR.tabActivity)}</button>
           </div>
           <button type="button" class="set-btn" data-save>${escapeHTML(STR.save)}</button>
         </div>
@@ -798,6 +841,15 @@ window.Webflow.push(async function () {
             </div>
           </section>
         </section>
+
+        <section class="set-pane" data-pane="activity" hidden>
+          <section class="set-card">
+            <div class="set-card__head">${escapeHTML(STR.sectionActivity)}</div>
+            <div class="set-card__body">
+              <div class="set-activity" data-activity></div>
+            </div>
+          </section>
+        </section>
       </div>
 
       <div class="set-modal" data-modal aria-hidden="true">
@@ -823,8 +875,10 @@ window.Webflow.push(async function () {
       brandingPreview: root.querySelector("[data-branding-preview]"),
       subKv: root.querySelector("[data-sub-kv]"),
       users: root.querySelector("[data-users]"),
+      activity: root.querySelector("[data-activity]"),
       paneGeneral: root.querySelector('[data-pane="general"]'),
       paneUsers: root.querySelector('[data-pane="users"]'),
+      paneActivity: root.querySelector('[data-pane="activity"]'),
       modal: root.querySelector("[data-modal]"),
       modalBackdrop: root.querySelector("[data-modal-backdrop]"),
       modalClose: root.querySelector("[data-modal-close]"),
@@ -982,11 +1036,12 @@ window.Webflow.push(async function () {
   }
 
   function setActiveTab(els, tab) {
-    const next = String(tab || "").trim().toLowerCase() === "users" ? "users" : "general";
-    const isUsers = next === "users";
-    if (els?.paneGeneral) els.paneGeneral.hidden = isUsers;
-    if (els?.paneUsers) els.paneUsers.hidden = !isUsers;
-    if (els?.btnSave) els.btnSave.style.display = isUsers ? "none" : "";
+    const t = String(tab || "").trim().toLowerCase();
+    const next = t === "users" ? "users" : t === "activity" ? "activity" : "general";
+    if (els?.paneGeneral) els.paneGeneral.hidden = next !== "general";
+    if (els?.paneUsers) els.paneUsers.hidden = next !== "users";
+    if (els?.paneActivity) els.paneActivity.hidden = next !== "activity";
+    if (els?.btnSave) els.btnSave.style.display = next === "general" ? "" : "none";
     if (Array.isArray(els?.tabs)) {
       els.tabs.forEach((btn) => {
         const key = String(btn.getAttribute("data-tab") || "").trim().toLowerCase();
@@ -1186,6 +1241,89 @@ window.Webflow.push(async function () {
       invitesAvailable: ctx.invitesAvailable,
       ctx,
     });
+  }
+
+  function sevToClass(sev) {
+    const s = String(sev || "").trim().toLowerCase();
+    if (s === "success") return "is-success";
+    if (s === "warning") return "is-warning";
+    if (s === "error") return "is-error";
+    return "";
+  }
+
+  function actorNameFromCtx(ctx, actorUserId) {
+    const id = String(actorUserId || "").trim();
+    if (!id) return "Système";
+    const prof = ctx?.profilesById?.get?.(id) || null;
+    return pickDisplayName(prof, id);
+  }
+
+  async function loadActivityEvents(supabase, orgId) {
+    const res = await supabase
+      .from("activity_events")
+      .select("id, actor_user_id, event_type, severity, entity_type, entity_id, title, body, metadata, created_at")
+      .eq("organization_id", orgId)
+      .order("created_at", { ascending: false })
+      .limit(80);
+    if (res.error) throw res.error;
+    return res.data || [];
+  }
+
+  function renderActivity(els, { rows, ctx }) {
+    if (!els?.activity) return;
+    const events = Array.isArray(rows) ? rows : [];
+    if (!events.length) {
+      els.activity.innerHTML = `<div class="set-user"><div><div class="set-user__name">${escapeHTML(STR.activityEmpty)}</div></div></div>`;
+      return;
+    }
+
+    els.activity.innerHTML = events
+      .map((ev) => {
+        const sev = String(ev.severity || "").trim().toLowerCase() || "info";
+        const cls = sevToClass(sev);
+        const title = String(ev.title || "").trim() || "Événement";
+        const body = String(ev.body || "").trim();
+        const actor = actorNameFromCtx(ctx, ev.actor_user_id);
+        const dt = formatDateTimeFR(ev.created_at);
+        const code = String(ev.event_type || "").trim();
+        const extra = body ? `<div class="set-evt__meta">${escapeHTML(body)}</div>` : "";
+        return `
+          <div class="set-evt ${escapeHTML(cls)}">
+            <span class="set-evt__dot" aria-hidden="true"></span>
+            <div style="min-width:0;">
+              <div class="set-evt__title">${escapeHTML(title)}</div>
+              <div class="set-evt__meta">${escapeHTML(`${dt} • ${actor}`)}</div>
+              ${extra}
+              ${code ? `<div class="set-evt__code">${escapeHTML(code)}</div>` : ""}
+            </div>
+          </div>
+        `;
+      })
+      .join("");
+  }
+
+  async function refreshActivity(ctx, els) {
+    if (!ctx?.supabase || !ctx?.orgId || !els?.activity) return;
+
+    els.activity.innerHTML = `<div class="set-user"><div><div class="set-user__name">Chargement…</div></div></div>`;
+
+    try {
+      const rows = await loadActivityEvents(ctx.supabase, ctx.orgId);
+      renderActivity(els, { rows, ctx });
+    } catch (e) {
+      const msg = String(e?.message || "").toLowerCase();
+      const missing = isMissingColumnError(e) || msg.includes("relation") || msg.includes("does not exist");
+      if (missing) {
+        els.activity.innerHTML = `<div class="set-user"><div><div class="set-user__name">${escapeHTML(
+          STR.activitySchemaMissing
+        )}</div></div></div>`;
+        return;
+      }
+      warn("activity load failed", e);
+      els.activity.innerHTML = `<div class="set-user"><div><div class="set-user__name">Erreur chargement activité</div><div class="set-user__meta">${escapeHTML(
+        e?.message || "—"
+      )}</div></div></div>`;
+    }
   }
 
   function renderUsersList(els, { members, profilesById, modules, invites, invitesAvailable, ctx }) {
@@ -1552,30 +1690,39 @@ window.Webflow.push(async function () {
   // ===== boot =====
   injectStyles();
   const els = renderShell();
-  const initialTab = String(url.searchParams.get("tab") || "").trim().toLowerCase() === "users" ? "users" : "general";
-  setActiveTab(els, initialTab);
-  els.tabs.forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const tab = String(btn.getAttribute("data-tab") || "").trim().toLowerCase();
-      setActiveTab(els, tab);
-      try {
-        const u = new URL(location.href);
-        if (tab === "users") u.searchParams.set("tab", "users");
-        else u.searchParams.delete("tab");
-        history.replaceState(null, "", u.pathname + u.search + u.hash);
-      } catch (_) {}
-    });
-  });
   const ctx = {
     supabase: null,
     userId: "",
     orgId: "",
     modules: {},
+    activeTab: "general",
     members: [],
     invites: [],
     invitesAvailable: false,
     profilesById: new Map(),
   };
+
+  const rawTab = String(url.searchParams.get("tab") || "").trim().toLowerCase();
+  const initialTab = rawTab === "users" ? "users" : rawTab === "activity" ? "activity" : "general";
+  ctx.activeTab = initialTab;
+  setActiveTab(els, initialTab);
+
+  els.tabs.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const tab = String(btn.getAttribute("data-tab") || "").trim().toLowerCase();
+      ctx.activeTab = tab === "users" ? "users" : tab === "activity" ? "activity" : "general";
+      setActiveTab(els, ctx.activeTab);
+
+      try {
+        const u = new URL(location.href);
+        if (ctx.activeTab === "general") u.searchParams.delete("tab");
+        else u.searchParams.set("tab", ctx.activeTab);
+        history.replaceState(null, "", u.pathname + u.search + u.hash);
+      } catch (_) {}
+
+      if (ctx.activeTab === "activity") refreshActivity(ctx, els);
+    });
+  });
 
   els.modalBackdrop.addEventListener("click", () => closeModal(els));
   els.modalClose.addEventListener("click", () => closeModal(els));
@@ -1703,6 +1850,10 @@ window.Webflow.push(async function () {
     } catch (e) {
       warn("users load failed", e);
       els.users.innerHTML = `<div class="set-user"><div><div class="set-user__name">Erreur chargement utilisateurs</div><div class="set-user__meta">Vérifie les migrations 025/026 et les droits RLS.</div></div></div>`;
+    }
+
+    if (ctx.activeTab === "activity") {
+      await refreshActivity(ctx, els);
     }
 
     els.btnSave.addEventListener("click", async () => {

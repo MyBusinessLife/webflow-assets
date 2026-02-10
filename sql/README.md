@@ -43,6 +43,7 @@ Order to run in Supabase SQL Editor:
 39. `039_plan_ultimate_include_rental.sql`
 40. `040_purchases_core.sql`
 41. `041_loyalty_core.sql`
+42. `042_activity_feed_core.sql`
 
 ## Important
 - Run each file in full, then validate before the next file.
