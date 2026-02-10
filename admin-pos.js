@@ -81,6 +81,11 @@ window.Webflow.push(async function () {
     scannerHint: "Douchette USB: scanner puis Entree. Saisie manuelle possible.",
     scannerNotFound: "Aucun article trouve pour ce code-barres/SKU.",
     imageHint: "Touchez la carte pour ajouter",
+    tabletVisibleItems: "Articles visibles",
+    tabletMenusCount: "Menus",
+    tabletProductsCount: "Produits",
+    tabletCartTotal: "Total panier",
+    tabletOrderDetails: "Detail commande",
   };
 
   const state = {
@@ -818,13 +823,7 @@ window.Webflow.push(async function () {
         color: rgba(12,74,110,0.95);
       }
       html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-summary {
-        border-top-color: rgba(148,163,184,0.24);
-      }
-      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-summary__line {
-        color: rgba(226,232,240,0.92);
-      }
-      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-summary__line.total {
-        color: rgba(255,237,213,0.98);
+        margin-top: 12px;
       }
 
       html[data-page="admin-pos"] .pos-empty {
@@ -843,23 +842,175 @@ window.Webflow.push(async function () {
         background: rgba(255,255,255,0.92);
         padding: 10px;
       }
-      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-block {
-        background: rgba(15,23,42,0.60);
-        border-color: rgba(148,163,184,0.22);
+
+      html[data-page="admin-pos"] .pos-tablet-overview {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 8px;
+        margin-bottom: 10px;
       }
-      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-input,
-      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-select,
-      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-textarea {
-        background: rgba(15,23,42,0.74);
-        border-color: rgba(148,163,184,0.28);
-        color: rgba(248,250,252,0.96);
+      html[data-page="admin-pos"] .pos-kpi {
+        border: 1px solid rgba(15,23,42,0.12);
+        border-radius: 12px;
+        background: rgba(255,255,255,0.92);
+        padding: 10px 10px;
+        display: grid;
+        gap: 4px;
       }
-      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-input::placeholder,
-      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-textarea::placeholder {
-        color: rgba(148,163,184,0.88);
+      html[data-page="admin-pos"] .pos-kpi span {
+        font-size: 11px;
+        color: rgba(2,6,23,0.62);
+        font-weight: 800;
       }
-      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-select option {
-        color: #0f172a;
+      html[data-page="admin-pos"] .pos-kpi strong {
+        font-size: 16px;
+        color: rgba(2,6,23,0.92);
+        font-weight: 1000;
+      }
+      html[data-page="admin-pos"] .pos-order-head {
+        border: 1px solid rgba(15,23,42,0.12);
+        border-radius: 12px;
+        background: rgba(255,255,255,0.92);
+        padding: 10px;
+        display: grid;
+        gap: 6px;
+        margin-bottom: 10px;
+      }
+      html[data-page="admin-pos"] .pos-order-head__line {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 13px;
+        font-weight: 800;
+      }
+      html[data-page="admin-pos"] .pos-order-head__line.is-total {
+        font-size: 15px;
+        color: rgba(12,74,110,0.95);
+      }
+
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-grid {
+        grid-template-columns: minmax(0, 1.32fr) minmax(320px, 0.68fr);
+        gap: 14px;
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-card {
+        padding: 14px;
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-topbar {
+        margin-bottom: 8px;
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-topbar__left {
+        width: 100%;
+        display: grid;
+        grid-template-columns: 170px minmax(0, 1fr);
+        gap: 8px;
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-scan {
+        margin-bottom: 8px;
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-scan__hint {
+        display: none;
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-tabs {
+        overflow: auto;
+        white-space: nowrap;
+        padding-bottom: 2px;
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-tab {
+        border-radius: 10px;
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-catalog.pos-catalog--tablet {
+        grid-template-columns: repeat(auto-fill, minmax(162px, 1fr));
+        gap: 10px;
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-item--tablet {
+        border-radius: 12px;
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-item__media {
+        aspect-ratio: 16/10;
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-item__overlay {
+        padding: 8px 10px;
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-item__chips {
+        gap: 5px;
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-chip {
+        font-size: 10px;
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-cart-list {
+        max-height: 48vh;
+      }
+
+      /* Tablet architecture only: keep the same design palette as classic mode */
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] {
+        --pos-primary: #0ea5e9;
+        --pos-text: rgba(2,6,23,0.90);
+        --pos-muted: rgba(2,6,23,0.62);
+        --pos-border: rgba(15,23,42,0.11);
+        --pos-card: rgba(255,255,255,0.90);
+        background:
+          radial-gradient(900px 520px at 8% 0%, rgba(14,165,233,0.14), transparent 55%),
+          radial-gradient(920px 560px at 95% 8%, rgba(2,6,23,0.09), transparent 58%),
+          linear-gradient(180deg, rgba(248,250,252,0.96), rgba(241,245,249,0.95));
+        border-color: rgba(15,23,42,0.11);
+        box-shadow: 0 22px 60px rgba(2,6,23,0.10);
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-title,
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-subtitle,
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-card__title,
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-item__title,
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-item__meta,
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-cart-item__name,
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-cart-item__meta {
+        color: inherit;
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-card,
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-block,
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-cart-item,
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-order-head,
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-kpi {
+        background: rgba(255,255,255,0.92);
+        border-color: rgba(15,23,42,0.11);
+        box-shadow: 0 14px 28px rgba(2,6,23,0.07);
+        backdrop-filter: none;
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-btn {
+        background: rgba(255,255,255,0.92);
+        color: rgba(2,6,23,0.90);
+        border-color: rgba(15,23,42,0.12);
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-btn--primary {
+        background: linear-gradient(180deg, rgba(14,165,233,0.98), rgba(2,132,199,0.98));
+        border-color: rgba(14,165,233,0.58);
+        color: #fff;
+        box-shadow: none;
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-btn--tablet[aria-pressed="true"] {
+        background: rgba(14,165,233,0.18);
+        border-color: rgba(14,165,233,0.44);
+        color: rgba(12,74,110,0.98);
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-tab {
+        background: rgba(255,255,255,0.85);
+        color: rgba(2,6,23,0.82);
+        border-color: rgba(15,23,42,0.12);
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-tab[aria-selected="true"] {
+        border-color: rgba(14,165,233,0.38);
+        background: rgba(14,165,233,0.16);
+        color: rgba(12,74,110,0.95);
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-item__media {
+        background: linear-gradient(135deg, rgba(14,165,233,0.20), rgba(2,6,23,0.08));
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-item__plus {
+        border-color: rgba(15,23,42,0.14);
+        background: rgba(255,255,255,0.96);
+        color: rgba(2,6,23,0.9);
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-summary__line.total,
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-order-head__line.is-total {
+        color: rgba(12,74,110,0.95);
       }
 
       @media (max-width: 1080px) {
@@ -1014,6 +1165,14 @@ window.Webflow.push(async function () {
     });
 
     return rows;
+  }
+
+  function getCatalogStats(rows) {
+    const menus = rows.filter((r) => r.kind === "menu_item").length;
+    const products = rows.filter((r) => r.kind === "product").length;
+    const visible = rows.length;
+    const cartTotal = cartTotals().total;
+    return { menus, products, visible, cartTotal };
   }
 
   function resolveRowByCode(rawCode) {
@@ -1172,6 +1331,7 @@ window.Webflow.push(async function () {
 
     const rows = buildCatalogRows();
     const tabletMode = isTabletMode();
+    const stats = getCatalogStats(rows);
 
     const renderCatalogCard = (row) => {
       if (tabletMode) {
@@ -1232,6 +1392,31 @@ window.Webflow.push(async function () {
 
     els.panelCatalog.innerHTML = `
       <h3 class="pos-card__title">Catalogue</h3>
+
+      ${
+        tabletMode
+          ? `
+        <section class="pos-tablet-overview">
+          <article class="pos-kpi">
+            <span>${escapeHTML(STR.tabletVisibleItems)}</span>
+            <strong>${escapeHTML(String(stats.visible))}</strong>
+          </article>
+          <article class="pos-kpi">
+            <span>${escapeHTML(STR.tabletMenusCount)}</span>
+            <strong>${escapeHTML(String(stats.menus))}</strong>
+          </article>
+          <article class="pos-kpi">
+            <span>${escapeHTML(STR.tabletProductsCount)}</span>
+            <strong>${escapeHTML(String(stats.products))}</strong>
+          </article>
+          <article class="pos-kpi">
+            <span>${escapeHTML(STR.tabletCartTotal)}</span>
+            <strong>${escapeHTML(formatMoney(stats.cartTotal, CONFIG.CURRENCY))}</strong>
+          </article>
+        </section>
+      `
+          : ""
+      }
 
       <div class="pos-topbar">
         <div class="pos-topbar__left">
@@ -1403,7 +1588,28 @@ window.Webflow.push(async function () {
       : "";
 
     els.panelCart.innerHTML = `
-      <h3 class="pos-card__title">Panier</h3>
+      <h3 class="pos-card__title">${escapeHTML(isTabletMode() ? STR.tabletOrderDetails : "Panier")}</h3>
+
+      ${
+        isTabletMode()
+          ? `
+        <section class="pos-order-head">
+          <div class="pos-order-head__line">
+            <span>Sous-total</span>
+            <strong>${escapeHTML(formatMoney(totals.subtotal, CONFIG.CURRENCY))}</strong>
+          </div>
+          <div class="pos-order-head__line">
+            <span>TVA</span>
+            <strong>${escapeHTML(formatMoney(totals.vat, CONFIG.CURRENCY))}</strong>
+          </div>
+          <div class="pos-order-head__line is-total">
+            <span>Total TTC</span>
+            <strong>${escapeHTML(formatMoney(totals.total, CONFIG.CURRENCY))}</strong>
+          </div>
+        </section>
+      `
+          : ""
+      }
 
       <div class="pos-cart-list" data-cart-list>${cartHtml}</div>
 
