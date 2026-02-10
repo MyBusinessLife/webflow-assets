@@ -426,7 +426,7 @@ window.Webflow.push(async function () {
       title: isEdit ? STR.supplierModalTitleEdit : STR.supplierModalTitleNew,
       body: renderSupplierForm(form),
       foot: renderModalFooter({
-        showDelete: isEdit,
+        showDelete: isEdit && state.ctx.isAdmin,
         primary: STR.btnSave,
         secondary: STR.btnCancel,
       }),
@@ -516,7 +516,7 @@ window.Webflow.push(async function () {
       title: isEdit ? STR.orderModalTitleEdit : STR.orderModalTitleNew,
       body: renderOrderForm(form),
       foot: renderModalFooter({
-        showDelete: isEdit,
+        showDelete: isEdit && state.ctx.isAdmin,
         showReceive: isEdit,
         primary: STR.btnSave,
         secondary: STR.btnCancel,
