@@ -148,6 +148,28 @@
     }
   }
 
+  const OAUTH_NEXT_KEY = String(CFG.OAUTH_NEXT_KEY || "mbl-oauth-next").trim() || "mbl-oauth-next";
+  const OAUTH_NEXT_TTL_MS = Number(CFG.OAUTH_NEXT_TTL_MS || 15 * 60 * 1000);
+
+  function consumeOauthNext() {
+    try {
+      const raw = localStorage.getItem(OAUTH_NEXT_KEY);
+      if (!raw) return "";
+      localStorage.removeItem(OAUTH_NEXT_KEY);
+      const obj = JSON.parse(raw);
+      const next = String(obj?.next || "").trim();
+      const t = Number(obj?.t || 0);
+      if (!next || !(next.startsWith("/") && !next.startsWith("//"))) return "";
+      if (!Number.isFinite(t) || Date.now() - t > OAUTH_NEXT_TTL_MS) return "";
+      return next;
+    } catch (_) {
+      try {
+        localStorage.removeItem(OAUTH_NEXT_KEY);
+      } catch (_) {}
+      return "";
+    }
+  }
+
   function ensureSupabaseJs() {
     if (window.supabase && window.supabase.createClient) return Promise.resolve();
 
@@ -365,7 +387,7 @@
           return;
         }
 
-        const next = getNextParam();
+        const next = getNextParam() || consumeOauthNext();
         if (next) return safeReplace(next, "login_next");
 
         const role = await getRole(supabase, session.user.id);
@@ -385,7 +407,7 @@
           return;
         }
 
-        const next = getNextParam();
+        const next = getNextParam() || consumeOauthNext();
         if (next) return safeReplace(next, "signup_next");
 
         const role = await getRole(supabase, session.user.id);

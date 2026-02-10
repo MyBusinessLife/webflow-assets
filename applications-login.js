@@ -1,6 +1,6 @@
 (() => {
   const p = String(location.pathname || "");
-  const isLogin = /^\/(applications|application|extranet)\/login\/?$/.test(p);
+  const isLogin = /^\/(applications|application)\/login\/?$/.test(p);
   if (!isLogin) return;
 
   document.documentElement.setAttribute("data-page", "login");
@@ -13,12 +13,27 @@
   const CFG = window.__MBL_CFG__ || {};
 
   function inferAppRoot() {
-    const match = p.match(/^\/(applications|application|extranet)(?=\/|$)/);
+    const match = p.match(/^\/(applications|application)(?=\/|$)/);
     if (match?.[1]) return `/${match[1]}`;
     return "/applications";
   }
 
-  const APP_ROOT = String(CFG.APP_ROOT || inferAppRoot()).trim() || "/applications";
+  function sanitizeAppRoot(value) {
+    const v = String(value || "").trim();
+    if (!v) return "";
+    if (/^\/(applications|application)$/.test(v)) return v;
+    return "";
+  }
+
+  const INFERRED_APP_ROOT = inferAppRoot();
+  const APP_ROOT = INFERRED_APP_ROOT || sanitizeAppRoot(CFG.APP_ROOT) || "/applications";
+
+  function sanitizeLoginPath(value) {
+    const v = String(value || "").trim();
+    if (!v) return "";
+    if (v === `${APP_ROOT}/login` || v === `${APP_ROOT}/login/`) return `${APP_ROOT}/login`;
+    return "";
+  }
 
   const CONFIG = {
     SUPABASE_URL: CFG.SUPABASE_URL || "https://jrjdhdechcdlygpgaoes.supabase.co",
@@ -28,13 +43,18 @@
     SUPABASE_CDN: CFG.SUPABASE_CDN || "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2",
 
     AUTH_STORAGE_KEY: CFG.AUTH_STORAGE_KEY || "mbl-extranet-auth",
+    LOGIN_PATH: sanitizeLoginPath(CFG.LOGIN_PATH) || `${APP_ROOT}/login`,
     DEFAULT_AFTER_LOGIN: CFG.AFTER_LOGIN_PATH || APP_ROOT,
 
     PROFILES_TABLE: CFG.PROFILES_TABLE || "profiles",
     ADMIN_DASH: CFG.ADMIN_DASH || `${APP_ROOT}/admin/dashboard`,
     TECH_DASH: CFG.TECH_DASH || `${APP_ROOT}/technician/dashboard`,
+    DRIVER_DASH: CFG.DRIVER_DASH || `${APP_ROOT}/driver/dashboard`,
     POS_DASH: CFG.POS_DASH || `${APP_ROOT}/pos`,
   };
+
+  const OAUTH_NEXT_KEY = String(CFG.OAUTH_NEXT_KEY || "mbl-oauth-next").trim() || "mbl-oauth-next";
+  const OAUTH_NEXT_TTL_MS = Number(CFG.OAUTH_NEXT_TTL_MS || 15 * 60 * 1000);
 
   const STR = {
     missingSupabase: "Supabase non chargé.",
@@ -405,12 +425,125 @@
     return "";
   }
 
+  function storeOauthNext(path) {
+    const next = String(path || "").trim();
+    if (!next) return;
+    if (!(next.startsWith("/") && !next.startsWith("//"))) return;
+    try {
+      localStorage.setItem(OAUTH_NEXT_KEY, JSON.stringify({ next, t: Date.now() }));
+    } catch (_) {}
+  }
+
+  function peekOauthNext() {
+    try {
+      const raw = localStorage.getItem(OAUTH_NEXT_KEY);
+      if (!raw) return "";
+      const obj = JSON.parse(raw);
+      const next = String(obj?.next || "").trim();
+      const t = Number(obj?.t || 0);
+      if (!next || !(next.startsWith("/") && !next.startsWith("//"))) return "";
+      if (!Number.isFinite(t) || Date.now() - t > OAUTH_NEXT_TTL_MS) return "";
+      return next;
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function consumeOauthNext() {
+    const next = peekOauthNext();
+    try {
+      localStorage.removeItem(OAUTH_NEXT_KEY);
+    } catch (_) {}
+    return next;
+  }
+
+  async function maybeHandleOAuthCallback() {
+    // OAuth errors can come back as query params on the redirect URL.
+    try {
+      const sp = new URLSearchParams(location.search);
+      const err = String(sp.get("error") || "").trim();
+      const errDesc = String(sp.get("error_description") || "").trim();
+      if (err || errDesc) {
+        return { ok: false, message: errDesc || err || "Connexion Google impossible." };
+      }
+    } catch (_) {}
+
+    // For PKCE flow, we may receive ?code=...&state=... and must exchange it.
+    try {
+      const sp = new URLSearchParams(location.search);
+      const code = String(sp.get("code") || "").trim();
+      if (!code) return { ok: true, exchanged: false };
+
+      if (typeof supabase?.auth?.exchangeCodeForSession !== "function") {
+        return { ok: false, message: "OAuth callback: exchangeCodeForSession indisponible." };
+      }
+
+      // If the client already has a session, don't attempt a second exchange.
+      try {
+        const existing = await supabase.auth.getSession();
+        const session = existing?.data?.session || null;
+        if (session?.user) {
+          try {
+            const url = new URL(location.href);
+            ["code", "state", "error", "error_description"].forEach((k) => url.searchParams.delete(k));
+            history.replaceState({}, "", url.pathname + url.search);
+          } catch (_) {}
+          return { ok: true, exchanged: false, session };
+        }
+      } catch (_) {}
+
+      const res = await supabase.auth.exchangeCodeForSession(location.href);
+      if (res?.error) return { ok: false, message: res.error.message || "OAuth callback: echec exchange." };
+
+      // Clean URL (remove auth params, keep `next` if present).
+      try {
+        const url = new URL(location.href);
+        ["code", "state", "error", "error_description"].forEach((k) => url.searchParams.delete(k));
+        history.replaceState({}, "", url.pathname + url.search);
+      } catch (_) {}
+
+      return { ok: true, exchanged: true, session: res?.data?.session || null };
+    } catch (e) {
+      return { ok: false, message: e?.message || "OAuth callback: erreur." };
+    }
+  }
+
   function buildOAuthRedirectUrl() {
     // Always route OAuth back to login so we only need to whitelist one redirect URL in Supabase.
-    const login = new URL(`${APP_ROOT}/login`, location.origin);
-    const next = getNextParam();
-    if (next) login.searchParams.set("next", next);
+    const login = new URL(CONFIG.LOGIN_PATH || `${APP_ROOT}/login`, location.origin);
     return login.href;
+  }
+
+  function isAdminRole(role) {
+    const r = String(role || "").trim().toLowerCase();
+    return ["owner", "admin", "manager"].includes(r);
+  }
+
+  function isTechRole(role) {
+    const r = String(role || "").trim().toLowerCase();
+    return r === "tech" || r === "technician";
+  }
+
+  function isDriverRole(role) {
+    const r = String(role || "").trim().toLowerCase();
+    return r === "driver";
+  }
+
+  function isRestaurantEmployeeRole(role) {
+    const r = String(role || "").trim().toLowerCase();
+    return ["restaurant_employee", "restaurant_staff", "resto_employee", "cashier"].includes(r);
+  }
+
+  function navigateTo(path) {
+    try {
+      const target = new URL(path, location.origin);
+      if (target.pathname === location.pathname && target.search === location.search) return false;
+      location.href = target.href;
+      return true;
+    } catch (_) {
+      location.href = String(path || "");
+      return true;
+    }
   }
 
   function setGoogleLoading(btn, loading) {
@@ -461,6 +594,21 @@
   }
 
   async function getRole(userId) {
+    if (!userId) return "";
+    try {
+      const membership = await supabase
+        .from("organization_members")
+        .select("role, is_default, created_at")
+        .eq("user_id", userId)
+        .eq("is_active", true)
+        .order("is_default", { ascending: false })
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      const orgRole = String(membership?.data?.role || "").trim().toLowerCase();
+      if (!membership?.error && orgRole) return orgRole;
+    } catch (_) {}
+
     try {
       const { data, error } = await supabase
         .from(CONFIG.PROFILES_TABLE)
@@ -474,12 +622,59 @@
     }
   }
 
+  let authRedirectLock = false;
+  async function redirectAfterAuth(userId, { fromOAuth = false } = {}) {
+    if (!userId || authRedirectLock) return false;
+    authRedirectLock = true;
+    try {
+      const next = getNextParam() || (fromOAuth ? consumeOauthNext() : "");
+      if (next && navigateTo(next)) return true;
+
+      const role = await getRole(userId);
+      if (isAdminRole(role) && navigateTo(CONFIG.ADMIN_DASH)) return true;
+      if (isTechRole(role) && navigateTo(CONFIG.TECH_DASH)) return true;
+      if (isDriverRole(role) && navigateTo(CONFIG.DRIVER_DASH)) return true;
+      if (isRestaurantEmployeeRole(role) && navigateTo(CONFIG.POS_DASH)) return true;
+      if (navigateTo(CONFIG.DEFAULT_AFTER_LOGIN)) return true;
+      return false;
+    } finally {
+      authRedirectLock = false;
+    }
+  }
+
   await ensureSupabaseJs();
   const supabase = resolveSupabaseClient();
   if (!supabase) {
     console.error("[LOGIN]", STR.missingSupabase);
     return;
   }
+
+  try {
+    const cb = await maybeHandleOAuthCallback();
+    if (!cb.ok) {
+      // Delay until we locate the form so the message is visible.
+      // We'll display it right after we find `form`.
+      window.__mblOauthCallbackError = cb.message || "Connexion Google impossible.";
+    } else if (cb.exchanged) {
+      const userId = cb.session?.user?.id || "";
+      if (userId) {
+        await redirectAfterAuth(userId, { fromOAuth: true });
+        return;
+      }
+    }
+  } catch (_) {}
+
+  try {
+    const fromLogout = new URLSearchParams(location.search).get("logout") === "1";
+    if (!fromLogout) {
+      const { data } = await supabase.auth.getSession();
+      const existingUserId = data?.session?.user?.id || "";
+      if (existingUserId) {
+        await redirectAfterAuth(existingUserId);
+        return;
+      }
+    }
+  } catch (_) {}
 
   const form = findLoginForm();
   if (!form) {
@@ -488,6 +683,14 @@
   }
 
   injectAuthMessageStyles();
+
+  // If OAuth callback returned an error, show it in the Webflow form error area.
+  if (window.__mblOauthCallbackError) {
+    showWebflowError(form, String(window.__mblOauthCallbackError || "Connexion Google impossible."));
+    try {
+      delete window.__mblOauthCallbackError;
+    } catch (_) {}
+  }
 
   // Optional Google OAuth button:
   // Add a button/link with [data-auth-google] (recommended) or #btnGoogle or .btnGoogle.
@@ -499,19 +702,28 @@
     enhanceGoogleButton(googleBtn);
     googleBtn.addEventListener("click", async (e) => {
       e.preventDefault();
-      e.stopPropagation();
+      e.stopImmediatePropagation();
       setGoogleLoading(googleBtn, true);
       try {
-        await supabase.auth.signInWithOAuth({
+        const next = getNextParam();
+        if (next) storeOauthNext(next);
+        const { data, error } = await supabase.auth.signInWithOAuth({
           provider: "google",
-          options: { redirectTo: buildOAuthRedirectUrl() },
+          options: {
+            redirectTo: buildOAuthRedirectUrl(),
+            skipBrowserRedirect: true,
+            queryParams: { prompt: "select_account" },
+          },
         });
+        if (error) throw error;
+        if (!data?.url) throw new Error("URL OAuth Google indisponible.");
+        location.assign(data.url);
       } catch (err) {
         console.error("[LOGIN] oauth error:", err);
         showWebflowError(form, err?.message || "Connexion Google impossible.");
         setGoogleLoading(googleBtn, false);
       }
-    });
+    }, true);
   }
 
   const emailEl = findEmailInput(form);
@@ -536,33 +748,12 @@
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
 
-      const next = getNextParam();
-      if (next) {
-        window.location.href = next;
-        return;
-      }
-
       const userId =
         data?.user?.id ||
         data?.session?.user?.id ||
         (await supabase.auth.getUser())?.data?.user?.id ||
         "";
-      const role = userId ? await getRole(userId) : "";
-
-      if (role === "admin") {
-        window.location.href = CONFIG.ADMIN_DASH;
-        return;
-      }
-      if (role === "tech" || role === "technician") {
-        window.location.href = CONFIG.TECH_DASH;
-        return;
-      }
-      if (["restaurant_employee", "restaurant_staff", "resto_employee", "cashier"].includes(role)) {
-        window.location.href = CONFIG.POS_DASH;
-        return;
-      }
-
-      window.location.href = CONFIG.DEFAULT_AFTER_LOGIN;
+      await redirectAfterAuth(userId);
     } catch (e) {
       console.error("[LOGIN] signIn error:", e);
       showWebflowError(form, e?.message || "Connexion impossible.");
@@ -590,5 +781,15 @@
     },
     true
   );
+
+  supabase.auth.onAuthStateChange((evt, session) => {
+    if (evt !== "SIGNED_IN") return;
+    const userId = session?.user?.id || "";
+    if (!userId) return;
+    setTimeout(() => {
+      const fromOAuth = Boolean(peekOauthNext());
+      redirectAfterAuth(userId, { fromOAuth }).catch(() => {});
+    }, 0);
+  });
   });
 })();

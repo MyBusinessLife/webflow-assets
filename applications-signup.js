@@ -18,12 +18,20 @@
       return "/applications";
     }
 
-    const APP_ROOT = String(CFG.APP_ROOT || inferAppRoot()).trim() || "/applications";
+    function sanitizeAppRoot(value) {
+      const v = String(value || "").trim();
+      if (!v) return "";
+      if (/^\/(applications|application)$/.test(v)) return v;
+      return "";
+    }
+
+    const INFERRED_APP_ROOT = inferAppRoot();
+    const APP_ROOT = INFERRED_APP_ROOT || sanitizeAppRoot(CFG.APP_ROOT) || "/applications";
 
     function sanitizeLoginPath(value) {
       const v = String(value || "").trim();
       if (!v) return "";
-      if (v.startsWith("/") && /\/login\/?$/.test(v)) return v;
+      if (v === `${APP_ROOT}/login` || v === `${APP_ROOT}/login/`) return `${APP_ROOT}/login`;
       return "";
     }
 
@@ -38,7 +46,15 @@
 
       LOGIN_PATH: sanitizeLoginPath(CFG.LOGIN_PATH) || `${APP_ROOT}/login`,
       AFTER_SIGNUP_PATH: CFG.AFTER_SIGNUP_PATH || "/subscriptions",
+      PROFILES_TABLE: CFG.PROFILES_TABLE || "profiles",
+      ADMIN_DASH: CFG.ADMIN_DASH || `${APP_ROOT}/admin/dashboard`,
+      TECH_DASH: CFG.TECH_DASH || `${APP_ROOT}/technician/dashboard`,
+      DRIVER_DASH: CFG.DRIVER_DASH || `${APP_ROOT}/driver/dashboard`,
+      POS_DASH: CFG.POS_DASH || `${APP_ROOT}/pos`,
     };
+
+    const OAUTH_NEXT_KEY = String(CFG.OAUTH_NEXT_KEY || "mbl-oauth-next").trim() || "mbl-oauth-next";
+    const OAUTH_NEXT_TTL_MS = Number(CFG.OAUTH_NEXT_TTL_MS || 15 * 60 * 1000);
 
     const STR = {
       missingSupabase: "Supabase non charge.",
@@ -48,6 +64,7 @@
       passwordTooShort: "Mot de passe trop court (8 caracteres minimum).",
       passwordMismatch: "Les mots de passe ne correspondent pas.",
       signingUp: "Creation du compte…",
+      signingGoogle: "Redirection Google…",
       checkEmail: "Compte cree. Verifie tes emails pour confirmer, puis connecte-toi.",
     };
 
@@ -431,6 +448,38 @@
       return "";
     }
 
+    function storeOauthNext(path) {
+      const next = String(path || "").trim();
+      if (!next) return;
+      if (!(next.startsWith("/") && !next.startsWith("//"))) return;
+      try {
+        localStorage.setItem(OAUTH_NEXT_KEY, JSON.stringify({ next, t: Date.now() }));
+      } catch (_) {}
+    }
+
+    function peekOauthNext() {
+      try {
+        const raw = localStorage.getItem(OAUTH_NEXT_KEY);
+        if (!raw) return "";
+        const obj = JSON.parse(raw);
+        const next = String(obj?.next || "").trim();
+        const t = Number(obj?.t || 0);
+        if (!next || !(next.startsWith("/") && !next.startsWith("//"))) return "";
+        if (!Number.isFinite(t) || Date.now() - t > OAUTH_NEXT_TTL_MS) return "";
+        return next;
+      } catch (_) {
+        return "";
+      }
+    }
+
+    function consumeOauthNext() {
+      const next = peekOauthNext();
+      try {
+        localStorage.removeItem(OAUTH_NEXT_KEY);
+      } catch (_) {}
+      return next;
+    }
+
     function showWebflowError(form, message) {
       const wrap = form.closest(".w-form") || document;
       const fail = wrap.querySelector(".w-form-fail");
@@ -478,19 +527,118 @@
       btn.textContent = loading ? STR.signingUp : btn.dataset.prevText || "S'inscrire";
     }
 
+    function setGoogleLoading(btn, loading) {
+      if (!btn) return;
+      try {
+        btn.setAttribute("aria-disabled", loading ? "true" : "false");
+      } catch (_) {}
+      if ("disabled" in btn) btn.disabled = loading;
+
+      if (btn.classList.contains("mbl-google-btn")) {
+        btn.dataset.loading = loading ? "1" : "";
+        const textEl = btn.querySelector(".mbl-google-btn__text");
+        if (textEl) textEl.textContent = loading ? STR.signingGoogle : String(btn.dataset.googleLabel || "Continuer avec Google");
+        return;
+      }
+
+      if (!btn.dataset.prevText) btn.dataset.prevText = btn.textContent || "";
+      btn.textContent = loading ? STR.signingGoogle : btn.dataset.prevText || "Continuer avec Google";
+    }
+
+    function isAdminRole(role) {
+      const r = String(role || "").trim().toLowerCase();
+      return ["owner", "admin", "manager"].includes(r);
+    }
+
+    function isTechRole(role) {
+      const r = String(role || "").trim().toLowerCase();
+      return r === "tech" || r === "technician";
+    }
+
+    function isDriverRole(role) {
+      const r = String(role || "").trim().toLowerCase();
+      return r === "driver";
+    }
+
+    function isRestaurantEmployeeRole(role) {
+      const r = String(role || "").trim().toLowerCase();
+      return ["restaurant_employee", "restaurant_staff", "resto_employee", "cashier"].includes(r);
+    }
+
+    function navigateTo(path) {
+      try {
+        const target = new URL(path, location.origin);
+        if (target.pathname === location.pathname && target.search === location.search) return false;
+        location.href = target.href;
+        return true;
+      } catch (_) {
+        location.href = String(path || "");
+        return true;
+      }
+    }
+
+    async function getRole(supabase, userId) {
+      if (!userId) return "";
+      try {
+        const membership = await supabase
+          .from("organization_members")
+          .select("role, is_default, created_at")
+          .eq("user_id", userId)
+          .eq("is_active", true)
+          .order("is_default", { ascending: false })
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        const orgRole = String(membership?.data?.role || "").trim().toLowerCase();
+        if (!membership?.error && orgRole) return orgRole;
+      } catch (_) {}
+
+      try {
+        const res = await supabase.from(CONFIG.PROFILES_TABLE).select("role").eq("id", userId).single();
+        if (res.error) return "";
+        return String(res.data?.role || "").trim().toLowerCase();
+      } catch (_) {
+        return "";
+      }
+    }
+
+    let authRedirectLock = false;
+    async function redirectAfterAuth(supabase, userId, fallbackPath, { fromOAuth = false } = {}) {
+      if (!userId || authRedirectLock) return false;
+      authRedirectLock = true;
+      try {
+        const next = getNextParam() || (fromOAuth ? consumeOauthNext() : "");
+        if (next && navigateTo(next)) return true;
+
+        const role = await getRole(supabase, userId);
+        if (isAdminRole(role) && navigateTo(CONFIG.ADMIN_DASH)) return true;
+        if (isTechRole(role) && navigateTo(CONFIG.TECH_DASH)) return true;
+        if (isDriverRole(role) && navigateTo(CONFIG.DRIVER_DASH)) return true;
+        if (isRestaurantEmployeeRole(role) && navigateTo(CONFIG.POS_DASH)) return true;
+        if (fallbackPath && navigateTo(fallbackPath)) return true;
+        return false;
+      } finally {
+        authRedirectLock = false;
+      }
+    }
+
     async function oauthGoogle(redirectNext) {
       const supabase = await getSupabase();
       if (!supabase) throw new Error(STR.missingSupabase);
 
       const loginUrl = new URL(CONFIG.LOGIN_PATH, location.origin);
-      if (redirectNext) loginUrl.searchParams.set("next", redirectNext);
 
-      await supabase.auth.signInWithOAuth({
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
           redirectTo: loginUrl.href,
+          skipBrowserRedirect: true,
+          queryParams: { prompt: "select_account" },
         },
       });
+      if (error) throw error;
+      if (!data?.url) throw new Error("URL OAuth Google indisponible.");
+      location.assign(data.url);
     }
 
     const supabase = await getSupabase();
@@ -504,6 +652,15 @@
       console.error("[SIGNUP]", STR.missingForm);
       return;
     }
+
+    try {
+      const { data } = await supabase.auth.getSession();
+      const existingUserId = data?.session?.user?.id || "";
+      if (existingUserId) {
+        await redirectAfterAuth(supabase, existingUserId, CONFIG.AFTER_SIGNUP_PATH);
+        return;
+      }
+    } catch (_) {}
 
     injectAuthMessageStyles();
 
@@ -521,14 +678,17 @@
       enhanceGoogleButton(googleBtn);
       googleBtn.addEventListener("click", async (e) => {
         e.preventDefault();
-        e.stopPropagation();
+        e.stopImmediatePropagation();
+        setGoogleLoading(googleBtn, true);
         try {
           const next = getNextParam();
+          if (next) storeOauthNext(next);
           await oauthGoogle(next);
         } catch (err) {
           showWebflowError(form, err?.message || "Connexion Google impossible.");
+          setGoogleLoading(googleBtn, false);
         }
-      });
+      }, true);
     }
 
     async function doSignup(event) {
@@ -573,11 +733,8 @@
         }
 
         // Success (session exists): redirect.
-        if (next) {
-          location.href = next;
-          return;
-        }
-        location.href = CONFIG.AFTER_SIGNUP_PATH;
+        const userId = data?.session?.user?.id || data?.user?.id || "";
+        await redirectAfterAuth(supabase, userId, CONFIG.AFTER_SIGNUP_PATH);
       } catch (err) {
         console.error("[SIGNUP] signUp error:", err);
         showWebflowError(form, err?.message || "Inscription impossible.");
@@ -604,5 +761,15 @@
       },
       true
     );
+
+    supabase.auth.onAuthStateChange((evt, session) => {
+      if (evt !== "SIGNED_IN") return;
+      const userId = session?.user?.id || "";
+      if (!userId) return;
+      setTimeout(() => {
+        const fromOAuth = Boolean(peekOauthNext());
+        redirectAfterAuth(supabase, userId, CONFIG.AFTER_SIGNUP_PATH, { fromOAuth }).catch(() => {});
+      }, 0);
+    });
   });
 })();
