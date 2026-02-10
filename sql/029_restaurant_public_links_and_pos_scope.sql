@@ -63,7 +63,7 @@ begin
 
       _i := _i + 1;
       if _i > 99 then
-        new.slug := left(_candidate, 40) || '-' || substr(encode(gen_random_bytes(3), 'hex'), 1, 6);
+        new.slug := left(_candidate, 40) || '-' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 6);
         exit;
       end if;
     end loop;
@@ -87,17 +87,17 @@ begin
         where lower(l.public_query_key) = lower(new.public_query_key)
           and l.id <> new.id
       );
-      new.public_query_key := left(_candidate, 23) || '_' || substr(encode(gen_random_bytes(4), 'hex'), 1, 8);
+      new.public_query_key := left(_candidate, 23) || '_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 8);
     end loop;
   end if;
 
   -- Public access key (parameter value), globally unique.
   if coalesce(nullif(new.public_access_key, ''), '') = '' then
-    new.public_access_key := 'rl_' || substr(encode(gen_random_bytes(12), 'hex'), 1, 24);
+    new.public_access_key := 'rl_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 24);
   end if;
   new.public_access_key := regexp_replace(lower(new.public_access_key), '[^a-z0-9_]+', '', 'g');
   if new.public_access_key = '' then
-    new.public_access_key := 'rl_' || substr(encode(gen_random_bytes(12), 'hex'), 1, 24);
+    new.public_access_key := 'rl_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 24);
   end if;
 
   if tg_op = 'INSERT' or new.public_access_key is distinct from old.public_access_key then
@@ -108,7 +108,7 @@ begin
         where lower(l.public_access_key) = lower(new.public_access_key)
           and l.id <> new.id
       );
-      new.public_access_key := 'rl_' || substr(encode(gen_random_bytes(12), 'hex'), 1, 24);
+      new.public_access_key := 'rl_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 24);
     end loop;
   end if;
 
