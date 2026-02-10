@@ -122,6 +122,11 @@ window.Webflow.push(async function () {
     scanner: {
       buffer: "",
       lastTs: 0,
+      firstTs: 0,
+      keys: 0,
+      fastMode: false,
+      targetEl: null,
+      targetStartValue: "",
       bound: false,
     },
     displayMode: loadDisplayMode(),
@@ -792,7 +797,7 @@ window.Webflow.push(async function () {
         gap: 10px;
       }
       html[data-page="admin-pos"] .pos-catalog.pos-catalog--tablet {
-        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
         gap: 12px;
       }
       html[data-page="admin-pos"] .pos-item {
@@ -817,18 +822,22 @@ window.Webflow.push(async function () {
         position: relative;
         width: 100%;
         aspect-ratio: 4/3;
+        min-height: 158px;
         overflow: hidden;
         background: linear-gradient(135deg, rgba(14,165,233,0.20), rgba(2,6,23,0.08));
       }
       html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-item__media {
-        aspect-ratio: 16/10;
+        aspect-ratio: 4/3;
+        min-height: 178px;
         background: linear-gradient(135deg, rgba(59,130,246,0.22), rgba(251,146,60,0.16));
       }
       html[data-page="admin-pos"] .pos-item__img {
         width: 100%;
         height: 100%;
         object-fit: cover;
+        object-position: center center;
         display: block;
+        transform: scale(1.01);
       }
       html[data-page="admin-pos"] .pos-item__placeholder {
         width: 100%;
@@ -848,11 +857,11 @@ window.Webflow.push(async function () {
         align-items: center;
         gap: 8px;
         padding: 8px 10px;
-        background: linear-gradient(180deg, rgba(15,23,42,0), rgba(15,23,42,0.72));
+        background: linear-gradient(180deg, rgba(15,23,42,0.06) 0%, rgba(15,23,42,0.54) 62%, rgba(15,23,42,0.76) 100%);
         color: #fff;
       }
       html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-item__overlay {
-        padding: 10px 10px;
+        padding: 9px 10px;
       }
       html[data-page="admin-pos"] .pos-item__overlay strong {
         font-size: 13px;
@@ -1105,14 +1114,15 @@ window.Webflow.push(async function () {
         border-radius: 10px;
       }
       html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-catalog.pos-catalog--tablet {
-        grid-template-columns: repeat(auto-fill, minmax(162px, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(182px, 1fr));
         gap: 10px;
       }
       html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-item--tablet {
         border-radius: 12px;
       }
       html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-item__media {
-        aspect-ratio: 16/10;
+        aspect-ratio: 4/3;
+        min-height: 178px;
       }
       html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-item__overlay {
         padding: 8px 10px;
@@ -1482,12 +1492,64 @@ window.Webflow.push(async function () {
     return true;
   }
 
-  function shouldIgnoreScannerKey(target) {
+  function isEditableTarget(target) {
     const el = target instanceof Element ? target : null;
     if (!el) return false;
     if (el.closest('[data-pos-scan-input="1"]')) return false;
-    if (el.closest("input, textarea, select, [contenteditable='true']")) return true;
-    return false;
+    return Boolean(el.closest("input, textarea, select, [contenteditable='true']"));
+  }
+
+  function isScanInputTarget(target) {
+    const el = target instanceof Element ? target : null;
+    if (!el) return false;
+    return Boolean(el.closest('[data-pos-scan-input="1"]'));
+  }
+
+  function readEditableValue(el) {
+    if (!el) return "";
+    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) {
+      return String(el.value || "");
+    }
+    if (el instanceof HTMLElement && el.isContentEditable) {
+      return String(el.textContent || "");
+    }
+    return "";
+  }
+
+  function writeEditableValue(el, value) {
+    if (!el) return;
+    const safe = String(value || "");
+    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) {
+      el.value = safe;
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+      return;
+    }
+    if (el instanceof HTMLElement && el.isContentEditable) {
+      el.textContent = safe;
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  }
+
+  function resetScannerState() {
+    state.scanner.buffer = "";
+    state.scanner.lastTs = 0;
+    state.scanner.firstTs = 0;
+    state.scanner.keys = 0;
+    state.scanner.fastMode = false;
+    state.scanner.targetEl = null;
+    state.scanner.targetStartValue = "";
+  }
+
+  function beginScannerSequence(target, ts) {
+    resetScannerState();
+    state.scanner.firstTs = ts;
+    state.scanner.lastTs = ts;
+    if (isEditableTarget(target)) {
+      const el = target instanceof Element ? target.closest("input, textarea, select, [contenteditable='true']") : null;
+      state.scanner.targetEl = el || null;
+      state.scanner.targetStartValue = readEditableValue(el);
+    }
   }
 
   function bindHardwareScanner(els) {
@@ -1497,28 +1559,54 @@ window.Webflow.push(async function () {
     document.addEventListener("keydown", (e) => {
       if (e.defaultPrevented) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
-      if (shouldIgnoreScannerKey(e.target)) return;
+      if (e.key === "Shift" || e.key === "AltGraph" || e.key === "CapsLock") return;
 
       const now = Date.now();
       const idle = now - Number(state.scanner.lastTs || 0);
-      if (idle > CONFIG.SCANNER_IDLE_MS) state.scanner.buffer = "";
+      if (!state.scanner.buffer || idle > CONFIG.SCANNER_IDLE_MS) {
+        beginScannerSequence(e.target, now);
+      }
 
-      if (e.key === "Enter") {
+      if (e.key === "Enter" || e.key === "Tab") {
         const code = String(state.scanner.buffer || "").trim();
-        state.scanner.buffer = "";
-        state.scanner.lastTs = now;
-        if (!code || code.length < 4) return;
-        e.preventDefault();
-        addByCode(els, code, 1, "scanner");
+        const elapsed = Math.max(1, now - Number(state.scanner.firstTs || now));
+        const keys = Math.max(1, Number(state.scanner.keys || 0));
+        const avgGap = elapsed / keys;
+        const isLikelyScanner = code.length >= 6 && (state.scanner.fastMode || avgGap <= 42);
+
+        if (isLikelyScanner) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (state.scanner.targetEl) {
+            writeEditableValue(state.scanner.targetEl, state.scanner.targetStartValue);
+          } else if (isScanInputTarget(e.target) && e.target instanceof HTMLInputElement) {
+            e.target.value = "";
+            e.target.dispatchEvent(new Event("input", { bubbles: true }));
+          }
+          addByCode(els, code, 1, "scanner");
+        }
+        resetScannerState();
         return;
       }
 
       if (e.key.length !== 1) return;
 
+      // Once a sequence is fast enough, keep scanner chars out of currently focused editable fields.
+      if (state.scanner.fastMode && isEditableTarget(e.target)) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+
       const next = `${state.scanner.buffer || ""}${e.key}`;
       state.scanner.buffer = next.slice(-80);
+      state.scanner.keys = Math.max(0, Number(state.scanner.keys || 0)) + 1;
+      const elapsed = Math.max(1, now - Number(state.scanner.firstTs || now));
+      const avgGap = elapsed / Math.max(1, state.scanner.keys);
+      if (state.scanner.keys >= 4 && avgGap <= 35) {
+        state.scanner.fastMode = true;
+      }
       state.scanner.lastTs = now;
-    });
+    }, true);
   }
 
   function removeCartLine(index) {
