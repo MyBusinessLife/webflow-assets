@@ -151,6 +151,10 @@
   const OAUTH_NEXT_KEY = String(CFG.OAUTH_NEXT_KEY || "mbl-oauth-next").trim() || "mbl-oauth-next";
   const OAUTH_NEXT_TTL_MS = Number(CFG.OAUTH_NEXT_TTL_MS || 15 * 60 * 1000);
 
+  const SIGNUP_DRAFT_KEY = String(CFG.SIGNUP_DRAFT_KEY || "mbl-signup-draft").trim() || "mbl-signup-draft";
+  const SIGNUP_DRAFT_TTL_MS = Number(CFG.SIGNUP_DRAFT_TTL_MS || 24 * 60 * 60 * 1000);
+  const SIGNUP_DRAFT_ID_PARAM = String(CFG.SIGNUP_DRAFT_ID_PARAM || "mbl_draft").trim() || "mbl_draft";
+
   function consumeOauthNext() {
     try {
       const raw = localStorage.getItem(OAUTH_NEXT_KEY);
@@ -167,6 +171,175 @@
         localStorage.removeItem(OAUTH_NEXT_KEY);
       } catch (_) {}
       return "";
+    }
+  }
+
+  function safeJsonParse(raw) {
+    try {
+      return JSON.parse(raw);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function isRecent(ts) {
+    const t = Number(ts || 0);
+    if (!Number.isFinite(t) || t <= 0) return false;
+    return Date.now() - t <= SIGNUP_DRAFT_TTL_MS;
+  }
+
+  function cleanDraftData(input) {
+    const src = input && typeof input === "object" ? input : {};
+    const out = {};
+
+    const keys = ["company_name", "full_name", "phone", "city"];
+    keys.forEach((k) => {
+      const v = String(src[k] ?? "").trim();
+      if (v) out[k] = v;
+    });
+
+    return out;
+  }
+
+  function consumeSignupDraftById(id) {
+    const draftId = String(id || "").trim();
+    if (!draftId) return null;
+    const key = `${SIGNUP_DRAFT_KEY}:${draftId}`;
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return null;
+      localStorage.removeItem(key);
+      const obj = safeJsonParse(raw);
+      if (!obj || !isRecent(obj.t)) return null;
+      const data = cleanDraftData(obj.data);
+      if (!Object.keys(data).length) return null;
+      return { data, _key: key };
+    } catch (_) {
+      try {
+        localStorage.removeItem(key);
+      } catch (_) {}
+      return null;
+    }
+  }
+
+  function consumeSignupDraftByEmail(email) {
+    const safeEmail = String(email || "").trim().toLowerCase();
+    if (!safeEmail) return null;
+    try {
+      const raw = localStorage.getItem(SIGNUP_DRAFT_KEY);
+      if (!raw) return null;
+      const obj = safeJsonParse(raw);
+      if (!obj || !isRecent(obj.t)) {
+        localStorage.removeItem(SIGNUP_DRAFT_KEY);
+        return null;
+      }
+      const draftEmail = String(obj.email || "").trim().toLowerCase();
+      if (!draftEmail || draftEmail !== safeEmail) return null;
+      localStorage.removeItem(SIGNUP_DRAFT_KEY);
+      const data = cleanDraftData(obj.data);
+      if (!Object.keys(data).length) return null;
+      return { data, _key: SIGNUP_DRAFT_KEY };
+    } catch (_) {
+      try {
+        localStorage.removeItem(SIGNUP_DRAFT_KEY);
+      } catch (_) {}
+      return null;
+    }
+  }
+
+  let draftApplyLock = false;
+  let lastDraftAttemptAt = 0;
+
+  async function applySignupDraftIfAny(supabase, session) {
+    if (draftApplyLock) return;
+    const now = Date.now();
+    if (now - lastDraftAttemptAt < 3000) return;
+    lastDraftAttemptAt = now;
+
+    const userId = session?.user?.id || "";
+    const userEmail = String(session?.user?.email || "").trim().toLowerCase();
+    if (!userId) return;
+
+    let draft = null;
+    let usedIdParam = false;
+
+    try {
+      const sp = new URLSearchParams(location.search);
+      const draftId = String(sp.get(SIGNUP_DRAFT_ID_PARAM) || "").trim();
+      if (draftId) {
+        draft = consumeSignupDraftById(draftId);
+        usedIdParam = true;
+      }
+    } catch (_) {}
+
+    if (!draft) {
+      draft = consumeSignupDraftByEmail(userEmail);
+    }
+    if (!draft) return;
+
+    draftApplyLock = true;
+    try {
+      // 1) Persist user metadata (useful for the auth bootstrap trigger + later UX).
+      const patch = cleanDraftData(draft.data);
+      if (Object.keys(patch).length) {
+        const res = await supabase.auth.updateUser({ data: patch });
+        if (res?.error) warn("signup draft: updateUser failed", res.error.message);
+      }
+
+      // 2) Persist to organization profile (best effort).
+      try {
+        const mem = await supabase
+          .from("organization_members")
+          .select("organization_id, role, is_default, created_at")
+          .eq("user_id", userId)
+          .eq("is_active", true)
+          .order("is_default", { ascending: false })
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+
+        const orgId = String(mem?.data?.organization_id || "").trim();
+        if (orgId) {
+          const profSel = await supabase
+            .from("organization_profiles")
+            .select("organization_id, legal_name, trade_name, phone, city, email")
+            .eq("organization_id", orgId)
+            .maybeSingle();
+
+          // Missing table / RLS not ready: ignore.
+          if (!profSel?.error) {
+            const existing = profSel?.data || {};
+            const company = String(patch.company_name || "").trim();
+            const phone = String(patch.phone || "").trim();
+            const city = String(patch.city || "").trim();
+
+            const up = { organization_id: orgId };
+            if (company && !String(existing.legal_name || "").trim()) up.legal_name = company;
+            if (company && !String(existing.trade_name || "").trim()) up.trade_name = company;
+            if (userEmail && !String(existing.email || "").trim()) up.email = userEmail;
+            if (phone && !String(existing.phone || "").trim()) up.phone = phone;
+            if (city && !String(existing.city || "").trim()) up.city = city;
+
+            if (Object.keys(up).length > 1) {
+              const upRes = await supabase.from("organization_profiles").upsert(up, { onConflict: "organization_id" });
+              if (upRes?.error) warn("signup draft: org profile upsert failed", upRes.error.message);
+            }
+          }
+        }
+      } catch (e) {
+        warn("signup draft: org profile write failed", e);
+      }
+
+      // 3) Clean URL param if we used the id-based draft (OAuth signup path).
+      if (usedIdParam) {
+        try {
+          const u = new URL(location.href);
+          u.searchParams.delete(SIGNUP_DRAFT_ID_PARAM);
+          history.replaceState({}, "", u.pathname + u.search);
+        } catch (_) {}
+      }
+    } finally {
+      draftApplyLock = false;
     }
   }
 
@@ -358,6 +531,7 @@
 
       if (session?.user) {
         await claimPendingInvitations(supabase);
+        await applySignupDraftIfAny(supabase, session);
       }
 
       log("run", {

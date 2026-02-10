@@ -277,6 +277,361 @@
     document.head.appendChild(st);
   }
 
+  function injectAuthShellStyles() {
+    if (document.getElementById("mbl-auth-shell-style")) return;
+    ensureThemeRgbVars();
+    const st = document.createElement("style");
+    st.id = "mbl-auth-shell-style";
+    st.textContent = `
+      html[data-page="login"],
+      html[data-page="signup"] {
+        height: 100%;
+      }
+
+      html[data-page="login"] body,
+      html[data-page="signup"] body {
+        min-height: 100%;
+        background:
+          radial-gradient(1200px 800px at 15% -10%, rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.20), transparent 60%),
+          radial-gradient(900px 700px at 115% 10%, rgba(2, 132, 199, 0.16), transparent 55%),
+          linear-gradient(180deg, #f7fbff 0%, #f3f6fb 45%, #f3f6fb 100%);
+      }
+
+      html[data-page="login"] body.mbl-auth-mode > :not(.mbl-auth-shell):not(script):not(style),
+      html[data-page="signup"] body.mbl-auth-mode > :not(.mbl-auth-shell):not(script):not(style) {
+        display: none !important;
+      }
+
+      .mbl-auth-shell {
+        position: relative;
+        min-height: 100vh;
+        display: flex;
+        align-items: stretch;
+        justify-content: center;
+        overflow: hidden;
+      }
+
+      .mbl-auth-shell__bg {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+
+      .mbl-auth-shell__orb {
+        position: absolute;
+        width: 520px;
+        height: 520px;
+        border-radius: 999px;
+        background:
+          radial-gradient(circle at 30% 30%,
+            rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.20),
+            rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.06) 45%,
+            transparent 70%);
+        filter: blur(18px);
+        transform: translate3d(0,0,0);
+        opacity: 0.9;
+        animation: mblAuthFloat 12s ease-in-out infinite;
+      }
+
+      .mbl-auth-shell__orb--a { left: -180px; top: -210px; animation-delay: -2s; }
+      .mbl-auth-shell__orb--b { right: -220px; bottom: -260px; animation-delay: -6s; }
+
+      @keyframes mblAuthFloat {
+        0%   { transform: translate3d(0,0,0) scale(1); }
+        50%  { transform: translate3d(20px, 18px, 0) scale(1.03); }
+        100% { transform: translate3d(0,0,0) scale(1); }
+      }
+
+      @keyframes mblAuthCardIn {
+        from { opacity: 0; transform: translateY(10px) scale(0.99); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+      }
+
+      @keyframes mblAuthHeroIn {
+        from { opacity: 0; transform: translateY(8px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      .mbl-auth-shell__grid {
+        position: relative;
+        z-index: 1;
+        width: min(1120px, 100%);
+        margin: 0 auto;
+        padding: clamp(18px, 4vw, 44px);
+        display: grid;
+        grid-template-columns: 1.05fr 0.95fr;
+        gap: clamp(16px, 3vw, 34px);
+        align-items: center;
+      }
+
+      .mbl-auth-hero {
+        animation: mblAuthHeroIn 520ms ease both;
+        color: rgba(2, 6, 23, 0.90);
+      }
+      .mbl-auth-brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 950;
+        letter-spacing: 0.10em;
+        text-transform: uppercase;
+        font-size: 12px;
+        color: rgba(2, 6, 23, 0.62);
+      }
+      .mbl-auth-brand__dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.95);
+        box-shadow: 0 0 0 4px rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.14);
+      }
+      .mbl-auth-h1 {
+        margin: 10px 0 10px;
+        font-size: clamp(30px, 4.2vw, 46px);
+        line-height: 1.06;
+        letter-spacing: -0.02em;
+        font-weight: 950;
+        color: rgba(2, 6, 23, 0.92);
+      }
+      .mbl-auth-lead {
+        margin: 0;
+        max-width: 56ch;
+        font-size: 15px;
+        line-height: 1.55;
+        color: rgba(15, 23, 42, 0.72);
+      }
+      .mbl-auth-badges {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 18px;
+      }
+      .mbl-auth-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 12px;
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.78);
+        border: 1px solid rgba(15, 23, 42, 0.10);
+        box-shadow: 0 12px 26px rgba(2, 6, 23, 0.08);
+        font-size: 13px;
+        font-weight: 800;
+        color: rgba(2, 6, 23, 0.76);
+      }
+      .mbl-auth-badge__icon {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.95);
+      }
+
+      .mbl-auth-card {
+        animation: mblAuthCardIn 540ms ease both;
+        background: rgba(255, 255, 255, 0.86);
+        border: 1px solid rgba(15, 23, 42, 0.12);
+        border-radius: 22px;
+        box-shadow:
+          0 26px 80px rgba(2, 6, 23, 0.14),
+          0 1px 0 rgba(255, 255, 255, 0.70) inset;
+        padding: 18px 18px 16px;
+        backdrop-filter: blur(8px);
+      }
+      .mbl-auth-card__top {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 10px;
+      }
+      .mbl-auth-card__title {
+        font-size: 18px;
+        font-weight: 950;
+        color: rgba(2, 6, 23, 0.90);
+        letter-spacing: -0.01em;
+      }
+      .mbl-auth-card__hint {
+        font-size: 12px;
+        line-height: 1.4;
+        color: rgba(15, 23, 42, 0.62);
+        font-weight: 700;
+      }
+
+      .mbl-auth-card .w-form { margin: 0; }
+      .mbl-auth-card form { margin: 0; }
+
+      .mbl-auth-card input[type="email"],
+      .mbl-auth-card input[type="password"],
+      .mbl-auth-card input[type="text"],
+      .mbl-auth-card input[type="tel"],
+      .mbl-auth-card input[type="number"],
+      .mbl-auth-card select,
+      .mbl-auth-card textarea {
+        width: 100%;
+        border-radius: 14px;
+        border: 1px solid rgba(15, 23, 42, 0.14);
+        background: rgba(255, 255, 255, 0.96);
+        padding: 13px 14px;
+        min-height: 48px;
+        font-size: 15px;
+        line-height: 1.2;
+        color: rgba(2, 6, 23, 0.88);
+        box-shadow: 0 10px 24px rgba(2, 6, 23, 0.06);
+        transition: box-shadow 160ms ease, border-color 160ms ease, transform 160ms ease;
+      }
+
+      .mbl-auth-card input::placeholder,
+      .mbl-auth-card textarea::placeholder {
+        color: rgba(15, 23, 42, 0.46);
+        font-weight: 650;
+      }
+
+      .mbl-auth-card input:focus,
+      .mbl-auth-card select:focus,
+      .mbl-auth-card textarea:focus {
+        outline: none;
+        border-color: rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.60);
+        box-shadow:
+          0 18px 40px rgba(2, 6, 23, 0.10),
+          0 0 0 4px rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.14);
+        transform: translateY(-1px);
+      }
+
+      .mbl-auth-card button[type="submit"],
+      .mbl-auth-card input[type="submit"] {
+        width: 100%;
+        border-radius: 14px;
+        min-height: 50px;
+        border: 1px solid rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.22);
+        background: rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.98);
+        color: #fff;
+        font-weight: 950;
+        letter-spacing: 0.01em;
+        box-shadow: 0 20px 52px rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.22);
+        transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
+        cursor: pointer;
+      }
+
+      .mbl-auth-card button[type="submit"]:hover,
+      .mbl-auth-card input[type="submit"]:hover {
+        transform: translateY(-1px);
+        filter: saturate(1.02);
+        box-shadow: 0 26px 68px rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.26);
+      }
+
+      .mbl-auth-card button[type="submit"]:disabled,
+      .mbl-auth-card input[type="submit"]:disabled {
+        opacity: 0.7;
+        transform: none;
+        cursor: not-allowed;
+        box-shadow: 0 18px 40px rgba(2, 6, 23, 0.10);
+      }
+
+      .mbl-auth-divider {
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        align-items: center;
+        gap: 10px;
+        margin: 14px 0;
+        color: rgba(15, 23, 42, 0.52);
+        font-size: 12px;
+        font-weight: 850;
+        letter-spacing: 0.10em;
+        text-transform: uppercase;
+      }
+      .mbl-auth-divider:before,
+      .mbl-auth-divider:after {
+        content: "";
+        height: 1px;
+        background: rgba(15, 23, 42, 0.12);
+      }
+
+      .mbl-auth-foot {
+        margin-top: 12px;
+        font-size: 13px;
+        color: rgba(15, 23, 42, 0.64);
+        font-weight: 750;
+      }
+      .mbl-auth-foot a {
+        color: rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.92);
+        text-decoration: none;
+        font-weight: 950;
+      }
+      .mbl-auth-foot a:hover { text-decoration: underline; }
+
+      @media (max-width: 920px) {
+        .mbl-auth-shell__grid {
+          grid-template-columns: 1fr;
+          align-items: start;
+        }
+        .mbl-auth-hero { order: 2; }
+        .mbl-auth-card { order: 1; }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .mbl-auth-shell__orb,
+        .mbl-auth-hero,
+        .mbl-auth-card {
+          animation: none !important;
+        }
+      }
+    `;
+    document.head.appendChild(st);
+  }
+
+  function mountAuthShell({ mode, form }) {
+    if (!form) return;
+    if (document.querySelector(".mbl-auth-shell")) return;
+    injectAuthShellStyles();
+
+    const wForm = form.closest(".w-form") || form;
+
+    const shell = document.createElement("div");
+    shell.className = "mbl-auth-shell";
+
+    const title = mode === "signup" ? "Creer un compte" : "Connexion";
+    const ctaText = mode === "signup" ? "Deja un compte ? Se connecter" : "Nouveau ici ? Creer un compte";
+    const ctaHref = mode === "signup" ? `${APP_ROOT}/login` : `${APP_ROOT}/signup`;
+
+    shell.innerHTML = `
+      <div class="mbl-auth-shell__bg" aria-hidden="true">
+        <div class="mbl-auth-shell__orb mbl-auth-shell__orb--a"></div>
+        <div class="mbl-auth-shell__orb mbl-auth-shell__orb--b"></div>
+      </div>
+      <div class="mbl-auth-shell__grid">
+        <div class="mbl-auth-hero">
+          <div class="mbl-auth-brand"><span class="mbl-auth-brand__dot"></span>My Business Life</div>
+          <div class="mbl-auth-h1">${escapeHTML(title)}</div>
+          <p class="mbl-auth-lead">
+            Une interface simple pour gerer devis, factures, POS et interventions, avec des droits par equipe.
+          </p>
+          <div class="mbl-auth-badges" aria-hidden="true">
+            <div class="mbl-auth-badge"><span class="mbl-auth-badge__icon"></span>Multi-etablissements</div>
+            <div class="mbl-auth-badge"><span class="mbl-auth-badge__icon"></span>POS & restaurant</div>
+            <div class="mbl-auth-badge"><span class="mbl-auth-badge__icon"></span>Devis & factures</div>
+          </div>
+        </div>
+        <div class="mbl-auth-card">
+          <div class="mbl-auth-card__top">
+            <div class="mbl-auth-card__title">${escapeHTML(title)}</div>
+            <div class="mbl-auth-card__hint">Securise et rapide</div>
+          </div>
+          <div class="mbl-auth-divider">ou</div>
+          <div data-mbl-auth-slot="form"></div>
+          <div class="mbl-auth-foot"><a href="${escapeHTML(ctaHref)}">${escapeHTML(ctaText)}</a></div>
+        </div>
+      </div>
+    `;
+
+    try {
+      document.body.classList.add("mbl-auth-mode");
+    } catch (_) {}
+    document.body.prepend(shell);
+
+    const slot = shell.querySelector('[data-mbl-auth-slot="form"]');
+    if (slot) slot.appendChild(wForm);
+  }
+
   function googleIconSvg() {
     // Compact multi-color Google "G" icon (inline SVG).
     return `
@@ -682,6 +1037,7 @@
     return;
   }
 
+  mountAuthShell({ mode: "login", form });
   injectAuthMessageStyles();
 
   // If OAuth callback returned an error, show it in the Webflow form error area.
@@ -695,9 +1051,14 @@
   // Optional Google OAuth button:
   // Add a button/link with [data-auth-google] (recommended) or #btnGoogle or .btnGoogle.
   const googleBtn = document.querySelector("[data-auth-google], #btnGoogle, .btnGoogle");
+  const authDivider = document.querySelector(".mbl-auth-divider");
   if (googleBtn) {
     try {
       if (googleBtn.tagName === "BUTTON" && !googleBtn.getAttribute("type")) googleBtn.setAttribute("type", "button");
+    } catch (_) {}
+    // If the button is inside the Webflow form, pull it up above the divider for a cleaner layout.
+    try {
+      if (authDivider?.parentElement) authDivider.parentElement.insertBefore(googleBtn, authDivider);
     } catch (_) {}
     enhanceGoogleButton(googleBtn);
     googleBtn.addEventListener("click", async (e) => {
@@ -724,6 +1085,8 @@
         setGoogleLoading(googleBtn, false);
       }
     }, true);
+  } else if (authDivider) {
+    authDivider.remove();
   }
 
   const emailEl = findEmailInput(form);

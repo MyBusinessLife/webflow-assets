@@ -56,11 +56,15 @@
     const OAUTH_NEXT_KEY = String(CFG.OAUTH_NEXT_KEY || "mbl-oauth-next").trim() || "mbl-oauth-next";
     const OAUTH_NEXT_TTL_MS = Number(CFG.OAUTH_NEXT_TTL_MS || 15 * 60 * 1000);
 
+    const SIGNUP_DRAFT_KEY = String(CFG.SIGNUP_DRAFT_KEY || "mbl-signup-draft").trim() || "mbl-signup-draft";
+    const SIGNUP_DRAFT_TTL_MS = Number(CFG.SIGNUP_DRAFT_TTL_MS || 24 * 60 * 60 * 1000);
+
     const STR = {
       missingSupabase: "Supabase non charge.",
       missingForm: "Formulaire d'inscription introuvable (email + mot de passe).",
       missingEmail: "Renseigne ton email.",
       missingPassword: "Choisis un mot de passe.",
+      missingCompany: "Renseigne le nom de l'entreprise.",
       passwordTooShort: "Mot de passe trop court (8 caracteres minimum).",
       passwordMismatch: "Les mots de passe ne correspondent pas.",
       signingUp: "Creation du compte…",
@@ -280,6 +284,361 @@
       document.head.appendChild(st);
     }
 
+    function injectAuthShellStyles() {
+      if (document.getElementById("mbl-auth-shell-style")) return;
+      ensureThemeRgbVars();
+      const st = document.createElement("style");
+      st.id = "mbl-auth-shell-style";
+      st.textContent = `
+        html[data-page="login"],
+        html[data-page="signup"] {
+          height: 100%;
+        }
+
+        html[data-page="login"] body,
+        html[data-page="signup"] body {
+          min-height: 100%;
+          background:
+            radial-gradient(1200px 800px at 15% -10%, rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.20), transparent 60%),
+            radial-gradient(900px 700px at 115% 10%, rgba(2, 132, 199, 0.16), transparent 55%),
+            linear-gradient(180deg, #f7fbff 0%, #f3f6fb 45%, #f3f6fb 100%);
+        }
+
+        html[data-page="login"] body.mbl-auth-mode > :not(.mbl-auth-shell):not(script):not(style),
+        html[data-page="signup"] body.mbl-auth-mode > :not(.mbl-auth-shell):not(script):not(style) {
+          display: none !important;
+        }
+
+        .mbl-auth-shell {
+          position: relative;
+          min-height: 100vh;
+          display: flex;
+          align-items: stretch;
+          justify-content: center;
+          overflow: hidden;
+        }
+
+        .mbl-auth-shell__bg {
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+        }
+
+        .mbl-auth-shell__orb {
+          position: absolute;
+          width: 520px;
+          height: 520px;
+          border-radius: 999px;
+          background:
+            radial-gradient(circle at 30% 30%,
+              rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.20),
+              rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.06) 45%,
+              transparent 70%);
+          filter: blur(18px);
+          transform: translate3d(0,0,0);
+          opacity: 0.9;
+          animation: mblAuthFloat 12s ease-in-out infinite;
+        }
+
+        .mbl-auth-shell__orb--a { left: -180px; top: -210px; animation-delay: -2s; }
+        .mbl-auth-shell__orb--b { right: -220px; bottom: -260px; animation-delay: -6s; }
+
+        @keyframes mblAuthFloat {
+          0%   { transform: translate3d(0,0,0) scale(1); }
+          50%  { transform: translate3d(20px, 18px, 0) scale(1.03); }
+          100% { transform: translate3d(0,0,0) scale(1); }
+        }
+
+        @keyframes mblAuthCardIn {
+          from { opacity: 0; transform: translateY(10px) scale(0.99); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        @keyframes mblAuthHeroIn {
+          from { opacity: 0; transform: translateY(8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+
+        .mbl-auth-shell__grid {
+          position: relative;
+          z-index: 1;
+          width: min(1120px, 100%);
+          margin: 0 auto;
+          padding: clamp(18px, 4vw, 44px);
+          display: grid;
+          grid-template-columns: 1.05fr 0.95fr;
+          gap: clamp(16px, 3vw, 34px);
+          align-items: center;
+        }
+
+        .mbl-auth-hero {
+          animation: mblAuthHeroIn 520ms ease both;
+          color: rgba(2, 6, 23, 0.90);
+        }
+        .mbl-auth-brand {
+          display: inline-flex;
+          align-items: center;
+          gap: 10px;
+          font-weight: 950;
+          letter-spacing: 0.10em;
+          text-transform: uppercase;
+          font-size: 12px;
+          color: rgba(2, 6, 23, 0.62);
+        }
+        .mbl-auth-brand__dot {
+          width: 10px;
+          height: 10px;
+          border-radius: 999px;
+          background: rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.95);
+          box-shadow: 0 0 0 4px rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.14);
+        }
+        .mbl-auth-h1 {
+          margin: 10px 0 10px;
+          font-size: clamp(30px, 4.2vw, 46px);
+          line-height: 1.06;
+          letter-spacing: -0.02em;
+          font-weight: 950;
+          color: rgba(2, 6, 23, 0.92);
+        }
+        .mbl-auth-lead {
+          margin: 0;
+          max-width: 56ch;
+          font-size: 15px;
+          line-height: 1.55;
+          color: rgba(15, 23, 42, 0.72);
+        }
+        .mbl-auth-badges {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          margin-top: 18px;
+        }
+        .mbl-auth-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 12px;
+          border-radius: 14px;
+          background: rgba(255, 255, 255, 0.78);
+          border: 1px solid rgba(15, 23, 42, 0.10);
+          box-shadow: 0 12px 26px rgba(2, 6, 23, 0.08);
+          font-size: 13px;
+          font-weight: 800;
+          color: rgba(2, 6, 23, 0.76);
+        }
+        .mbl-auth-badge__icon {
+          width: 10px;
+          height: 10px;
+          border-radius: 999px;
+          background: rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.95);
+        }
+
+        .mbl-auth-card {
+          animation: mblAuthCardIn 540ms ease both;
+          background: rgba(255, 255, 255, 0.86);
+          border: 1px solid rgba(15, 23, 42, 0.12);
+          border-radius: 22px;
+          box-shadow:
+            0 26px 80px rgba(2, 6, 23, 0.14),
+            0 1px 0 rgba(255, 255, 255, 0.70) inset;
+          padding: 18px 18px 16px;
+          backdrop-filter: blur(8px);
+        }
+        .mbl-auth-card__top {
+          display: flex;
+          align-items: flex-end;
+          justify-content: space-between;
+          gap: 12px;
+          margin-bottom: 10px;
+        }
+        .mbl-auth-card__title {
+          font-size: 18px;
+          font-weight: 950;
+          color: rgba(2, 6, 23, 0.90);
+          letter-spacing: -0.01em;
+        }
+        .mbl-auth-card__hint {
+          font-size: 12px;
+          line-height: 1.4;
+          color: rgba(15, 23, 42, 0.62);
+          font-weight: 700;
+        }
+
+        .mbl-auth-card .w-form { margin: 0; }
+        .mbl-auth-card form { margin: 0; }
+
+        .mbl-auth-card input[type="email"],
+        .mbl-auth-card input[type="password"],
+        .mbl-auth-card input[type="text"],
+        .mbl-auth-card input[type="tel"],
+        .mbl-auth-card input[type="number"],
+        .mbl-auth-card select,
+        .mbl-auth-card textarea {
+          width: 100%;
+          border-radius: 14px;
+          border: 1px solid rgba(15, 23, 42, 0.14);
+          background: rgba(255, 255, 255, 0.96);
+          padding: 13px 14px;
+          min-height: 48px;
+          font-size: 15px;
+          line-height: 1.2;
+          color: rgba(2, 6, 23, 0.88);
+          box-shadow: 0 10px 24px rgba(2, 6, 23, 0.06);
+          transition: box-shadow 160ms ease, border-color 160ms ease, transform 160ms ease;
+        }
+
+        .mbl-auth-card input::placeholder,
+        .mbl-auth-card textarea::placeholder {
+          color: rgba(15, 23, 42, 0.46);
+          font-weight: 650;
+        }
+
+        .mbl-auth-card input:focus,
+        .mbl-auth-card select:focus,
+        .mbl-auth-card textarea:focus {
+          outline: none;
+          border-color: rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.60);
+          box-shadow:
+            0 18px 40px rgba(2, 6, 23, 0.10),
+            0 0 0 4px rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.14);
+          transform: translateY(-1px);
+        }
+
+        .mbl-auth-card button[type="submit"],
+        .mbl-auth-card input[type="submit"] {
+          width: 100%;
+          border-radius: 14px;
+          min-height: 50px;
+          border: 1px solid rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.22);
+          background: rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.98);
+          color: #fff;
+          font-weight: 950;
+          letter-spacing: 0.01em;
+          box-shadow: 0 20px 52px rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.22);
+          transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
+          cursor: pointer;
+        }
+
+        .mbl-auth-card button[type="submit"]:hover,
+        .mbl-auth-card input[type="submit"]:hover {
+          transform: translateY(-1px);
+          filter: saturate(1.02);
+          box-shadow: 0 26px 68px rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.26);
+        }
+
+        .mbl-auth-card button[type="submit"]:disabled,
+        .mbl-auth-card input[type="submit"]:disabled {
+          opacity: 0.7;
+          transform: none;
+          cursor: not-allowed;
+          box-shadow: 0 18px 40px rgba(2, 6, 23, 0.10);
+        }
+
+        .mbl-auth-divider {
+          display: grid;
+          grid-template-columns: 1fr auto 1fr;
+          align-items: center;
+          gap: 10px;
+          margin: 14px 0;
+          color: rgba(15, 23, 42, 0.52);
+          font-size: 12px;
+          font-weight: 850;
+          letter-spacing: 0.10em;
+          text-transform: uppercase;
+        }
+        .mbl-auth-divider:before,
+        .mbl-auth-divider:after {
+          content: "";
+          height: 1px;
+          background: rgba(15, 23, 42, 0.12);
+        }
+
+        .mbl-auth-foot {
+          margin-top: 12px;
+          font-size: 13px;
+          color: rgba(15, 23, 42, 0.64);
+          font-weight: 750;
+        }
+        .mbl-auth-foot a {
+          color: rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.92);
+          text-decoration: none;
+          font-weight: 950;
+        }
+        .mbl-auth-foot a:hover { text-decoration: underline; }
+
+        @media (max-width: 920px) {
+          .mbl-auth-shell__grid {
+            grid-template-columns: 1fr;
+            align-items: start;
+          }
+          .mbl-auth-hero { order: 2; }
+          .mbl-auth-card { order: 1; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .mbl-auth-shell__orb,
+          .mbl-auth-hero,
+          .mbl-auth-card {
+            animation: none !important;
+          }
+        }
+      `;
+      document.head.appendChild(st);
+    }
+
+    function mountAuthShell({ mode, form }) {
+      if (!form) return;
+      if (document.querySelector(".mbl-auth-shell")) return;
+      injectAuthShellStyles();
+
+      const wForm = form.closest(".w-form") || form;
+
+      const shell = document.createElement("div");
+      shell.className = "mbl-auth-shell";
+
+      const title = mode === "signup" ? "Creer un compte" : "Connexion";
+      const ctaText = mode === "signup" ? "Deja un compte ? Se connecter" : "Nouveau ici ? Creer un compte";
+      const ctaHref = mode === "signup" ? `${APP_ROOT}/login` : `${APP_ROOT}/signup`;
+
+      shell.innerHTML = `
+        <div class="mbl-auth-shell__bg" aria-hidden="true">
+          <div class="mbl-auth-shell__orb mbl-auth-shell__orb--a"></div>
+          <div class="mbl-auth-shell__orb mbl-auth-shell__orb--b"></div>
+        </div>
+        <div class="mbl-auth-shell__grid">
+          <div class="mbl-auth-hero">
+            <div class="mbl-auth-brand"><span class="mbl-auth-brand__dot"></span>My Business Life</div>
+            <div class="mbl-auth-h1">${escapeHTML(title)}</div>
+            <p class="mbl-auth-lead">
+              Cree ton espace et commence a gerer ton activite (devis, factures, POS, interventions) avec des droits par equipe.
+            </p>
+            <div class="mbl-auth-badges" aria-hidden="true">
+              <div class="mbl-auth-badge"><span class="mbl-auth-badge__icon"></span>Multi-etablissements</div>
+              <div class="mbl-auth-badge"><span class="mbl-auth-badge__icon"></span>POS & restaurant</div>
+              <div class="mbl-auth-badge"><span class="mbl-auth-badge__icon"></span>Devis & factures</div>
+            </div>
+          </div>
+          <div class="mbl-auth-card">
+            <div class="mbl-auth-card__top">
+              <div class="mbl-auth-card__title">${escapeHTML(title)}</div>
+              <div class="mbl-auth-card__hint">Securise et rapide</div>
+            </div>
+            <div class="mbl-auth-divider">ou</div>
+            <div data-mbl-auth-slot="form"></div>
+            <div class="mbl-auth-foot"><a href="${escapeHTML(ctaHref)}">${escapeHTML(ctaText)}</a></div>
+          </div>
+        </div>
+      `;
+
+      try {
+        document.body.classList.add("mbl-auth-mode");
+      } catch (_) {}
+      document.body.prepend(shell);
+
+      const slot = shell.querySelector('[data-mbl-auth-slot="form"]');
+      if (slot) slot.appendChild(wForm);
+    }
+
     function googleIconSvg() {
       return `
         <svg viewBox="0 0 48 48" aria-hidden="true" focusable="false">
@@ -431,6 +790,25 @@
       );
     }
 
+    function findPhoneInput(form) {
+      return (
+        form.querySelector('input[type="tel"]') ||
+        form.querySelector('input[name*="phone" i]') ||
+        form.querySelector('input[name*="tel" i]') ||
+        form.querySelector('input[autocomplete="tel" i]') ||
+        null
+      );
+    }
+
+    function findCityInput(form) {
+      return (
+        form.querySelector('input[name="city" i]') ||
+        form.querySelector('input[name*="ville" i]') ||
+        form.querySelector('input[autocomplete="address-level2" i]') ||
+        null
+      );
+    }
+
     function findSubmitButton(form) {
       return (
         form.querySelector('button[type="submit"]') ||
@@ -518,6 +896,84 @@
         return;
       }
       alert(message || "");
+    }
+
+    function storeSignupDraft({ email, data }) {
+      const safeEmail = String(email || "").trim().toLowerCase();
+      const safeData = data && typeof data === "object" ? data : {};
+      if (!safeEmail) return;
+      try {
+        localStorage.setItem(SIGNUP_DRAFT_KEY, JSON.stringify({ t: Date.now(), email: safeEmail, data: safeData }));
+      } catch (_) {}
+    }
+
+    function randomId() {
+      try {
+        if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+      } catch (_) {}
+      return Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10);
+    }
+
+    function storeSignupDraftById(draftId, data) {
+      const id = String(draftId || "").trim();
+      const safeData = data && typeof data === "object" ? data : {};
+      if (!id) return;
+      try {
+        localStorage.setItem(`${SIGNUP_DRAFT_KEY}:${id}`, JSON.stringify({ t: Date.now(), data: safeData }));
+      } catch (_) {}
+    }
+
+    function ensureInput({
+      form,
+      name,
+      type = "text",
+      placeholder = "",
+      autocomplete = "",
+      inputMode = "",
+      required = false,
+      afterEl = null,
+    }) {
+      if (!form || !name) return null;
+
+      const existing =
+        form.querySelector(`input[name="${CSS.escape(name)}"]`) ||
+        form.querySelector(`input#${CSS.escape(name)}`) ||
+        null;
+      if (existing) {
+        try {
+          if (placeholder && !existing.getAttribute("placeholder")) existing.setAttribute("placeholder", placeholder);
+          if (autocomplete && !existing.getAttribute("autocomplete")) existing.setAttribute("autocomplete", autocomplete);
+          if (inputMode && !existing.getAttribute("inputmode")) existing.setAttribute("inputmode", inputMode);
+          existing.setAttribute("data-mbl-auth-field", name);
+          if (required) existing.setAttribute("required", "");
+        } catch (_) {}
+        return existing;
+      }
+
+      const input = document.createElement("input");
+      input.type = type;
+      input.name = name;
+      input.id = name;
+      input.placeholder = placeholder || "";
+      input.autocomplete = autocomplete || "";
+      if (inputMode) input.inputMode = inputMode;
+      input.setAttribute("data-mbl-auth-field", name);
+      if (required) input.required = true;
+
+      // Insert near the top, but keep email/password order sane.
+      try {
+        if (afterEl && afterEl.parentElement) {
+          afterEl.insertAdjacentElement("afterend", input);
+        } else {
+          const first = form.querySelector("input, select, textarea, button") || null;
+          if (first) form.insertBefore(input, first);
+          else form.appendChild(input);
+        }
+      } catch (_) {
+        form.appendChild(input);
+      }
+
+      return input;
     }
 
     function setButtonLoading(btn, loading) {
@@ -631,7 +1087,7 @@
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: loginUrl.href,
+          redirectTo: String(redirectNext || "") || loginUrl.href,
           skipBrowserRedirect: true,
           queryParams: { prompt: "select_account" },
         },
@@ -653,6 +1109,8 @@
       return;
     }
 
+    mountAuthShell({ mode: "signup", form });
+
     try {
       const { data } = await supabase.auth.getSession();
       const existingUserId = data?.session?.user?.id || "";
@@ -666,14 +1124,75 @@
 
     const emailEl = findEmailInput(form);
     const { pwd: pwdEl, confirm: confirmEl } = findPasswordInputs(form);
-    const companyEl = findCompanyInput(form);
-    const nameEl = findNameInput(form);
+    const companyEl =
+      findCompanyInput(form) ||
+      ensureInput({
+        form,
+        name: "company_name",
+        type: "text",
+        placeholder: "Nom de l'entreprise",
+        autocomplete: "organization",
+        required: true,
+      });
+
+    const nameEl =
+      findNameInput(form) ||
+      ensureInput({
+        form,
+        name: "full_name",
+        type: "text",
+        placeholder: "Nom et prenom",
+        autocomplete: "name",
+        required: true,
+      });
+
+    const phoneEl =
+      findPhoneInput(form) ||
+      ensureInput({
+        form,
+        name: "phone",
+        type: "tel",
+        placeholder: "Telephone (optionnel)",
+        autocomplete: "tel",
+        inputMode: "tel",
+        afterEl: emailEl || nameEl || null,
+      });
+
+    const cityEl =
+      findCityInput(form) ||
+      ensureInput({
+        form,
+        name: "city",
+        type: "text",
+        placeholder: "Ville (optionnel)",
+        autocomplete: "address-level2",
+        afterEl: phoneEl || emailEl || null,
+      });
+
+    let confirmField = confirmEl;
+    if (pwdEl && !confirmField) {
+      confirmField = ensureInput({
+        form,
+        name: "password_confirm",
+        type: "password",
+        placeholder: "Confirmer le mot de passe",
+        autocomplete: "new-password",
+        required: true,
+        afterEl: pwdEl,
+      });
+    }
+
     const submitBtn = findSubmitButton(form);
 
     const googleBtn = document.querySelector("[data-auth-google], #btnGoogle, .btnGoogle");
+    const authDivider = document.querySelector(".mbl-auth-divider");
     if (googleBtn) {
       try {
         if (googleBtn.tagName === "BUTTON" && !googleBtn.getAttribute("type")) googleBtn.setAttribute("type", "button");
+      } catch (_) {}
+      // If the button is inside the Webflow form, pull it up above the divider for a cleaner layout.
+      try {
+        if (authDivider?.parentElement) authDivider.parentElement.insertBefore(googleBtn, authDivider);
       } catch (_) {}
       enhanceGoogleButton(googleBtn);
       googleBtn.addEventListener("click", async (e) => {
@@ -681,14 +1200,34 @@
         e.stopImmediatePropagation();
         setGoogleLoading(googleBtn, true);
         try {
+          const companyName = String(companyEl?.value || "").trim();
+          if (!companyName) {
+            showWebflowError(form, STR.missingCompany);
+            setGoogleLoading(googleBtn, false);
+            return;
+          }
+
+          const fullName = String(nameEl?.value || "").trim();
+          const draftId = randomId();
+          storeSignupDraftById(draftId, {
+            company_name: companyName || undefined,
+            full_name: fullName || undefined,
+            phone: String(phoneEl?.value || "").trim() || undefined,
+            city: String(cityEl?.value || "").trim() || undefined,
+          });
+
           const next = getNextParam();
           if (next) storeOauthNext(next);
-          await oauthGoogle(next);
+          const redirectTo = new URL(CONFIG.LOGIN_PATH, location.origin);
+          redirectTo.searchParams.set("mbl_draft", draftId);
+          await oauthGoogle(redirectTo.href);
         } catch (err) {
           showWebflowError(form, err?.message || "Connexion Google impossible.");
           setGoogleLoading(googleBtn, false);
         }
       }, true);
+    } else if (authDivider) {
+      authDivider.remove();
     }
 
     async function doSignup(event) {
@@ -697,20 +1236,33 @@
 
       const email = String(emailEl?.value || "").trim();
       const password = String(pwdEl?.value || "");
-      const confirm = String(confirmEl?.value || "");
+      const confirm = String(confirmField?.value || "");
 
       if (!email) return showWebflowError(form, STR.missingEmail);
       if (!password) return showWebflowError(form, STR.missingPassword);
+      const companyName = String(companyEl?.value || "").trim();
+      if (!companyName) return showWebflowError(form, STR.missingCompany);
       if (password.length < 8) return showWebflowError(form, STR.passwordTooShort);
-      if (confirmEl && confirm && confirm !== password) return showWebflowError(form, STR.passwordMismatch);
+      if (confirmField && confirm && confirm !== password) return showWebflowError(form, STR.passwordMismatch);
 
       setButtonLoading(submitBtn, true);
 
       try {
-        const companyName = String(companyEl?.value || "").trim();
         const fullName = String(nameEl?.value || "").trim();
+        const phone = String(phoneEl?.value || "").trim();
+        const city = String(cityEl?.value || "").trim();
 
         const next = getNextParam();
+
+        storeSignupDraft({
+          email,
+          data: {
+            company_name: companyName || undefined,
+            full_name: fullName || undefined,
+            phone: phone || undefined,
+            city: city || undefined,
+          },
+        });
 
         const { data, error } = await supabase.auth.signUp({
           email,
@@ -720,6 +1272,8 @@
             data: {
               company_name: companyName || undefined,
               full_name: fullName || undefined,
+              phone: phone || undefined,
+              city: city || undefined,
             },
           },
         });
