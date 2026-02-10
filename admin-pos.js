@@ -363,6 +363,19 @@ window.Webflow.push(async function () {
         box-shadow: 0 22px 60px rgba(2,6,23,0.10);
         color: var(--pos-text);
       }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] {
+        --pos-primary: #ff8a00;
+        --pos-text: rgba(241,245,249,0.96);
+        --pos-muted: rgba(203,213,225,0.82);
+        --pos-border: rgba(148,163,184,0.22);
+        --pos-card: rgba(10,16,32,0.72);
+        background:
+          radial-gradient(900px 600px at -10% -20%, rgba(255,138,0,0.24), transparent 60%),
+          radial-gradient(1000px 620px at 120% 0%, rgba(14,165,233,0.20), transparent 58%),
+          linear-gradient(180deg, rgba(8,12,24,0.96), rgba(6,10,20,0.98));
+        border-color: rgba(148,163,184,0.26);
+        box-shadow: 0 30px 80px rgba(2,6,23,0.55), inset 0 1px 0 rgba(255,255,255,0.04);
+      }
 
       html[data-page="admin-pos"] .pos-head {
         display:flex;
@@ -378,6 +391,12 @@ window.Webflow.push(async function () {
       }
       html[data-page="admin-pos"] .pos-title { margin:0; font-size: 24px; font-weight: 1000; letter-spacing: -0.02em; }
       html[data-page="admin-pos"] .pos-subtitle { margin: 4px 0 0; color: var(--pos-muted); font-weight: 800; }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-title {
+        color: rgba(248,250,252,0.98);
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-subtitle {
+        color: rgba(203,213,225,0.80);
+      }
 
       html[data-page="admin-pos"] .pos-alert {
         display:none;
@@ -413,6 +432,12 @@ window.Webflow.push(async function () {
         border-radius: 16px;
         padding: 12px;
         box-shadow: 0 14px 28px rgba(2,6,23,0.07);
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-card {
+        background: linear-gradient(180deg, rgba(15,23,42,0.72), rgba(15,23,42,0.62));
+        border-color: rgba(148,163,184,0.22);
+        box-shadow: 0 22px 34px rgba(2,6,23,0.36);
+        backdrop-filter: blur(8px);
       }
 
       html[data-page="admin-pos"] .pos-card__title {
@@ -492,6 +517,11 @@ window.Webflow.push(async function () {
         cursor: pointer;
         transition: transform .12s ease, border-color .16s ease, box-shadow .16s ease;
       }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-btn {
+        background: rgba(30,41,59,0.82);
+        color: rgba(241,245,249,0.95);
+        border-color: rgba(148,163,184,0.30);
+      }
       html[data-page="admin-pos"] .pos-btn:hover {
         transform: translateY(-1px);
         border-color: rgba(14,165,233,0.40);
@@ -508,6 +538,20 @@ window.Webflow.push(async function () {
         color: #fff;
         border-color: rgba(14,165,233,0.58);
       }
+      html[data-page="admin-pos"] .pos-btn--checkout {
+        min-width: 180px;
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-btn--primary {
+        background: linear-gradient(180deg, rgba(255,144,32,0.98), rgba(245,124,0,0.98));
+        border-color: rgba(251,146,60,0.72);
+        color: #fff;
+        box-shadow: 0 16px 28px rgba(245,124,0,0.30);
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-btn--checkout {
+        min-height: 46px;
+        font-size: 15px;
+        letter-spacing: 0.02em;
+      }
       html[data-page="admin-pos"] .pos-btn--ok {
         border-color: rgba(34,197,94,0.36);
         color: rgba(21,128,61,0.96);
@@ -516,6 +560,11 @@ window.Webflow.push(async function () {
         background: rgba(14,165,233,0.18);
         border-color: rgba(14,165,233,0.44);
         color: rgba(12,74,110,0.98);
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-btn--tablet[aria-pressed="true"] {
+        background: rgba(251,146,60,0.18);
+        border-color: rgba(251,146,60,0.52);
+        color: rgba(255,237,213,0.98);
       }
 
       html[data-page="admin-pos"] .pos-tabs { display:flex; gap: 8px; }
@@ -533,6 +582,17 @@ window.Webflow.push(async function () {
         border-color: rgba(14,165,233,0.38);
         background: rgba(14,165,233,0.16);
         color: rgba(12,74,110,0.95);
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-tab {
+        background: rgba(30,41,59,0.74);
+        color: rgba(226,232,240,0.92);
+        border-color: rgba(148,163,184,0.28);
+        border-radius: 10px;
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-tab[aria-selected="true"] {
+        border-color: rgba(251,146,60,0.52);
+        background: rgba(251,146,60,0.18);
+        color: rgba(255,237,213,0.98);
       }
 
       html[data-page="admin-pos"] .pos-catalog {
@@ -559,8 +619,8 @@ window.Webflow.push(async function () {
         cursor: pointer;
       }
       html[data-page="admin-pos"] .pos-item--tablet:hover {
-        border-color: rgba(14,165,233,0.38);
-        box-shadow: 0 14px 26px rgba(2,6,23,0.10);
+        border-color: rgba(251,146,60,0.38);
+        box-shadow: 0 16px 28px rgba(2,6,23,0.24);
       }
       html[data-page="admin-pos"] .pos-item__media {
         position: relative;
@@ -568,6 +628,10 @@ window.Webflow.push(async function () {
         aspect-ratio: 4/3;
         overflow: hidden;
         background: linear-gradient(135deg, rgba(14,165,233,0.20), rgba(2,6,23,0.08));
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-item__media {
+        aspect-ratio: 16/10;
+        background: linear-gradient(135deg, rgba(59,130,246,0.22), rgba(251,146,60,0.16));
       }
       html[data-page="admin-pos"] .pos-item__img {
         width: 100%;
@@ -596,6 +660,9 @@ window.Webflow.push(async function () {
         background: linear-gradient(180deg, rgba(15,23,42,0), rgba(15,23,42,0.72));
         color: #fff;
       }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-item__overlay {
+        padding: 10px 10px;
+      }
       html[data-page="admin-pos"] .pos-item__overlay strong {
         font-size: 13px;
         font-weight: 900;
@@ -610,10 +677,39 @@ window.Webflow.push(async function () {
         gap: 8px;
         padding: 10px;
       }
+      html[data-page="admin-pos"] .pos-item__body--tablet {
+        padding: 10px 10px 12px;
+        gap: 6px;
+      }
+      html[data-page="admin-pos"] .pos-item__name-line {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+      }
+      html[data-page="admin-pos"] .pos-item__plus {
+        width: 28px;
+        height: 28px;
+        border-radius: 8px;
+        border: 1px solid rgba(255,255,255,0.22);
+        background: rgba(15,23,42,0.64);
+        color: #fff;
+        font-weight: 1000;
+        cursor: pointer;
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-item__title {
+        color: rgba(248,250,252,0.96);
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-item__meta {
+        color: rgba(203,213,225,0.78);
+      }
       html[data-page="admin-pos"] .pos-item__cta {
         font-size: 11px;
         font-weight: 900;
         color: rgba(12,74,110,0.95);
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-item__cta {
+        color: rgba(251,191,36,0.92);
       }
       html[data-page="admin-pos"] .pos-item__title {
         margin:0;
@@ -651,6 +747,16 @@ window.Webflow.push(async function () {
         border-radius: 12px;
         background: rgba(255,255,255,0.94);
         padding: 9px;
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-cart-item {
+        background: rgba(15,23,42,0.72);
+        border-color: rgba(148,163,184,0.26);
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-cart-item__name {
+        color: rgba(248,250,252,0.96);
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-cart-item__meta {
+        color: rgba(203,213,225,0.80);
       }
       html[data-page="admin-pos"] .pos-cart-item__row {
         display:flex;
@@ -711,6 +817,15 @@ window.Webflow.push(async function () {
         font-size: 18px;
         color: rgba(12,74,110,0.95);
       }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-summary {
+        border-top-color: rgba(148,163,184,0.24);
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-summary__line {
+        color: rgba(226,232,240,0.92);
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-summary__line.total {
+        color: rgba(255,237,213,0.98);
+      }
 
       html[data-page="admin-pos"] .pos-empty {
         border: 1px dashed rgba(15,23,42,0.22);
@@ -727,6 +842,24 @@ window.Webflow.push(async function () {
         border-radius: 14px;
         background: rgba(255,255,255,0.92);
         padding: 10px;
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-block {
+        background: rgba(15,23,42,0.60);
+        border-color: rgba(148,163,184,0.22);
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-input,
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-select,
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-textarea {
+        background: rgba(15,23,42,0.74);
+        border-color: rgba(148,163,184,0.28);
+        color: rgba(248,250,252,0.96);
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-input::placeholder,
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-textarea::placeholder {
+        color: rgba(148,163,184,0.88);
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-select option {
+        color: #0f172a;
       }
 
       @media (max-width: 1080px) {
@@ -1040,6 +1173,63 @@ window.Webflow.push(async function () {
     const rows = buildCatalogRows();
     const tabletMode = isTabletMode();
 
+    const renderCatalogCard = (row) => {
+      if (tabletMode) {
+        const imageUrl = resolveCatalogImageUrl(row);
+        return `
+          <article class="pos-item pos-item--tablet" data-item-kind="${escapeHTML(row.kind)}" data-item-id="${escapeHTML(row.id)}" data-item-loc="${escapeHTML(
+            row.location_id || ""
+          )}" data-action="add-item-card">
+            <div class="pos-item__media">
+              ${
+                imageUrl
+                  ? `<img class="pos-item__img" src="${escapeHTML(imageUrl)}" alt="${escapeHTML(row.name)}" loading="lazy" />`
+                  : `<div class="pos-item__placeholder">${escapeHTML(rowInitials(row))}</div>`
+              }
+              <div class="pos-item__overlay">
+                <strong>${escapeHTML(formatMoney(row.unit_price_cents, CONFIG.CURRENCY))}</strong>
+                <span>${escapeHTML(STR.imageHint)}</span>
+              </div>
+            </div>
+            <div class="pos-item__body pos-item__body--tablet">
+              <div class="pos-item__name-line">
+                <h4 class="pos-item__title">${escapeHTML(row.name)}</h4>
+                <button type="button" class="pos-item__plus" data-action="add-item" aria-label="Ajouter ${escapeHTML(row.name)}">+</button>
+              </div>
+              ${row.description ? `<div class="pos-item__meta">${escapeHTML(row.description)}</div>` : ""}
+              <div class="pos-item__chips">
+                <span class="pos-chip">${escapeHTML(row.badge)}</span>
+                ${row.location_id ? `<span class="pos-chip">${escapeHTML(locationNameById(row.location_id))}</span>` : ""}
+                <span class="pos-chip">TVA ${escapeHTML(String(row.vat_rate || 0))}%</span>
+              </div>
+            </div>
+          </article>
+        `;
+      }
+
+      return `
+        <article class="pos-item" data-item-kind="${escapeHTML(row.kind)}" data-item-id="${escapeHTML(row.id)}" data-item-loc="${escapeHTML(
+          row.location_id || ""
+        )}">
+          <div>
+            <h4 class="pos-item__title">${escapeHTML(row.name)}</h4>
+            ${row.description ? `<div class="pos-item__meta">${escapeHTML(row.description)}</div>` : ""}
+          </div>
+          <div class="pos-item__chips">
+            <span class="pos-chip">${escapeHTML(row.badge)}</span>
+            ${row.location_id ? `<span class="pos-chip">${escapeHTML(locationNameById(row.location_id))}</span>` : ""}
+            <span class="pos-chip">TVA ${escapeHTML(String(row.vat_rate || 0))}%</span>
+            ${row.barcode ? `<span class="pos-chip">CB ${escapeHTML(row.barcode)}</span>` : ""}
+            ${row.sku ? `<span class="pos-chip">SKU ${escapeHTML(row.sku)}</span>` : ""}
+          </div>
+          <div class="pos-item__row" style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+            <strong>${escapeHTML(formatMoney(row.unit_price_cents, CONFIG.CURRENCY))}</strong>
+            <button type="button" class="pos-btn pos-btn--primary" data-action="add-item">Ajouter</button>
+          </div>
+        </article>
+      `;
+    };
+
     els.panelCatalog.innerHTML = `
       <h3 class="pos-card__title">Catalogue</h3>
 
@@ -1085,48 +1275,7 @@ window.Webflow.push(async function () {
       <div class="pos-catalog${tabletMode ? " pos-catalog--tablet" : ""}" data-catalog-list>
         ${
           rows.length
-            ? rows
-                .map(
-                  (row) => `
-                  <article class="pos-item${tabletMode ? " pos-item--tablet" : ""}" data-item-kind="${escapeHTML(row.kind)}" data-item-id="${escapeHTML(row.id)}" data-item-loc="${escapeHTML(
-                    row.location_id || ""
-                  )}" ${tabletMode ? 'data-action="add-item-card"' : ""}>
-                    ${
-                      tabletMode
-                        ? `
-                      <div class="pos-item__media">
-                        ${
-                          resolveCatalogImageUrl(row)
-                            ? `<img class="pos-item__img" src="${escapeHTML(resolveCatalogImageUrl(row))}" alt="${escapeHTML(row.name)}" loading="lazy" />`
-                            : `<div class="pos-item__placeholder">${escapeHTML(rowInitials(row))}</div>`
-                        }
-                        <div class="pos-item__overlay">
-                          <strong>${escapeHTML(formatMoney(row.unit_price_cents, CONFIG.CURRENCY))}</strong>
-                          <span>${escapeHTML(STR.imageHint)}</span>
-                        </div>
-                      </div>
-                    `
-                        : ""
-                    }
-                    <div class="pos-item__body">
-                      <h4 class="pos-item__title">${escapeHTML(row.name)}</h4>
-                      ${row.description ? `<div class="pos-item__meta">${escapeHTML(row.description)}</div>` : ""}
-                    </div>
-                    <div class="pos-item__chips">
-                      <span class="pos-chip">${escapeHTML(row.badge)}</span>
-                      ${row.location_id ? `<span class="pos-chip">${escapeHTML(locationNameById(row.location_id))}</span>` : ""}
-                      <span class="pos-chip">TVA ${escapeHTML(String(row.vat_rate || 0))}%</span>
-                      ${row.barcode ? `<span class="pos-chip">CB ${escapeHTML(row.barcode)}</span>` : ""}
-                      ${row.sku ? `<span class="pos-chip">SKU ${escapeHTML(row.sku)}</span>` : ""}
-                    </div>
-                    <div class="pos-item__row" style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
-                      <strong>${escapeHTML(formatMoney(row.unit_price_cents, CONFIG.CURRENCY))}</strong>
-                      <button type="button" class="pos-btn pos-btn--primary" data-action="add-item">Ajouter</button>
-                    </div>
-                  </article>
-                `
-                )
-                .join("")
+            ? rows.map((row) => renderCatalogCard(row)).join("")
             : `<div class="pos-empty">${escapeHTML(STR.emptyCatalog)}</div>`
         }
       </div>
@@ -1326,7 +1475,7 @@ window.Webflow.push(async function () {
         </label>
 
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <button type="button" class="pos-btn pos-btn--primary" data-action="create-order" ${state.cart.length ? "" : "disabled"}>${escapeHTML(
+          <button type="button" class="pos-btn pos-btn--primary pos-btn--checkout" data-action="create-order" ${state.cart.length ? "" : "disabled"}>${escapeHTML(
       STR.createOrder
     )}</button>
           <button type="button" class="pos-btn" data-action="create-order-open-invoice" ${state.cart.length ? "" : "disabled"}>${escapeHTML(
