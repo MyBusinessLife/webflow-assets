@@ -363,6 +363,10 @@ window.Webflow.push(async function () {
       if (field === "guestEmail") state.guestEmail = e.target.value || "";
       if (field === "guestPhone") state.guestPhone = e.target.value || "";
       if (field === "note") state.note = e.target.value || "";
+
+      // refresh breakdown on discrete changes (select/date)
+      const breakdown = shell.querySelector("[data-breakdown]");
+      if (breakdown) breakdown.innerHTML = renderBreakdown();
     });
   }
 
@@ -1161,4 +1165,3 @@ window.Webflow.push(async function () {
     document.head.appendChild(st);
   }
 });
-
