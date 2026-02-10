@@ -47,6 +47,7 @@
     ADMIN_DASH: CFG.ADMIN_DASH || `${APP_ROOT}/admin/dashboard`,
     TECH_DASH: CFG.TECH_DASH || `${APP_ROOT}/technician/dashboard`,
     DRIVER_DASH: CFG.DRIVER_DASH || `${APP_ROOT}/driver/dashboard`,
+    POS_DASH: CFG.POS_DASH || `${APP_ROOT}/pos`,
 
     MAX_BOOT_MS: 6000,
   };
@@ -57,6 +58,7 @@
   CFG.ADMIN_DASH ||= CONFIG.ADMIN_DASH;
   CFG.TECH_DASH ||= CONFIG.TECH_DASH;
   CFG.DRIVER_DASH ||= CONFIG.DRIVER_DASH;
+  CFG.POS_DASH ||= CONFIG.POS_DASH;
   CFG.AUTH_STORAGE_KEY ||= CONFIG.AUTH_STORAGE_KEY;
   CFG.SUPABASE_URL ||= CONFIG.SUPABASE_URL;
   CFG.SUPABASE_ANON_KEY ||= CONFIG.SUPABASE_ANON_KEY;
@@ -225,6 +227,18 @@
     return ["owner", "admin", "manager"].includes(r);
   }
 
+  function isRestaurantEmployeeRole(role) {
+    const r = String(role || "").trim().toLowerCase();
+    return ["restaurant_employee", "restaurant_staff", "resto_employee", "cashier"].includes(r);
+  }
+
+  function isPosPath(pathname) {
+    const v = String(pathname || "").replace(/\/+$/, "");
+    const posA = `${APP_ROOT}/pos`;
+    const posB = `${APP_ROOT}/admin/pos`;
+    return v === posA || v === posB;
+  }
+
   async function getRole(supabase, userId) {
     // Prefer org membership role (per org) then fallback to profiles.role (legacy).
     try {
@@ -358,6 +372,7 @@
         if (isAdminRole(role) || role === "admin") return safeReplace(CONFIG.ADMIN_DASH, "login_admin");
         if (role === "tech" || role === "technician") return safeReplace(CONFIG.TECH_DASH, "login_tech");
         if (role === "driver") return safeReplace(CONFIG.DRIVER_DASH, "login_driver");
+        if (isRestaurantEmployeeRole(role)) return safeReplace(CONFIG.POS_DASH, "login_restaurant_employee");
 
         ready();
         return;
@@ -377,6 +392,7 @@
         if (isAdminRole(role) || role === "admin") return safeReplace(CONFIG.ADMIN_DASH, "signup_admin");
         if (role === "tech" || role === "technician") return safeReplace(CONFIG.TECH_DASH, "signup_tech");
         if (role === "driver") return safeReplace(CONFIG.DRIVER_DASH, "signup_driver");
+        if (isRestaurantEmployeeRole(role)) return safeReplace(CONFIG.POS_DASH, "signup_restaurant_employee");
         return safeReplace(CONFIG.APP_ROOT, "signup_default");
       }
 
@@ -388,6 +404,10 @@
 
       const role = await getRole(supabase, session.user.id);
       if (role === "unknown") return safeReplace(CONFIG.LOGIN_URL, "role_unknown");
+
+      if (isRestaurantEmployeeRole(role) && !isPosPath(p)) {
+        return safeReplace(CONFIG.POS_DASH, "restaurant_employee_pos_only");
+      }
 
       if (p.startsWith(`${APP_ROOT}/admin`) && !(isAdminRole(role) || role === "admin")) {
         if (role === "tech" || role === "technician") return safeReplace(CONFIG.TECH_DASH, "admin_page_as_tech");

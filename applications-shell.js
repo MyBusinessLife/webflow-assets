@@ -1116,6 +1116,11 @@
       return { mode: mode === "custom" ? "custom" : "inherit", permissions };
     }
 
+    function isRestaurantEmployeeRole(role) {
+      const r = String(role || "").trim().toLowerCase();
+      return ["restaurant_employee", "restaurant_staff", "resto_employee", "cashier"].includes(r);
+    }
+
     function permissionAllow({ isAdmin, orgRole, permMode, permMap }, permKey) {
       const key = String(permKey || "").trim();
       if (!key) return true;
@@ -1126,9 +1131,11 @@
       // Inherit defaults: keep it strict.
       // - tech => interventions only
       // - driver => transport driver only
+      // - restaurant_employee => POS only
       // - others => no access by default (admin can enable via "custom")
       if (orgRole === "tech") return key === PERMS.interventions_tech;
       if (orgRole === "driver") return key === PERMS.transport_driver;
+      if (isRestaurantEmployeeRole(orgRole)) return key === PERMS.pos;
       return false;
     }
 
@@ -1143,6 +1150,28 @@
     const IS_SETTINGS_USERS_TAB = CURRENT_TAB === "users" && /\/settings\/?$/.test(CURRENT_PATH);
 
     function buildNav({ isAdmin, isTech, isDriver, orgRole, permMode, permMap, modules, activePage }) {
+      if (isRestaurantEmployeeRole(orgRole)) {
+        const posItem = {
+          key: "admin-pos",
+          label: "POS",
+          href: routeFor("admin-pos"),
+          icon: ICONS.pos,
+          perm: PERMS.pos,
+          requiresAny: ["billing", "restaurant"],
+          active: String(activePage || "").trim() === "admin-pos" || cleanPath(routeFor("admin-pos")) === CURRENT_PATH,
+        };
+        const modOk = modulesAllow(modules, [], posItem.requiresAny);
+        const permOk = permissionAllow({ isAdmin, orgRole, permMode, permMap }, posItem.perm);
+        const lockKind = !modOk ? "subscription" : !permOk ? "permission" : "";
+        const locked = Boolean(lockKind);
+        return [
+          {
+            section: "Service",
+            entries: [{ ...posItem, visible: true, locked, lockKind }],
+          },
+        ];
+      }
+
       const items = [
         {
           section: "Général",
@@ -1437,7 +1466,7 @@
       });
     }
 
-    function renderBottom(bottomEl, { isAdmin, isTech, planName, isLogged }) {
+    function renderBottom(bottomEl, { isAdmin, isTech, isRestaurantEmployee, planName, isLogged }) {
       bottomEl.innerHTML = "";
 
       if (isAdmin) {
@@ -1453,23 +1482,25 @@
         );
       }
 
-      const subItem = itemTemplate({
-        href: CONFIG.SUBSCRIBE_PATH,
-        label: "Abonnement",
-        icon: ICONS.card,
-        badge: planName ? String(planName) : "",
-        active: cleanPath(CONFIG.SUBSCRIBE_PATH) === CURRENT_PATH,
-        locked: false,
-      });
-      if (isLogged) {
-        subItem.addEventListener("click", (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          openSubscriptionsModal({ source: "menu" });
-          openMobile(false);
+      if (!isRestaurantEmployee) {
+        const subItem = itemTemplate({
+          href: CONFIG.SUBSCRIBE_PATH,
+          label: "Abonnement",
+          icon: ICONS.card,
+          badge: planName ? String(planName) : "",
+          active: cleanPath(CONFIG.SUBSCRIBE_PATH) === CURRENT_PATH,
+          locked: false,
         });
+        if (isLogged) {
+          subItem.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            openSubscriptionsModal({ source: "menu" });
+            openMobile(false);
+          });
+        }
+        bottomEl.appendChild(subItem);
       }
-      bottomEl.appendChild(subItem);
 
       const logoutBtn = itemTemplate({
         href: "",
@@ -1571,7 +1602,7 @@
           },
         ];
         renderNav(navEl, nav);
-        renderBottom(bottomEl, { isAdmin: false, isTech: false, planName: "", isLogged: false });
+        renderBottom(bottomEl, { isAdmin: false, isTech: false, isRestaurantEmployee: false, planName: "", isLogged: false });
         return;
       }
 
@@ -1583,8 +1614,9 @@
       const isAdmin = ["owner", "admin", "manager"].includes(orgRole) || profileRole === "admin";
       const isTech = orgRole === "tech" || profileRole === "tech";
       const isDriver = orgRole === "driver" || profileRole === "driver";
+      const isRestaurantEmployee = isRestaurantEmployeeRole(orgRole) || isRestaurantEmployeeRole(profileRole);
       const permState = normalizePermissions(member);
-      const accessRole = isAdmin ? "admin" : isTech ? "tech" : isDriver ? "driver" : orgRole;
+      const accessRole = isAdmin ? "admin" : isTech ? "tech" : isDriver ? "driver" : isRestaurantEmployee ? "restaurant_employee" : orgRole;
 
       // Resolve org name + branding + plan/modules
       const [orgRes, orgProfile, entRes, subRes] = await Promise.all([
@@ -1633,7 +1665,7 @@
         activePage,
       });
       renderNav(navEl, nav);
-      renderBottom(bottomEl, { isAdmin, isTech, planName, isLogged: true });
+      renderBottom(bottomEl, { isAdmin, isTech, isRestaurantEmployee, planName, isLogged: true });
     } catch (e) {
       warn("boot error", e);
       // Still show something usable
@@ -1644,7 +1676,7 @@
       sec.appendChild(itemTemplate({ href: CONFIG.SUBSCRIBE_PATH, label: "Abonnement", icon: ICONS.card, badge: "", active: false }));
       sec.appendChild(itemTemplate({ href: CONFIG.LOGIN_PATH, label: "Connexion", icon: ICONS.settings, badge: "", active: false }));
       navEl.appendChild(sec);
-      renderBottom(bottomEl, { isAdmin: false, isTech: false, planName: "", isLogged: false });
+      renderBottom(bottomEl, { isAdmin: false, isTech: false, isRestaurantEmployee: false, planName: "", isLogged: false });
     }
 
     log("mounted");

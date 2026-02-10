@@ -33,6 +33,7 @@
     PROFILES_TABLE: CFG.PROFILES_TABLE || "profiles",
     ADMIN_DASH: CFG.ADMIN_DASH || `${APP_ROOT}/admin/dashboard`,
     TECH_DASH: CFG.TECH_DASH || `${APP_ROOT}/technician/dashboard`,
+    POS_DASH: CFG.POS_DASH || `${APP_ROOT}/pos`,
   };
 
   const STR = {
@@ -554,6 +555,10 @@
       }
       if (role === "tech" || role === "technician") {
         window.location.href = CONFIG.TECH_DASH;
+        return;
+      }
+      if (["restaurant_employee", "restaurant_staff", "resto_employee", "cashier"].includes(role)) {
+        window.location.href = CONFIG.POS_DASH;
         return;
       }
 

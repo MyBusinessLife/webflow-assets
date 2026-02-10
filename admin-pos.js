@@ -41,10 +41,13 @@ window.Webflow.push(async function () {
     PRODUCTS_TABLE: String(root.dataset.productsTable || "products"),
     ORDERS_TABLE: String(root.dataset.ordersTable || "restaurant_orders"),
     ORDER_LINES_TABLE: String(root.dataset.orderLinesTable || "restaurant_order_lines"),
+    PRODUCT_IMAGES_BUCKET: String(root.dataset.productImagesBucket || "product-images").trim() || "product-images",
+    MENU_IMAGE_BUCKET: String(root.dataset.menuImageBucket || "restaurant-media").trim() || "restaurant-media",
 
     CURRENCY: String(root.dataset.currency || "EUR").trim() || "EUR",
     SCANNER_IDLE_MS: Math.max(40, Number(root.dataset.scannerIdleMs || 95) || 95),
     DISPLAY_MODE_STORAGE_KEY: String(root.dataset.displayModeStorageKey || "mbl-pos-display-mode"),
+    HIDE_SHELL_IN_TABLET: String(root.dataset.hideShellInTablet || "true").trim().toLowerCase() !== "false",
   };
 
   const STR = {
@@ -91,6 +94,7 @@ window.Webflow.push(async function () {
   const state = {
     supabase: null,
     user: null,
+    memberRole: "",
     orgId: "",
     modules: {},
 
@@ -121,6 +125,7 @@ window.Webflow.push(async function () {
       bound: false,
     },
     displayMode: loadDisplayMode(),
+    imageUrlCache: new Map(),
   };
 
   function escapeHTML(input) {
@@ -190,6 +195,16 @@ window.Webflow.push(async function () {
     return msg.includes("column") && msg.includes("does not exist");
   }
 
+  function isAdminRole(role) {
+    const r = clean(role);
+    return ["owner", "admin", "manager"].includes(r);
+  }
+
+  function isRestaurantEmployeeRole(role) {
+    const r = clean(role);
+    return ["restaurant_employee", "restaurant_staff", "resto_employee", "cashier"].includes(r);
+  }
+
   function normalizePath(path) {
     const p = String(path || "").trim();
     if (!p) return "/";
@@ -241,10 +256,17 @@ window.Webflow.push(async function () {
     try {
       localStorage.setItem(CONFIG.DISPLAY_MODE_STORAGE_KEY, safe);
     } catch (_) {}
+    applyShellVisibilityForTabletMode();
   }
 
   function isTabletMode() {
     return state.displayMode === "tablet";
+  }
+
+  function applyShellVisibilityForTabletMode() {
+    const shouldHide = CONFIG.HIDE_SHELL_IN_TABLET && isTabletMode();
+    if (shouldHide) document.documentElement.setAttribute("data-pos-tablet-shell", "1");
+    else document.documentElement.removeAttribute("data-pos-tablet-shell");
   }
 
   async function tryEnterFullscreen() {
@@ -336,20 +358,140 @@ window.Webflow.push(async function () {
   }
 
   async function resolveOrgMember(userId) {
-    const { data, error } = await state.supabase
+    const fullSel = "organization_id, role, permissions_mode, permissions, is_default, created_at";
+    const baseSel = "organization_id, role, is_default, created_at";
+    let res = await state.supabase
       .from("organization_members")
-      .select("organization_id, role, is_default, created_at")
+      .select(fullSel)
       .eq("user_id", userId)
       .eq("is_active", true)
       .order("is_default", { ascending: false })
       .order("created_at", { ascending: true })
       .limit(1);
 
-    if (error) {
-      warn("organization_members read error", error);
+    if (res.error && isMissingColumnError(res.error)) {
+      res = await state.supabase
+        .from("organization_members")
+        .select(baseSel)
+        .eq("user_id", userId)
+        .eq("is_active", true)
+        .order("is_default", { ascending: false })
+        .order("created_at", { ascending: true })
+        .limit(1);
+    }
+
+    if (res.error) {
+      warn("organization_members read error", res.error);
       return null;
     }
-    return data?.[0] || null;
+    return res.data?.[0] || null;
+  }
+
+  function normalizeStoragePath(value, bucket) {
+    const raw = String(value || "").trim().replace(/^\/+/, "");
+    if (!raw) return "";
+    if (/^https?:\/\//i.test(raw) || raw.startsWith("data:image/")) return "";
+
+    const publicMarker = `/object/public/${bucket}/`;
+    const signedMarker = `/object/sign/${bucket}/`;
+
+    if (raw.includes(publicMarker)) {
+      return raw.split(publicMarker)[1] || "";
+    }
+    if (raw.includes(signedMarker)) {
+      const after = raw.split(signedMarker)[1] || "";
+      return after.split("?")[0] || "";
+    }
+    if (raw.startsWith(`${bucket}/`)) {
+      return raw.slice(bucket.length + 1);
+    }
+    return raw;
+  }
+
+  function withCacheBust(url) {
+    const u = String(url || "").trim();
+    if (!u) return "";
+    return `${u}${u.includes("?") ? "&" : "?"}t=${Date.now()}`;
+  }
+
+  async function resolveStorageImageUrl(bucket, pathLike) {
+    const objectPath = normalizeStoragePath(pathLike, bucket);
+    if (!objectPath) return "";
+    const key = `${bucket}:${objectPath}`;
+    if (state.imageUrlCache.has(key)) return state.imageUrlCache.get(key) || "";
+
+    try {
+      const signed = await state.supabase.storage.from(bucket).createSignedUrl(objectPath, 60 * 60);
+      const signedUrl = signed?.data?.signedUrl || "";
+      if (!signed?.error && signedUrl) {
+        const final = withCacheBust(signedUrl);
+        state.imageUrlCache.set(key, final);
+        return final;
+      }
+    } catch (_) {}
+
+    try {
+      const pub = state.supabase.storage.from(bucket).getPublicUrl(objectPath);
+      const publicUrl = String(pub?.data?.publicUrl || "").trim();
+      if (publicUrl) {
+        const final = withCacheBust(publicUrl);
+        state.imageUrlCache.set(key, final);
+        return final;
+      }
+    } catch (_) {}
+
+    state.imageUrlCache.set(key, "");
+    return "";
+  }
+
+  async function resolveCatalogImageForProduct(row) {
+    const direct = String(row?.image_url || row?.photo_url || row?.thumbnail_url || "").trim();
+    if (/^https?:\/\//i.test(direct) || direct.startsWith("data:image/")) return withCacheBust(direct);
+    if (direct) {
+      const fromDirectPath = await resolveStorageImageUrl(CONFIG.PRODUCT_IMAGES_BUCKET, direct);
+      if (fromDirectPath) return fromDirectPath;
+    }
+    const imagePath = String(row?.image_path || "").trim();
+    if (imagePath) {
+      const fromPath = await resolveStorageImageUrl(CONFIG.PRODUCT_IMAGES_BUCKET, imagePath);
+      if (fromPath) return fromPath;
+    }
+    return "";
+  }
+
+  async function resolveCatalogImageForMenu(row) {
+    const meta = row?.metadata && typeof row.metadata === "object" ? row.metadata : {};
+    const direct = String(row?.image_url || meta.image_url || meta.image || meta.photo_url || meta.cover_url || "").trim();
+    if (/^https?:\/\//i.test(direct) || direct.startsWith("data:image/")) return withCacheBust(direct);
+    if (direct) {
+      const fromDirectPath = await resolveStorageImageUrl(CONFIG.MENU_IMAGE_BUCKET, direct);
+      if (fromDirectPath) return fromDirectPath;
+    }
+
+    const pathLike = String(meta.image_path || meta.photo_path || "").trim();
+    if (pathLike) {
+      const fromPath = await resolveStorageImageUrl(CONFIG.MENU_IMAGE_BUCKET, pathLike);
+      if (fromPath) return fromPath;
+    }
+    return "";
+  }
+
+  async function hydrateCatalogImageUrls() {
+    if (state.products.length) {
+      await Promise.all(
+        state.products.map(async (row) => {
+          row._display_image_url = await resolveCatalogImageForProduct(row);
+        })
+      );
+    }
+
+    if (state.menuItems.length) {
+      await Promise.all(
+        state.menuItems.map(async (row) => {
+          row._display_image_url = await resolveCatalogImageForMenu(row);
+        })
+      );
+    }
   }
 
   async function fetchModules() {
@@ -366,6 +508,15 @@ window.Webflow.push(async function () {
     return data?.modules && typeof data.modules === "object" ? data.modules : {};
   }
 
+  function canAccessPos(member) {
+    const role = clean(member?.role);
+    if (isAdminRole(role) || isRestaurantEmployeeRole(role)) return true;
+    const mode = clean(member?.permissions_mode);
+    const perms = member?.permissions && typeof member.permissions === "object" ? member.permissions : {};
+    if (mode === "custom" && perms.pos === true) return true;
+    return false;
+  }
+
   function injectStyles() {
     if (document.getElementById("mbl-pos-style")) return;
     const st = document.createElement("style");
@@ -373,6 +524,15 @@ window.Webflow.push(async function () {
     st.textContent = `
       html[data-page="admin-pos"] .pos-shell,
       html[data-page="admin-pos"] .pos-shell * { box-sizing: border-box; }
+      html[data-page="admin-pos"][data-pos-tablet-shell="1"] body {
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+      }
+      html[data-page="admin-pos"][data-pos-tablet-shell="1"] .mbl-app-shell,
+      html[data-page="admin-pos"][data-pos-tablet-shell="1"] .mbl-app-shell__overlay,
+      html[data-page="admin-pos"][data-pos-tablet-shell="1"] .mbl-app-shell__burger {
+        display: none !important;
+      }
 
       html[data-page="admin-pos"] .pos-shell {
         --pos-primary: #0ea5e9;
@@ -524,6 +684,8 @@ window.Webflow.push(async function () {
         padding: 10px 12px;
         outline: none;
         color: rgba(2,6,23,0.88);
+        width: 100%;
+        min-width: 0;
       }
       html[data-page="admin-pos"] .pos-input,
       html[data-page="admin-pos"] .pos-select { height: 40px; }
@@ -1062,15 +1224,26 @@ window.Webflow.push(async function () {
 
       html[data-page="admin-pos"] .pos-custom-grid {
         display: grid;
-        grid-template-columns: minmax(0, 1.4fr) 100px 140px 90px auto;
+        grid-template-columns: minmax(0, 1.2fr) 90px 120px 90px 120px;
         gap: 8px;
         align-items: end;
       }
       html[data-page="admin-pos"] .pos-custom-grid > * {
         min-width: 0;
       }
+      html[data-page="admin-pos"] .pos-custom-grid label {
+        display: block;
+        min-width: 0;
+      }
       html[data-page="admin-pos"] .pos-custom-grid .pos-btn {
         width: 100%;
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-custom-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-custom-grid [data-custom-wrap="name"],
+      html[data-page="admin-pos"] .pos-shell[data-display-mode="tablet"] .pos-custom-grid [data-action="add-custom"] {
+        grid-column: 1 / -1;
       }
 
       @media (max-width: 1080px) {
@@ -1079,7 +1252,7 @@ window.Webflow.push(async function () {
         html[data-page="admin-pos"] .pos-custom-grid {
           grid-template-columns: repeat(2, minmax(0, 1fr));
         }
-        html[data-page="admin-pos"] .pos-custom-grid [data-custom="name"] {
+        html[data-page="admin-pos"] .pos-custom-grid [data-custom-wrap="name"] {
           grid-column: 1 / -1;
         }
         html[data-page="admin-pos"] .pos-custom-grid [data-action="add-custom"] {
@@ -1173,7 +1346,9 @@ window.Webflow.push(async function () {
       badge: "Menu",
       barcode: String(meta.barcode || "").trim(),
       sku: String(meta.sku || "").trim(),
-      image_url: String(meta.image_url || meta.image || meta.photo_url || meta.cover_url || "").trim(),
+      image_url: String(it.image_url || meta.image_url || meta.image || meta.photo_url || meta.cover_url || "").trim(),
+      image_path: String(meta.image_path || meta.photo_path || "").trim(),
+      _display_image_url: String(it._display_image_url || "").trim(),
     };
   }
 
@@ -1190,11 +1365,13 @@ window.Webflow.push(async function () {
       barcode: String(p.barcode || "").trim(),
       sku: String(p.sku || "").trim(),
       image_url: String(p.image_url || p.photo_url || p.thumbnail_url || "").trim(),
+      image_path: String(p.image_path || "").trim(),
+      _display_image_url: String(p._display_image_url || "").trim(),
     };
   }
 
   function resolveCatalogImageUrl(row) {
-    const src = String(row?.image_url || "").trim();
+    const src = String(row?._display_image_url || row?.image_url || "").trim();
     if (!src) return "";
     if (/^https?:\/\//i.test(src)) return src;
     if (src.startsWith("data:image/")) return src;
@@ -1362,6 +1539,7 @@ window.Webflow.push(async function () {
   }
 
   function renderApp() {
+    applyShellVisibilityForTabletMode();
     root.innerHTML = `
       <section class="pos-shell${isTabletMode() ? " pos-shell--tablet" : ""}" data-display-mode="${isTabletMode() ? "tablet" : "classic"}">
         <header class="pos-head">
@@ -1694,7 +1872,7 @@ window.Webflow.push(async function () {
       <div class="pos-block" style="margin-top:10px;">
         <div class="pos-card__title" style="margin:0 0 8px;">Ligne libre</div>
         <div class="pos-custom-grid">
-          <label><input class="pos-input" data-custom="name" placeholder="Designation" /></label>
+          <label data-custom-wrap="name"><input class="pos-input" data-custom="name" placeholder="Designation" /></label>
           <label><input class="pos-input" data-custom="qty" type="number" step="0.001" placeholder="Qt" value="1" /></label>
           <label><input class="pos-input" data-custom="price" type="number" step="0.01" placeholder="PU HT" /></label>
           <label><input class="pos-input" data-custom="vat" type="number" step="0.1" placeholder="TVA" value="20" /></label>
@@ -2015,11 +2193,23 @@ window.Webflow.push(async function () {
         (async () => {
           let res = await state.supabase
             .from(CONFIG.MENU_ITEMS_TABLE)
-            .select("id, location_id, name, description, price_cents, vat_rate, metadata, available_for_pos, is_active")
+            .select("id, location_id, name, description, image_url, price_cents, vat_rate, metadata, available_for_pos, is_active")
             .eq("organization_id", state.orgId)
             .eq("is_active", true)
             .eq("available_for_pos", true)
             .order("name", { ascending: true });
+          if (res.error && isMissingColumnError(res.error)) {
+            res = await state.supabase
+              .from(CONFIG.MENU_ITEMS_TABLE)
+              .select("id, location_id, name, description, price_cents, vat_rate, metadata, available_for_pos, is_active")
+              .eq("organization_id", state.orgId)
+                .eq("is_active", true)
+                .eq("available_for_pos", true)
+                .order("name", { ascending: true });
+            if (!res.error && Array.isArray(res.data)) {
+              res.data = res.data.map((row) => ({ ...row, image_url: "", metadata: row?.metadata && typeof row.metadata === "object" ? row.metadata : {} }));
+            }
+          }
           if (res.error && isMissingColumnError(res.error)) {
             res = await state.supabase
               .from(CONFIG.MENU_ITEMS_TABLE)
@@ -2029,7 +2219,7 @@ window.Webflow.push(async function () {
               .eq("available_for_pos", true)
               .order("name", { ascending: true });
             if (!res.error && Array.isArray(res.data)) {
-              res.data = res.data.map((row) => ({ ...row, metadata: {} }));
+              res.data = res.data.map((row) => ({ ...row, image_url: "", metadata: {} }));
             }
           }
           return res;
@@ -2045,10 +2235,21 @@ window.Webflow.push(async function () {
         (async () => {
           let res = await state.supabase
             .from(CONFIG.PRODUCTS_TABLE)
-            .select("id, name, sku, barcode, price_cents, description, image_url, photo_url, thumbnail_url, is_active")
+            .select("id, name, sku, barcode, price_cents, description, image_path, image_url, photo_url, thumbnail_url, is_active")
             .eq("organization_id", state.orgId)
             .eq("is_active", true)
             .order("name", { ascending: true });
+          if (res.error && isMissingColumnError(res.error)) {
+            res = await state.supabase
+              .from(CONFIG.PRODUCTS_TABLE)
+              .select("id, name, sku, barcode, price_cents, description, image_path, is_active")
+              .eq("organization_id", state.orgId)
+              .eq("is_active", true)
+              .order("name", { ascending: true });
+            if (!res.error && Array.isArray(res.data)) {
+              res.data = res.data.map((row) => ({ ...row, barcode: "", image_url: "", photo_url: "", thumbnail_url: "" }));
+            }
+          }
           if (res.error && isMissingColumnError(res.error)) {
             res = await state.supabase
               .from(CONFIG.PRODUCTS_TABLE)
@@ -2057,7 +2258,7 @@ window.Webflow.push(async function () {
               .eq("is_active", true)
               .order("name", { ascending: true });
             if (!res.error && Array.isArray(res.data)) {
-              res.data = res.data.map((row) => ({ ...row, barcode: "", image_url: "", photo_url: "", thumbnail_url: "" }));
+              res.data = res.data.map((row) => ({ ...row, barcode: "", image_path: "", image_url: "", photo_url: "", thumbnail_url: "" }));
             }
           }
           return res;
@@ -2076,6 +2277,7 @@ window.Webflow.push(async function () {
     state.locations = locRes.data || [];
     state.menuItems = menuRes.data || [];
     state.products = prodRes.data || [];
+    await hydrateCatalogImageUrls();
 
     if (!asUuid(state.activeLocationId) && state.locations[0]?.id) {
       state.activeLocationId = state.locations[0].id;
@@ -2113,6 +2315,7 @@ window.Webflow.push(async function () {
   }
 
   injectStyles();
+  applyShellVisibilityForTabletMode();
 
   try {
     await ensureSupabaseJs();
@@ -2128,8 +2331,17 @@ window.Webflow.push(async function () {
     state.user = user;
     const member = await resolveOrgMember(user.id);
     state.orgId = asUuid(member?.organization_id);
+    state.memberRole = clean(member?.role);
     if (!state.orgId) {
       renderBlocking({ title: STR.loadError, body: "Aucune organisation active." });
+      return;
+    }
+
+    if (!canAccessPos(member)) {
+      renderBlocking({
+        title: "Acces refuse",
+        body: "Ce compte n'a pas l'autorisation d'utiliser le POS. Demande a un administrateur d'activer l'acces POS.",
+      });
       return;
     }
 

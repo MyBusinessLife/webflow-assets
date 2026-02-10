@@ -1189,7 +1189,7 @@ window.Webflow.push(async function () {
   function renderUsersList(els, { members, profilesById, modules, invites, invitesAvailable, ctx }) {
     const pendingInvites = (invites || []).filter((i) => String(i.status || "") === "pending");
 
-    const roleOptions = ["viewer", "tech", "driver", "manager", "admin"]
+    const roleOptions = ["viewer", "restaurant_employee", "tech", "driver", "manager", "admin"]
       .map((r) => `<option value="${escapeHTML(r)}">${escapeHTML(r)}</option>`)
       .join("");
 
@@ -1435,7 +1435,7 @@ window.Webflow.push(async function () {
     const perms = member.permissions && typeof member.permissions === "object" ? member.permissions : {};
     const active = member.is_active !== false;
 
-    const roleOptions = ["owner", "admin", "manager", "tech", "driver", "viewer"]
+    const roleOptions = ["owner", "admin", "manager", "restaurant_employee", "tech", "driver", "viewer"]
       .map((r) => `<option value="${escapeHTML(r)}"${r === role ? " selected" : ""}>${escapeHTML(r)}</option>`)
       .join("");
 
