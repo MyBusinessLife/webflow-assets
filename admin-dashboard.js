@@ -84,6 +84,7 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
       status: null,
       clients: null,
       tech: null,
+      dynamic: new Map(),
     },
     data: {
       interventions: [],
@@ -137,6 +138,7 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
     viewHint: "[data-view-hint]",
     actionsArea: "[data-actions]",
     alertsArea: "[data-alerts]",
+    insightsArea: ".mbl-insights",
   };
 
   const VIEW_STORAGE_KEY = "mbl-admin-dashboard:view";
@@ -412,24 +414,50 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
     }
 
 	    .mbl-context-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-	      border: 1px solid var(--stroke);
-	      background: rgba(255, 255, 255, 0.95);
-	      color: rgba(2, 6, 23, 0.78);
-	      border-radius: 999px;
-	      padding: 5px 10px;
-	      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.01em;
-    }
+	      display: inline-flex;
+	      align-items: center;
+	      gap: 6px;
+		      border: 1px solid var(--stroke);
+		      background: rgba(255, 255, 255, 0.95);
+		      color: rgba(2, 6, 23, 0.78);
+		      border-radius: 999px;
+		      padding: 5px 10px;
+		      font-size: 11px;
+	      font-weight: 700;
+	      letter-spacing: 0.01em;
+	      transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+	    }
 
-    .mbl-context-pill.is-warn {
-      border-color: #f7c788;
-      background: #fff7ec;
-      color: #9a5a00;
-    }
+	    button.mbl-context-pill {
+	      cursor: pointer;
+	      font-family: inherit;
+	    }
+
+	    .mbl-context-btn {
+	      border-color: rgba(var(--accent-rgb), 0.22);
+	      background: rgba(var(--accent-rgb), 0.08);
+	      color: rgba(2, 6, 23, 0.86);
+	    }
+
+	    .mbl-context-btn:hover {
+	      transform: translateY(-1px);
+	      box-shadow: 0 12px 26px rgba(var(--accent-rgb), 0.14);
+	    }
+
+	    .mbl-context-btn:active {
+	      transform: translateY(0px);
+	    }
+
+	    .mbl-context-btn:focus-visible {
+	      outline: none;
+	      box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.20), 0 10px 22px rgba(var(--accent-rgb), 0.12);
+	    }
+
+	    .mbl-context-pill.is-warn {
+	      border-color: #f7c788;
+	      background: #fff7ec;
+	      color: #9a5a00;
+	    }
 
     .mbl-context-pill.is-ok {
       border-color: #9edcc7;
@@ -575,6 +603,74 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
 	      gap: 12px;
 	    }
 
+	    .mbl-insights {
+	      margin-top: 14px;
+	    }
+
+	    .mbl-insights-grid {
+	      display: grid;
+	      grid-template-columns: repeat(2, minmax(0, 1fr));
+	      gap: 10px;
+	    }
+
+	    .mbl-insight-card {
+	      padding: 12px;
+	      min-height: 300px;
+	      position: relative;
+	      overflow: hidden;
+	      animation: mblStagger 0.35s ease both;
+	      animation-delay: calc(var(--idx, 0) * 55ms);
+	      transition: transform 0.18s ease, box-shadow 0.18s ease;
+	      will-change: transform;
+	    }
+
+	    .mbl-insight-card:hover {
+	      transform: translateY(-1px);
+	      box-shadow: 0 18px 44px rgba(12, 37, 66, 0.10);
+	    }
+
+	    .mbl-insight-head {
+	      display: flex;
+	      align-items: flex-start;
+	      justify-content: space-between;
+	      gap: 10px;
+	      margin-bottom: 10px;
+	    }
+
+	    .mbl-insight-head h2 {
+	      margin: 0;
+	      font-size: 14px;
+	      font-weight: 800;
+	      letter-spacing: -0.01em;
+	      color: rgba(2, 6, 23, 0.88);
+	    }
+
+	    .mbl-insight-sub {
+	      margin: 4px 0 0;
+	      font-size: 12px;
+	      color: var(--text-soft);
+	      line-height: 1.35;
+	      max-width: 55ch;
+	    }
+
+	    .mbl-insight-meta {
+	      display: inline-flex;
+	      align-items: center;
+	      gap: 6px;
+	      border-radius: 999px;
+	      padding: 6px 10px;
+	      border: 1px solid rgba(15, 23, 42, 0.12);
+	      background: rgba(255, 255, 255, 0.92);
+	      color: rgba(2, 6, 23, 0.72);
+	      font-size: 12px;
+	      font-weight: 750;
+	      white-space: nowrap;
+	    }
+
+	    .mbl-insight-card .mbl-chart {
+	      height: 240px;
+	    }
+
 	    .mbl-panel {
 	      padding: 14px;
 	      position: relative;
@@ -686,6 +782,7 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
 
 	    .mbl-kpi-grid,
 	    .mbl-panels,
+	    .mbl-insights,
 	    .mbl-analytics-grid,
 	    .mbl-table-card,
 	    .mbl-filters {
@@ -694,6 +791,7 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
 
 	    .mbl-shell.is-switching .mbl-kpi-grid,
 	    .mbl-shell.is-switching .mbl-panels,
+	    .mbl-shell.is-switching .mbl-insights,
 	    .mbl-shell.is-switching .mbl-analytics-grid,
 	    .mbl-shell.is-switching .mbl-table-card,
 	    .mbl-shell.is-switching .mbl-filters {
@@ -777,14 +875,21 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
       line-height: 1.45;
     }
 
-    .mbl-kpi {
-      padding: 14px;
-      position: relative;
-      overflow: hidden;
-      animation: mblStagger 0.35s ease both;
-      animation-delay: calc(var(--idx, 0) * 50ms);
-      background: linear-gradient(180deg, #ffffff, #f8fbff);
-    }
+	    .mbl-kpi {
+	      padding: 14px;
+	      position: relative;
+	      overflow: hidden;
+	      animation: mblStagger 0.35s ease both;
+	      animation-delay: calc(var(--idx, 0) * 50ms);
+	      background: linear-gradient(180deg, #ffffff, #f8fbff);
+	      transition: transform 0.18s ease, box-shadow 0.18s ease;
+	      will-change: transform;
+	    }
+
+	    .mbl-kpi:hover {
+	      transform: translateY(-1px);
+	      box-shadow: 0 18px 44px rgba(12, 37, 66, 0.10);
+	    }
 
     .mbl-kpi::before {
       content: "";
@@ -990,6 +1095,7 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
 	      .mbl-filter-search { grid-column: span 2; }
 	      .mbl-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 	      .mbl-panels { grid-template-columns: 1fr; }
+	      .mbl-insights-grid { grid-template-columns: 1fr; }
 	      .mbl-analytics-grid { grid-template-columns: 1fr; }
 	    }
 
@@ -1017,6 +1123,8 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
 	      .mbl-viewchips::-webkit-scrollbar-thumb { background: rgba(15, 23, 42, 0.14); border-radius: 999px; }
 	      .mbl-viewchip { padding: 7px 11px; }
 	      .mbl-panels { grid-template-columns: 1fr; }
+	      .mbl-insight-card { min-height: 280px; }
+	      .mbl-insight-card .mbl-chart { height: 220px; }
 	      .mbl-actions-grid { grid-template-columns: 1fr; }
 	      .mbl-filters { grid-template-columns: 1fr 1fr; }
 	      .mbl-filter-search { grid-column: span 2; }
@@ -1124,6 +1232,14 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
     if (state.charts.status) state.charts.status.dispose();
     if (state.charts.clients) state.charts.clients.dispose();
     if (state.charts.tech) state.charts.tech.dispose();
+    if (state.charts.dynamic && state.charts.dynamic.size) {
+      state.charts.dynamic.forEach((chart) => {
+        try {
+          chart && chart.dispose && chart.dispose();
+        } catch (_) {}
+      });
+      state.charts.dynamic.clear();
+    }
     state.charts.trend = null;
     state.charts.status = null;
     state.charts.clients = null;
@@ -1489,142 +1605,533 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
     return delta >= 0 && delta <= days * 86400000;
   }
 
+  function parseDateSafe(input) {
+    if (!input) return null;
+    const ts = Date.parse(input);
+    if (!Number.isFinite(ts)) return null;
+    const d = new Date(ts);
+    return Number.isFinite(d.getTime()) ? d : null;
+  }
+
+  function shortDayLabelFromKey(key) {
+    // key: YYYY-MM-DD
+    try {
+      const parts = String(key || "").split("-");
+      if (parts.length !== 3) return String(key || "");
+      const y = Number(parts[0]);
+      const m = Number(parts[1]) - 1;
+      const d = Number(parts[2]);
+      const dt = new Date(y, m, d);
+      return dt.toLocaleDateString(state.config?.locale || "fr-FR", { day: "2-digit", month: "2-digit" });
+    } catch (_) {
+      return String(key || "");
+    }
+  }
+
+  function monthKeyFromDate(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    return `${y}-${m}`;
+  }
+
+  function shortMonthLabelFromKey(key) {
+    // key: YYYY-MM
+    try {
+      const parts = String(key || "").split("-");
+      if (parts.length !== 2) return String(key || "");
+      const y = Number(parts[0]);
+      const m = Number(parts[1]) - 1;
+      const dt = new Date(y, m, 1);
+      return dt.toLocaleDateString(state.config?.locale || "fr-FR", { month: "short", year: "2-digit" });
+    } catch (_) {
+      return String(key || "");
+    }
+  }
+
+  function buildDailySeries(items, getDateValue, getNumericValue, days) {
+    const n = Math.max(3, toNumber(days) || 30);
+    const end = startOfToday();
+    const start = new Date(end);
+    start.setDate(end.getDate() - (n - 1));
+    const keys = [];
+    const map = new Map();
+
+    for (let i = 0; i < n; i += 1) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      const k = toInputDate(d);
+      keys.push(k);
+      map.set(k, 0);
+    }
+
+    (items || []).forEach((it) => {
+      const raw = typeof getDateValue === "function" ? getDateValue(it) : null;
+      const dt = raw instanceof Date ? raw : parseDateSafe(raw);
+      if (!dt) return;
+      dt.setHours(0, 0, 0, 0);
+      if (dt < start || dt > end) return;
+      const k = toInputDate(dt);
+      if (!map.has(k)) return;
+      const v = typeof getNumericValue === "function" ? toNumber(getNumericValue(it)) : 0;
+      map.set(k, (map.get(k) || 0) + v);
+    });
+
+    return {
+      keys,
+      labels: keys.map(shortDayLabelFromKey),
+      values: keys.map((k) => round2(map.get(k) || 0)),
+    };
+  }
+
+  function buildForwardDailySeries(items, getDateValue, getNumericValue, days) {
+    const n = Math.max(3, toNumber(days) || 7);
+    const start = startOfToday();
+    const end = new Date(start);
+    end.setDate(start.getDate() + (n - 1));
+    const keys = [];
+    const map = new Map();
+
+    for (let i = 0; i < n; i += 1) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      const k = toInputDate(d);
+      keys.push(k);
+      map.set(k, 0);
+    }
+
+    (items || []).forEach((it) => {
+      const raw = typeof getDateValue === "function" ? getDateValue(it) : null;
+      const dt = raw instanceof Date ? raw : parseDateSafe(raw);
+      if (!dt) return;
+      dt.setHours(0, 0, 0, 0);
+      if (dt < start || dt > end) return;
+      const k = toInputDate(dt);
+      if (!map.has(k)) return;
+      const v = typeof getNumericValue === "function" ? toNumber(getNumericValue(it)) : 0;
+      map.set(k, (map.get(k) || 0) + v);
+    });
+
+    return {
+      keys,
+      labels: keys.map(shortDayLabelFromKey),
+      values: keys.map((k) => round2(map.get(k) || 0)),
+    };
+  }
+
+  function buildMonthlySeries(items, getDateValue, getNumericValue, months) {
+    const n = Math.max(3, Math.min(24, toNumber(months) || 6));
+    const now = new Date();
+    now.setDate(1);
+    now.setHours(0, 0, 0, 0);
+    const keys = [];
+    const map = new Map();
+
+    for (let i = n - 1; i >= 0; i -= 1) {
+      const d = new Date(now);
+      d.setMonth(now.getMonth() - i);
+      const k = monthKeyFromDate(d);
+      keys.push(k);
+      map.set(k, 0);
+    }
+
+    (items || []).forEach((it) => {
+      const raw = typeof getDateValue === "function" ? getDateValue(it) : null;
+      const dt = raw instanceof Date ? raw : parseDateSafe(raw);
+      if (!dt) return;
+      const k = monthKeyFromDate(dt);
+      if (!map.has(k)) return;
+      const v = typeof getNumericValue === "function" ? toNumber(getNumericValue(it)) : 0;
+      map.set(k, (map.get(k) || 0) + v);
+    });
+
+    return {
+      keys,
+      labels: keys.map(shortMonthLabelFromKey),
+      values: keys.map((k) => round2(map.get(k) || 0)),
+    };
+  }
+
   async function fetchModuleStats(context) {
     const modules = context?.modules || {};
-	    const stats = {
-	      billing: null,
-	      crm: null,
-	      transport: null,
-	      fleet: null,
-	      logistics: null,
-	      purchases: null,
-	      loyalty: null,
-	      rental: null,
-	      restaurant: null,
-	      pos: null,
-	    };
+    const stats = {
+      billing: null,
+      crm: null,
+      transport: null,
+      fleet: null,
+      logistics: null,
+      purchases: null,
+      loyalty: null,
+      rental: null,
+      restaurant: null,
+      pos: null,
+    };
 
-    if (modules.billing) {
-      const [factures, devis, clients] = await Promise.all([
-        safeTableRows("factures", "status,total_cents,due_date,paid_at,created_at", (q) =>
-          q.order("created_at", { ascending: false }).limit(6000)
-        ),
-        safeTableRows("devis", "status,total_cents,created_at", (q) => q.order("created_at", { ascending: false }).limit(6000)),
-        safeTableRows("clients", "id,is_active,created_at", (q) => q.limit(6000)),
-      ]);
+	    if (modules.billing) {
+	      const [factures, devis, clients] = await Promise.all([
+	        safeTableRows("factures", "status,total_cents,due_date,paid_at,created_at", (q) =>
+	          q.order("created_at", { ascending: false }).limit(6000)
+	        ),
+	        safeTableRows("devis", "status,total_cents,created_at", (q) => q.order("created_at", { ascending: false }).limit(6000)),
+	        safeTableRows("clients", "id,is_active,created_at", (q) => q.limit(6000)),
+	      ]);
 
-      const monthStart = startOfMonth();
-      let paidMonth = 0;
-      let openInvoices = 0;
-      let overdueInvoices = 0;
-      factures.forEach((f) => {
-        const status = normalizeStatus(f.status);
-        const total = toNumber(f.total_cents) / 100;
-        const isPaid = status === "paid";
-        const isOpen = ["issued", "sent", "partially_paid"].includes(status);
-        if (isOpen) openInvoices += 1;
-        if (isOpen && isBeforeToday(f.due_date)) overdueInvoices += 1;
-        if (isPaid && isSameOrAfter(f.paid_at || f.created_at, monthStart)) paidMonth += total;
-      });
+	      const monthStart = startOfMonth();
+	      let paidMonth = 0;
+	      let openInvoices = 0;
+	      let overdueInvoices = 0;
+	      let openAmount = 0;
+	      let overdueAmount = 0;
 
-      const openQuotes = devis.filter((d) => ["draft", "sent", "accepted"].includes(normalizeStatus(d.status))).length;
-      const activeClients = clients.filter((c) => c.is_active !== false).length;
+	      let paidCount = 0;
+	      let onTimeCount = 0;
+	      let delaySumDays = 0;
+	      let delayCount = 0;
 
-      stats.billing = {
-        paidMonth,
-        openInvoices,
-        overdueInvoices,
-        openQuotes,
-        activeClients,
-      };
-    }
+	      const invoiceBuckets = { paid: 0, open: 0, overdue: 0, other: 0 };
+	      const quoteBuckets = { draft: 0, sent: 0, accepted: 0, declined: 0, other: 0 };
 
-    if (modules.crm) {
-      const deals = await safeTableRows("crm_deals", "status,amount_cents,updated_at,closed_at", (q) =>
-        q.order("updated_at", { ascending: false }).limit(6000)
-      );
-      let pipelineValue = 0;
-      let wonMonth = 0;
-      const monthStart = startOfMonth();
-      deals.forEach((d) => {
-        const status = normalizeStatus(d.status);
-        const amount = toNumber(d.amount_cents) / 100;
-        if (status === "open") pipelineValue += amount;
-        if (status === "won" && isSameOrAfter(d.closed_at || d.updated_at, monthStart)) wonMonth += amount;
-      });
-      stats.crm = {
-        openDeals: deals.filter((d) => normalizeStatus(d.status) === "open").length,
-        pipelineValue,
-        wonMonth,
-      };
-    }
+	      factures.forEach((f) => {
+	        const status = normalizeStatus(f.status);
+	        const total = toNumber(f.total_cents) / 100;
+	        const isPaid = status === "paid";
+	        const isOpen = ["issued", "sent", "partially_paid"].includes(status);
 
-    if (modules.transport) {
-      const [shipments, tours] = await Promise.all([
-        safeTableRows("transport_shipments", "status,price_cents,distance_m,created_at", (q) =>
-          q.order("created_at", { ascending: false }).limit(6000)
-        ),
-        safeTableRows("transport_tours", "status,tour_date,created_at", (q) =>
-          q.order("created_at", { ascending: false }).limit(4000)
-        ),
-      ]);
-      const monthStart = startOfMonth();
-      let monthRevenue = 0;
-      let distanceKm = 0;
-      shipments.forEach((s) => {
-        if (isSameOrAfter(s.created_at, monthStart)) monthRevenue += toNumber(s.price_cents) / 100;
-        distanceKm += toNumber(s.distance_m) / 1000;
-      });
-      stats.transport = {
-        activeShipments: shipments.filter((s) => ["planned", "in_progress"].includes(normalizeStatus(s.status))).length,
-        monthRevenue,
-        distanceKm,
-        openTours: tours.filter((t) => ["planned", "in_progress"].includes(normalizeStatus(t.status))).length,
-      };
-    }
+	        if (isPaid) {
+	          invoiceBuckets.paid += 1;
+	        } else if (isOpen && isBeforeToday(f.due_date)) {
+	          invoiceBuckets.overdue += 1;
+	        } else if (isOpen) {
+	          invoiceBuckets.open += 1;
+	        } else {
+	          invoiceBuckets.other += 1;
+	        }
 
-    if (modules.fleet || modules.transport) {
-      const [vehicles, drivers] = await Promise.all([
-        safeTableRows(
-          "transport_vehicles",
-          "is_active,technical_inspection_due_at,insurance_expires_at,next_service_due_at",
-          (q) => q.limit(6000)
-        ),
-        safeTableRows("transport_drivers", "is_active,license_expiry,medical_visit_expires_at", (q) => q.limit(6000)),
-      ]);
-      let alerts30 = 0;
-      vehicles.forEach((v) => {
-        if (isWithinDays(v.technical_inspection_due_at, 30)) alerts30 += 1;
-        if (isWithinDays(v.insurance_expires_at, 30)) alerts30 += 1;
-        if (isWithinDays(v.next_service_due_at, 30)) alerts30 += 1;
-      });
-      drivers.forEach((d) => {
-        if (isWithinDays(d.license_expiry, 30)) alerts30 += 1;
-        if (isWithinDays(d.medical_visit_expires_at, 30)) alerts30 += 1;
-      });
-      stats.fleet = {
-        vehiclesActive: vehicles.filter((v) => v.is_active !== false).length,
-        driversActive: drivers.filter((d) => d.is_active !== false).length,
-        alerts30,
-      };
-    }
+	        if (isOpen) {
+	          openInvoices += 1;
+	          openAmount += total;
+	          if (isBeforeToday(f.due_date)) {
+	            overdueInvoices += 1;
+	            overdueAmount += total;
+	          }
+	        }
 
-    if (modules.logistics) {
-      const [levels, rules, warehouses] = await Promise.all([
-        safeTableRows("logistics_stock_levels", "warehouse_id,product_id,qty_on_hand,qty_reserved,stock_state", (q) => q.limit(10000)),
-        safeTableRows("logistics_reorder_rules", "warehouse_id,product_id,min_qty,is_active", (q) => q.eq("is_active", true).limit(6000)),
-        safeTableRows("logistics_warehouses", "id,is_active", (q) => q.limit(1000)),
-      ]);
+	        if (isPaid) {
+	          if (isSameOrAfter(f.paid_at || f.created_at, monthStart)) paidMonth += total;
+	          if (f.paid_at) {
+	            paidCount += 1;
+	            if (f.due_date) {
+	              const dueTs = Date.parse(`${f.due_date}T23:59:59`);
+	              const paidTs = Date.parse(f.paid_at);
+	              if (Number.isFinite(dueTs) && Number.isFinite(paidTs) && paidTs <= dueTs) onTimeCount += 1;
+	            }
+	            if (f.created_at) {
+	              const createdTs = Date.parse(f.created_at);
+	              const paidTs = Date.parse(f.paid_at);
+	              if (Number.isFinite(createdTs) && Number.isFinite(paidTs) && paidTs >= createdTs) {
+	                delaySumDays += (paidTs - createdTs) / 86400000;
+	                delayCount += 1;
+	              }
+	            }
+	          }
+	        }
+	      });
 
-      const stockKeyQty = new Map();
-      let availableQty = 0;
-      levels.forEach((l) => {
-        const stateKey = normalizeStatus(l.stock_state || "available");
-        const freeQty = Math.max(0, toNumber(l.qty_on_hand) - toNumber(l.qty_reserved));
-        if (stateKey === "available") availableQty += freeQty;
-        const k = `${l.warehouse_id || ""}:${l.product_id || ""}`;
-        stockKeyQty.set(k, (stockKeyQty.get(k) || 0) + freeQty);
-      });
+	      devis.forEach((d) => {
+	        const st = normalizeStatus(d.status);
+	        if (st === "draft") quoteBuckets.draft += 1;
+	        else if (st === "sent") quoteBuckets.sent += 1;
+	        else if (st === "accepted") quoteBuckets.accepted += 1;
+	        else if (["declined", "rejected", "refused"].includes(st)) quoteBuckets.declined += 1;
+	        else quoteBuckets.other += 1;
+	      });
+
+	      const openQuotes = devis.filter((d) => ["draft", "sent", "accepted"].includes(normalizeStatus(d.status))).length;
+	      const activeClients = clients.filter((c) => c.is_active !== false).length;
+	      const cashIn30 = buildDailySeries(
+	        factures.filter((f) => normalizeStatus(f.status) === "paid"),
+	        (f) => f.paid_at || f.created_at,
+	        (f) => toNumber(f.total_cents) / 100,
+	        30
+	      );
+	      const invoicesIssued30 = buildDailySeries(
+	        factures,
+	        (f) => f.created_at,
+	        () => 1,
+	        30
+	      );
+	      const quotesAccepted6m = buildMonthlySeries(
+	        devis.filter((d) => normalizeStatus(d.status) === "accepted"),
+	        (d) => d.created_at,
+	        (d) => toNumber(d.total_cents) / 100,
+	        6
+	      );
+
+	      stats.billing = {
+	        paidMonth,
+	        openInvoices,
+	        overdueInvoices,
+	        openQuotes,
+	        activeClients,
+	        openAmount,
+	        overdueAmount,
+	        avgPaymentDelayDays: delayCount ? round2(delaySumDays / delayCount) : 0,
+	        onTimeRate: paidCount ? round2((onTimeCount / paidCount) * 100) : 0,
+	        series: {
+	          cashIn30,
+	          invoicesIssued30,
+	          quotesAccepted6m,
+	        },
+	        breakdown: {
+	          invoiceBuckets,
+	          quoteBuckets,
+	        },
+	      };
+	    }
+
+	    if (modules.crm) {
+	      const deals = await safeTableRows("crm_deals", "status,amount_cents,updated_at,closed_at", (q) =>
+	        q.order("updated_at", { ascending: false }).limit(6000)
+	      );
+	      let pipelineValue = 0;
+	      let openDeals = 0;
+	      let openAmount = 0;
+	      let wonMonth = 0;
+	      let wonMonthCount = 0;
+	      let lostMonthCount = 0;
+	      const monthStart = startOfMonth();
+
+	      const statusCounts = { open: 0, won: 0, lost: 0, other: 0 };
+	      const statusValues = { open: 0, won: 0, lost: 0, other: 0 };
+
+	      deals.forEach((d) => {
+	        const status = normalizeStatus(d.status);
+	        const amount = toNumber(d.amount_cents) / 100;
+
+	        if (statusCounts[status] == null) statusCounts.other += 1;
+	        else statusCounts[status] += 1;
+
+	        if (statusValues[status] == null) statusValues.other += amount;
+	        else statusValues[status] += amount;
+
+	        if (status === "open") {
+	          pipelineValue += amount;
+	          openDeals += 1;
+	          openAmount += amount;
+	        }
+
+	        if (status === "won" && isSameOrAfter(d.closed_at || d.updated_at, monthStart)) {
+	          wonMonth += amount;
+	          wonMonthCount += 1;
+	        }
+
+	        if (status === "lost" && isSameOrAfter(d.closed_at || d.updated_at, monthStart)) {
+	          lostMonthCount += 1;
+	        }
+	      });
+
+	      const won6m = buildMonthlySeries(
+	        deals.filter((d) => normalizeStatus(d.status) === "won"),
+	        (d) => d.closed_at || d.updated_at,
+	        (d) => toNumber(d.amount_cents) / 100,
+	        6
+	      );
+
+	      const winRate = wonMonthCount + lostMonthCount ? round2((wonMonthCount / (wonMonthCount + lostMonthCount)) * 100) : 0;
+	      stats.crm = {
+	        openDeals,
+	        pipelineValue,
+	        wonMonth,
+	        wonMonthCount,
+	        lostMonthCount,
+	        winRate,
+	        avgOpenDeal: openDeals ? round2(openAmount / openDeals) : 0,
+	        series: {
+	          won6m,
+	        },
+	        breakdown: {
+	          statusCounts,
+	          statusValues,
+	        },
+	      };
+	    }
+
+	    if (modules.transport) {
+	      const [shipments, tours] = await Promise.all([
+	        safeTableRows("transport_shipments", "status,price_cents,distance_m,created_at", (q) =>
+	          q.order("created_at", { ascending: false }).limit(6000)
+	        ),
+	        safeTableRows("transport_tours", "status,tour_date,created_at", (q) =>
+	          q.order("created_at", { ascending: false }).limit(4000)
+	        ),
+	      ]);
+	      const monthStart = startOfMonth();
+	      let monthRevenue = 0;
+	      let distanceKm = 0;
+	      let doneMonth = 0;
+	      const shipmentStatusCounts = {};
+	      shipments.forEach((s) => {
+	        const st = normalizeStatus(s.status);
+	        shipmentStatusCounts[st] = (shipmentStatusCounts[st] || 0) + 1;
+	        const price = toNumber(s.price_cents) / 100;
+	        if (isSameOrAfter(s.created_at, monthStart)) monthRevenue += price;
+	        const dist = toNumber(s.distance_m) / 1000;
+	        if (["planned", "in_progress"].includes(st)) distanceKm += dist;
+	        if (["done", "completed", "delivered"].includes(st) && isSameOrAfter(s.created_at, monthStart)) doneMonth += 1;
+	      });
+
+	      const tourStatusCounts = {};
+	      tours.forEach((t) => {
+	        const st = normalizeStatus(t.status);
+	        tourStatusCounts[st] = (tourStatusCounts[st] || 0) + 1;
+	      });
+
+	      const revenue30 = buildDailySeries(
+	        shipments.filter((s) => normalizeStatus(s.status) !== "canceled"),
+	        (s) => s.created_at,
+	        (s) => toNumber(s.price_cents) / 100,
+	        30
+	      );
+	      const shipments30 = buildDailySeries(
+	        shipments.filter((s) => normalizeStatus(s.status) !== "canceled"),
+	        (s) => s.created_at,
+	        () => 1,
+	        30
+	      );
+	      const distance30 = buildDailySeries(
+	        shipments.filter((s) => normalizeStatus(s.status) !== "canceled"),
+	        (s) => s.created_at,
+	        (s) => toNumber(s.distance_m) / 1000,
+	        30
+	      );
+	      stats.transport = {
+	        activeShipments: shipments.filter((s) => ["planned", "in_progress"].includes(normalizeStatus(s.status))).length,
+	        monthRevenue,
+	        distanceKm,
+	        revPerKm: distanceKm > 0 ? round2(monthRevenue / distanceKm) : 0,
+	        doneMonth,
+	        openTours: tours.filter((t) => ["planned", "in_progress"].includes(normalizeStatus(t.status))).length,
+	        series: {
+	          revenue30,
+	          shipments30,
+	          distance30,
+	        },
+	        breakdown: {
+	          shipmentStatusCounts,
+	          tourStatusCounts,
+	        },
+	      };
+	    }
+
+	    if (modules.fleet || modules.transport) {
+	      const [vehicles, drivers] = await Promise.all([
+	        safeTableRows(
+	          "transport_vehicles",
+	          "is_active,technical_inspection_due_at,insurance_expires_at,next_service_due_at",
+	          (q) => q.limit(6000)
+	        ),
+	        safeTableRows("transport_drivers", "is_active,license_expiry,medical_visit_expires_at", (q) => q.limit(6000)),
+	      ]);
+	      const vehiclesActive = vehicles.filter((v) => v.is_active !== false).length;
+	      const driversActive = drivers.filter((d) => d.is_active !== false).length;
+
+	      let alerts30 = 0;
+	      let vehiclesAlerted30 = 0;
+	      let driversAlerted30 = 0;
+
+	      let ctDue30 = 0;
+	      let insuranceDue30 = 0;
+	      let serviceDue30 = 0;
+	      let licenseDue30 = 0;
+	      let medicalDue30 = 0;
+
+	      vehicles.forEach((v) => {
+	        if (v.is_active === false) return;
+	        let has = false;
+	        if (isWithinDays(v.technical_inspection_due_at, 30)) {
+	          alerts30 += 1;
+	          ctDue30 += 1;
+	          has = true;
+	        }
+	        if (isWithinDays(v.insurance_expires_at, 30)) {
+	          alerts30 += 1;
+	          insuranceDue30 += 1;
+	          has = true;
+	        }
+	        if (isWithinDays(v.next_service_due_at, 30)) {
+	          alerts30 += 1;
+	          serviceDue30 += 1;
+	          has = true;
+	        }
+	        if (has) vehiclesAlerted30 += 1;
+	      });
+
+	      drivers.forEach((d) => {
+	        if (d.is_active === false) return;
+	        let has = false;
+	        if (isWithinDays(d.license_expiry, 30)) {
+	          alerts30 += 1;
+	          licenseDue30 += 1;
+	          has = true;
+	        }
+	        if (isWithinDays(d.medical_visit_expires_at, 30)) {
+	          alerts30 += 1;
+	          medicalDue30 += 1;
+	          has = true;
+	        }
+	        if (has) driversAlerted30 += 1;
+	      });
+
+	      const totalEntities = vehiclesActive + driversActive;
+	      const alertedEntities30 = vehiclesAlerted30 + driversAlerted30;
+	      const complianceRate30 = totalEntities
+	        ? round2(((totalEntities - alertedEntities30) / totalEntities) * 100)
+	        : 100;
+
+	      stats.fleet = {
+	        vehiclesActive,
+	        driversActive,
+	        alerts30,
+	        vehiclesAlerted30,
+	        driversAlerted30,
+	        alertedEntities30,
+	        complianceRate30,
+	        breakdown: {
+	          ctDue30,
+	          insuranceDue30,
+	          serviceDue30,
+	          licenseDue30,
+	          medicalDue30,
+	        },
+	      };
+	    }
+
+	    if (modules.logistics) {
+	      const [levels, rules, warehouses] = await Promise.all([
+	        safeTableRows("logistics_stock_levels", "warehouse_id,product_id,qty_on_hand,qty_reserved,stock_state", (q) => q.limit(10000)),
+	        safeTableRows("logistics_reorder_rules", "warehouse_id,product_id,min_qty,is_active", (q) => q.eq("is_active", true).limit(6000)),
+	        safeTableRows("logistics_warehouses", "id,is_active", (q) => q.limit(1000)),
+	      ]);
+
+	      const stockKeyQty = new Map();
+	      let availableQty = 0;
+	      let onHandQty = 0;
+	      let reservedQty = 0;
+	      let outOfStock = 0;
+	      const stockStateCounts = {};
+	      levels.forEach((l) => {
+	        const stateKey = normalizeStatus(l.stock_state || "available");
+	        stockStateCounts[stateKey] = (stockStateCounts[stateKey] || 0) + 1;
+	        const onHand = toNumber(l.qty_on_hand);
+	        const reserved = toNumber(l.qty_reserved);
+	        onHandQty += onHand;
+	        reservedQty += reserved;
+	        if (onHand <= 0) outOfStock += 1;
+
+	        const freeQty = Math.max(0, onHand - reserved);
+	        if (stateKey === "available") availableQty += freeQty;
+	        const k = `${l.warehouse_id || ""}:${l.product_id || ""}`;
+	        stockKeyQty.set(k, (stockKeyQty.get(k) || 0) + freeQty);
+	      });
 
       let lowStockAlerts = 0;
       rules.forEach((r) => {
@@ -1633,12 +2140,17 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
         if (qty <= toNumber(r.min_qty)) lowStockAlerts += 1;
       });
 
-      stats.logistics = {
-        activeWarehouses: warehouses.filter((w) => w.is_active !== false).length,
-        availableQty,
-        lowStockAlerts,
-      };
-    }
+	      stats.logistics = {
+	        activeWarehouses: warehouses.filter((w) => w.is_active !== false).length,
+	        availableQty,
+	        lowStockAlerts,
+	        outOfStock,
+	        reserveRatio: onHandQty > 0 ? round2((reservedQty / onHandQty) * 100) : 0,
+	        breakdown: {
+	          stockStateCounts,
+	        },
+	      };
+	    }
 
 	    if (modules.purchases) {
 	      const [orders, suppliers] = await Promise.all([
@@ -1649,16 +2161,36 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
 	      ]);
 	      const monthStart = startOfMonth();
 	      let openOrders = 0;
+	      let openAmount = 0;
 	      let spendMonth = 0;
+	      const statusCounts = {};
 	      orders.forEach((o) => {
 	        const st = normalizeStatus(o.status);
-	        if (["draft", "sent", "confirmed", "partially_received"].includes(st)) openOrders += 1;
-	        if (st === "received" && isSameOrAfter(o.issue_date || o.created_at, monthStart)) spendMonth += toNumber(o.total_cents) / 100;
+	        statusCounts[st] = (statusCounts[st] || 0) + 1;
+	        const total = toNumber(o.total_cents) / 100;
+	        if (["draft", "sent", "confirmed", "partially_received"].includes(st)) {
+	          openOrders += 1;
+	          openAmount += total;
+	        }
+	        if (st === "received" && isSameOrAfter(o.issue_date || o.created_at, monthStart)) spendMonth += total;
 	      });
+	      const spend6m = buildMonthlySeries(
+	        orders.filter((o) => normalizeStatus(o.status) === "received"),
+	        (o) => o.issue_date || o.created_at,
+	        (o) => toNumber(o.total_cents) / 100,
+	        6
+	      );
 	      stats.purchases = {
 	        openOrders,
+	        openAmount,
 	        spendMonth,
 	        activeSuppliers: suppliers.filter((s) => s.is_active !== false).length,
+	        series: {
+	          spend6m,
+	        },
+	        breakdown: {
+	          statusCounts,
+	        },
 	      };
 	    }
 
@@ -1669,13 +2201,33 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
 	      ]);
 	      const monthStart = startOfMonth();
 	      let pointsIssuedMonth = 0;
+	      let pointsRedeemedMonth = 0;
 	      events.forEach((e) => {
 	        const pts = toNumber(e.points);
-	        if (pts > 0 && isSameOrAfter(e.created_at, monthStart)) pointsIssuedMonth += pts;
+	        if (!isSameOrAfter(e.created_at, monthStart)) return;
+	        if (pts > 0) pointsIssuedMonth += pts;
+	        if (pts < 0) pointsRedeemedMonth += Math.abs(pts);
 	      });
+	      const issued6m = buildMonthlySeries(
+	        events.filter((e) => toNumber(e.points) > 0),
+	        (e) => e.created_at,
+	        (e) => Math.max(0, toNumber(e.points)),
+	        6
+	      );
+	      const redeemed6m = buildMonthlySeries(
+	        events.filter((e) => toNumber(e.points) < 0),
+	        (e) => e.created_at,
+	        (e) => Math.abs(toNumber(e.points)),
+	        6
+	      );
 	      stats.loyalty = {
 	        activeMembers: members.filter((m) => normalizeStatus(m.status) === "active").length,
 	        pointsIssuedMonth,
+	        pointsRedeemedMonth,
+	        series: {
+	          issued6m,
+	          redeemed6m,
+	        },
 	      };
 	    }
 
@@ -1687,16 +2239,37 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
 	      let openReservations = 0;
 	      let arrivals7 = 0;
 	      let revenueMonth = 0;
+	      const statusCounts = {};
 	      reservations.forEach((r) => {
 	        const st = normalizeStatus(r.status);
+	        statusCounts[st] = (statusCounts[st] || 0) + 1;
 	        if (["pending", "confirmed", "blocked"].includes(st)) openReservations += 1;
 	        if (["pending", "confirmed"].includes(st) && isWithinDays(r.check_in, 7)) arrivals7 += 1;
 	        if (st === "confirmed" && isSameOrAfter(r.check_in || r.created_at, monthStart)) revenueMonth += toNumber(r.total_cents) / 100;
 	      });
+	      const revenue6m = buildMonthlySeries(
+	        reservations.filter((r) => normalizeStatus(r.status) === "confirmed"),
+	        (r) => r.check_in || r.created_at,
+	        (r) => toNumber(r.total_cents) / 100,
+	        6
+	      );
+	      const arrivalsNext7 = buildForwardDailySeries(
+	        reservations.filter((r) => ["pending", "confirmed"].includes(normalizeStatus(r.status))),
+	        (r) => r.check_in,
+	        () => 1,
+	        7
+	      );
 	      stats.rental = {
 	        openReservations,
 	        arrivals7,
 	        revenueMonth,
+	        series: {
+	          revenue6m,
+	          arrivalsNext7,
+	        },
+	        breakdown: {
+	          statusCounts,
+	        },
 	      };
 	    }
 
@@ -1704,34 +2277,130 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
 	      const orders = await safeTableRows("restaurant_orders", "source,status,total_cents,created_at,payment_status", (q) =>
 	        q.order("created_at", { ascending: false }).limit(8000)
 	      );
-      const today = startOfToday();
-      const todayOrders = orders.filter((o) => isSameOrAfter(o.created_at, today));
-      const todayRevenue = todayOrders
-        .filter((o) => normalizeStatus(o.status) !== "canceled")
-        .reduce((acc, o) => acc + toNumber(o.total_cents) / 100, 0);
+	      const today = startOfToday();
+	      const monthStart = startOfMonth();
+	      const todayOrders = orders.filter((o) => isSameOrAfter(o.created_at, today));
+	      const monthOrders = orders.filter((o) => isSameOrAfter(o.created_at, monthStart));
+	      const todayRevenue = todayOrders
+	        .filter((o) => normalizeStatus(o.status) !== "canceled")
+	        .reduce((acc, o) => acc + toNumber(o.total_cents) / 100, 0);
+	      const monthRevenueAll = monthOrders
+	        .filter((o) => normalizeStatus(o.status) !== "canceled")
+	        .reduce((acc, o) => acc + toNumber(o.total_cents) / 100, 0);
 
-      if (modules.restaurant) {
-        const [items, locations] = await Promise.all([
-          safeTableRows("restaurant_menu_items", "is_active,available_for_qr,available_for_pos", (q) => q.limit(6000)),
-          safeTableRows("restaurant_locations", "id,is_active,public_is_open", (q) => q.limit(2000)),
-        ]);
+	      const statusCounts = {};
+	      const sourceCounts = {};
+	      const paymentStatusCounts = {};
+	      orders.forEach((o) => {
+	        const st = normalizeStatus(o.status);
+	        statusCounts[st] = (statusCounts[st] || 0) + 1;
+	        const src = normalizeStatus(o.source || "unknown");
+	        sourceCounts[src] = (sourceCounts[src] || 0) + 1;
+	        const pay = normalizeStatus(o.payment_status || "");
+	        if (pay) paymentStatusCounts[pay] = (paymentStatusCounts[pay] || 0) + 1;
+	      });
 
-        stats.restaurant = {
-          todayOrders: todayOrders.length,
-          openOrders: orders.filter((o) => ["new", "confirmed", "preparing", "ready"].includes(normalizeStatus(o.status))).length,
-          todayRevenue,
-          activeMenus: items.filter((i) => i.is_active !== false).length,
-          activeLocations: locations.filter((l) => l.is_active !== false).length,
-        };
-      }
+	      const posOrders = orders.filter((o) => normalizeStatus(o.source) === "pos");
+	      const posStatusCounts = {};
+	      const posPaymentStatusCounts = {};
+	      posOrders.forEach((o) => {
+	        const st = normalizeStatus(o.status);
+	        posStatusCounts[st] = (posStatusCounts[st] || 0) + 1;
+	        const pay = normalizeStatus(o.payment_status || "");
+	        if (pay) posPaymentStatusCounts[pay] = (posPaymentStatusCounts[pay] || 0) + 1;
+	      });
 
-      stats.pos = {
-        posTicketsToday: todayOrders.filter((o) => normalizeStatus(o.source) === "pos").length,
-        posRevenueToday: todayOrders
-          .filter((o) => normalizeStatus(o.source) === "pos" && normalizeStatus(o.status) !== "canceled")
-          .reduce((acc, o) => acc + toNumber(o.total_cents) / 100, 0),
-      };
-    }
+	      const hourlyLabels = Array.from({ length: 24 }, (_, h) => String(h).padStart(2, "0") + ":00");
+	      const hourlyCounts = Array.from({ length: 24 }, () => 0);
+	      todayOrders.forEach((o) => {
+	        const dt = parseDateSafe(o.created_at);
+	        if (!dt) return;
+	        const h = dt.getHours();
+	        if (h >= 0 && h <= 23) hourlyCounts[h] = (hourlyCounts[h] || 0) + 1;
+	      });
+	      const ordersTodayHourly = { labels: hourlyLabels, values: hourlyCounts.map((n) => toNumber(n)) };
+
+	      const revenue30All = buildDailySeries(
+	        orders.filter((o) => normalizeStatus(o.status) !== "canceled"),
+	        (o) => o.created_at,
+	        (o) => toNumber(o.total_cents) / 100,
+	        30
+	      );
+	      const orders30All = buildDailySeries(
+	        orders,
+	        (o) => o.created_at,
+	        () => 1,
+	        30
+	      );
+	      const posRevenue30 = buildDailySeries(
+	        posOrders.filter((o) => normalizeStatus(o.status) !== "canceled"),
+	        (o) => o.created_at,
+	        (o) => toNumber(o.total_cents) / 100,
+	        30
+	      );
+	      const posTickets30 = buildDailySeries(
+	        posOrders,
+	        (o) => o.created_at,
+	        () => 1,
+	        30
+	      );
+
+	      if (modules.restaurant) {
+	        const [items, locations] = await Promise.all([
+	          safeTableRows("restaurant_menu_items", "is_active,available_for_qr,available_for_pos", (q) => q.limit(6000)),
+	          safeTableRows("restaurant_locations", "id,is_active,public_is_open", (q) => q.limit(2000)),
+	        ]);
+
+	        const canceledToday = todayOrders.filter((o) => normalizeStatus(o.status) === "canceled").length;
+	        const avgTicketToday = todayOrders.length ? todayRevenue / Math.max(1, todayOrders.length - canceledToday) : 0;
+	        stats.restaurant = {
+	          todayOrders: todayOrders.length,
+	          openOrders: orders.filter((o) => ["new", "confirmed", "preparing", "ready"].includes(normalizeStatus(o.status))).length,
+	          todayRevenue,
+	          monthOrders: monthOrders.length,
+	          monthRevenue: monthRevenueAll,
+	          avgTicketToday: round2(avgTicketToday),
+	          cancelRateToday: todayOrders.length ? round2((canceledToday / todayOrders.length) * 100) : 0,
+	          activeMenus: items.filter((i) => i.is_active !== false).length,
+	          activeLocations: locations.filter((l) => l.is_active !== false).length,
+	          series: {
+	            revenue30All,
+	            orders30All,
+	            ordersTodayHourly,
+	          },
+	          breakdown: {
+	            statusCounts,
+	            sourceCounts,
+	            paymentStatusCounts,
+	          },
+	        };
+	      }
+
+	      const posTicketsToday = todayOrders.filter((o) => normalizeStatus(o.source) === "pos").length;
+	      const posRevenueToday = todayOrders
+	        .filter((o) => normalizeStatus(o.source) === "pos" && normalizeStatus(o.status) !== "canceled")
+	        .reduce((acc, o) => acc + toNumber(o.total_cents) / 100, 0);
+	      const posTicketsMonth = monthOrders.filter((o) => normalizeStatus(o.source) === "pos").length;
+	      const posRevenueMonth = monthOrders
+	        .filter((o) => normalizeStatus(o.source) === "pos" && normalizeStatus(o.status) !== "canceled")
+	        .reduce((acc, o) => acc + toNumber(o.total_cents) / 100, 0);
+
+	      stats.pos = {
+	        posTicketsToday,
+	        posRevenueToday,
+	        avgTicketToday: posTicketsToday ? round2(posRevenueToday / Math.max(1, posTicketsToday)) : 0,
+	        posTicketsMonth,
+	        posRevenueMonth,
+	        series: {
+	          posRevenue30,
+	          posTickets30,
+	        },
+	        breakdown: {
+	          posStatusCounts,
+	          posPaymentStatusCounts,
+	        },
+	      };
+	    }
 
     return stats;
   }
@@ -1870,6 +2539,8 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
 	          <article class="mbl-card mbl-panel" data-actions></article>
 	          <article class="mbl-card mbl-panel" data-alerts></article>
 	        </section>
+
+	        <section class="mbl-insights"></section>
 
 	        <section class="mbl-analytics-grid mbl-interventions-only">
 	          <article class="mbl-card mbl-chart-card">
@@ -2023,6 +2694,13 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
     if (state.charts.status) state.charts.status.resize();
     if (state.charts.clients) state.charts.clients.resize();
     if (state.charts.tech) state.charts.tech.resize();
+    if (state.charts.dynamic && state.charts.dynamic.size) {
+      state.charts.dynamic.forEach((chart) => {
+        try {
+          chart && chart.resize && chart.resize();
+        } catch (_) {}
+      });
+    }
   }
 
   function applyDatePreset(preset, silent) {
@@ -2349,19 +3027,22 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
 
   function updateDashboard() {
     renderContextSummary();
-    const rows = createEnrichedRows();
-    const filtered = applyFilters(rows);
-    const sorted = sortRows(filtered);
-    state.filteredRows = sorted;
+    const viewKey = normalizeViewKey(state.view?.business);
+
+    // Interventions filters/table are meaningful only in the Interventions view.
+    const allRows = createEnrichedRows();
+    const effectiveRows = viewKey === "interventions" ? sortRows(applyFilters(allRows)) : allRows;
+    state.filteredRows = viewKey === "interventions" ? effectiveRows : [];
 
     renderViewBar();
-    renderKpis(sorted);
-    renderActions(sorted);
-    renderAlerts(sorted);
-    const viewKey = normalizeViewKey(state.view?.business);
+    renderKpis(effectiveRows);
+    renderActions(effectiveRows);
+    renderAlerts(effectiveRows);
+    renderInsights(effectiveRows);
+
     if (Boolean(state.context?.modules?.interventions) && viewKey === "interventions") {
-      renderTable(sorted);
-      renderCharts(sorted);
+      renderTable(effectiveRows);
+      renderCharts(effectiveRows);
     } else {
       updateTableCount(0);
     }
@@ -2627,6 +3308,1530 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
     `;
   }
 
+  function renderInsights(rows) {
+    const root = getRoot(state.config.container);
+    if (!root) return;
+    const mount = root.querySelector(SELECTORS.insightsArea);
+    if (!mount) return;
+
+    const modules = state.context?.modules || {};
+    const moduleStats = state.moduleStats || {};
+    const viewKey = normalizeViewKey(state.view?.business);
+    const canChart = Boolean(window.echarts);
+
+    const css = getComputedStyle(document.documentElement);
+    const primary = String(css.getPropertyValue("--mbl-primary") || "").trim() || "#0ea5e9";
+    const primaryRgb = String(css.getPropertyValue("--mbl-primary-rgb") || "").trim() || "14, 165, 233";
+
+    const C = {
+      primary,
+      primaryRgb,
+      good: "#22c55e",
+      warn: "#f59e0b",
+      bad: "#ef4444",
+      slate: "#94a3b8",
+      ink: "rgba(2, 6, 23, 0.84)",
+      inkSoft: "rgba(2, 6, 23, 0.62)",
+      line: "rgba(15, 23, 42, 0.12)",
+      grid: "rgba(15, 23, 42, 0.08)",
+    };
+
+    function baseGrid() {
+      return {
+        top: 42,
+        left: 10,
+        right: 12,
+        bottom: 10,
+        containLabel: true,
+      };
+    }
+
+    function baseAxisCategory(labels) {
+      return {
+        type: "category",
+        data: Array.isArray(labels) && labels.length ? labels : ["--"],
+        axisLabel: { color: C.inkSoft },
+        axisLine: { lineStyle: { color: C.line } },
+        axisTick: { show: false },
+      };
+    }
+
+    function baseAxisValueMoney() {
+      return {
+        type: "value",
+        axisLabel: {
+          color: C.inkSoft,
+          formatter: function (v) {
+            return compactCurrency(v, state.config.locale, state.config.currency);
+          },
+        },
+        axisLine: { show: false },
+        axisTick: { show: false },
+        splitLine: { lineStyle: { color: C.grid } },
+      };
+    }
+
+    function baseAxisValueCount() {
+      return {
+        type: "value",
+        axisLabel: { color: C.inkSoft },
+        axisLine: { show: false },
+        axisTick: { show: false },
+        splitLine: { lineStyle: { color: C.grid } },
+      };
+    }
+
+	    function optionLineMoney(labels, seriesDefs) {
+	      return {
+	        backgroundColor: "transparent",
+	        animationDuration: 700,
+	        animationDurationUpdate: 420,
+	        animationEasing: "cubicOut",
+	        tooltip: {
+	          trigger: "axis",
+	          valueFormatter: (value) => money(value),
+	        },
+	        legend: {
+	          data: seriesDefs.map((s) => s.name),
+	          textStyle: { color: C.inkSoft, fontSize: 11 },
+	        },
+	        grid: baseGrid(),
+	        xAxis: baseAxisCategory(labels),
+	        yAxis: baseAxisValueMoney(),
+	        series: seriesDefs.map((s, idx) => {
+	          const col = s.color || (idx === 0 ? C.primary : C.slate);
+	          const colArea = s.areaColor || `rgba(${C.primaryRgb}, 0.12)`;
+	          return {
+	            name: s.name,
+	            type: "line",
+	            smooth: true,
+	            symbol: "none",
+	            lineStyle: { width: 2.4, color: col },
+	            areaStyle: s.area ? { opacity: 1, color: colArea } : undefined,
+	            data: Array.isArray(s.data) && s.data.length ? s.data : [0],
+	          };
+	        }),
+	      };
+	    }
+
+	    function optionLineCounts(labels, seriesDefs) {
+	      return {
+	        backgroundColor: "transparent",
+	        animationDuration: 700,
+	        animationDurationUpdate: 420,
+	        animationEasing: "cubicOut",
+	        tooltip: { trigger: "axis" },
+	        legend: {
+	          data: seriesDefs.map((s) => s.name),
+	          textStyle: { color: C.inkSoft, fontSize: 11 },
+	        },
+	        grid: baseGrid(),
+	        xAxis: baseAxisCategory(labels),
+	        yAxis: baseAxisValueCount(),
+	        series: seriesDefs.map((s, idx) => {
+	          const col = s.color || (idx === 0 ? C.primary : C.slate);
+	          const colArea = s.areaColor || `rgba(${C.primaryRgb}, 0.10)`;
+	          return {
+	            name: s.name,
+	            type: "line",
+	            smooth: true,
+	            symbol: "none",
+	            lineStyle: { width: 2.4, color: col },
+	            areaStyle: s.area ? { opacity: 1, color: colArea } : undefined,
+	            data: Array.isArray(s.data) && s.data.length ? s.data : [0],
+	          };
+	        }),
+	      };
+	    }
+
+    function optionLinePercent(labels, name, data) {
+      return {
+        backgroundColor: "transparent",
+        animationDuration: 700,
+        animationDurationUpdate: 420,
+        animationEasing: "cubicOut",
+        tooltip: {
+          trigger: "axis",
+          valueFormatter: (value) => percent(value),
+        },
+        grid: baseGrid(),
+        xAxis: baseAxisCategory(labels),
+        yAxis: {
+          type: "value",
+          axisLabel: { color: C.inkSoft, formatter: (v) => `${Math.round(toNumber(v))}%` },
+          axisLine: { show: false },
+          axisTick: { show: false },
+          splitLine: { lineStyle: { color: C.grid } },
+        },
+        series: [
+          {
+            name,
+            type: "line",
+            smooth: true,
+            symbol: "none",
+            lineStyle: { width: 2.4, color: C.primary },
+            areaStyle: { opacity: 1, color: `rgba(${C.primaryRgb}, 0.10)` },
+            data: Array.isArray(data) && data.length ? data : [0],
+          },
+        ],
+      };
+    }
+
+	    function optionBarCounts(labels, name, data, color) {
+	      return {
+        backgroundColor: "transparent",
+        animationDuration: 650,
+        animationDurationUpdate: 400,
+        animationEasing: "cubicOut",
+        tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
+        grid: baseGrid(),
+        xAxis: baseAxisCategory(labels),
+        yAxis: baseAxisValueCount(),
+        series: [
+          {
+            name,
+            type: "bar",
+            data: Array.isArray(data) && data.length ? data : [0],
+            barMaxWidth: 16,
+            itemStyle: {
+              color: color || `rgba(${C.primaryRgb}, 0.55)`,
+              borderRadius: [8, 8, 0, 0],
+            },
+          },
+        ],
+      };
+	    }
+
+	    function optionBarHorizontalCounts(labels, name, data, color) {
+	      return {
+	        backgroundColor: "transparent",
+	        animationDuration: 650,
+	        animationDurationUpdate: 400,
+	        animationEasing: "cubicOut",
+	        tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
+	        grid: { top: 18, left: 10, right: 12, bottom: 10, containLabel: true },
+	        xAxis: baseAxisValueCount(),
+	        yAxis: {
+	          type: "category",
+	          data: Array.isArray(labels) && labels.length ? labels : ["--"],
+	          axisLabel: { color: C.inkSoft },
+	          axisLine: { lineStyle: { color: C.line } },
+	          axisTick: { show: false },
+	        },
+	        series: [
+	          {
+	            name,
+	            type: "bar",
+	            data: Array.isArray(data) && data.length ? data : [0],
+	            barMaxWidth: 14,
+	            itemStyle: {
+	              color: color || `rgba(${C.primaryRgb}, 0.55)`,
+	              borderRadius: [0, 8, 8, 0],
+	            },
+	          },
+	        ],
+	      };
+	    }
+
+	    function optionBarHorizontalMoney(labels, name, data, color) {
+	      return {
+	        backgroundColor: "transparent",
+	        animationDuration: 650,
+	        animationDurationUpdate: 400,
+	        animationEasing: "cubicOut",
+	        tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, valueFormatter: (v) => money(v) },
+	        grid: { top: 18, left: 10, right: 12, bottom: 10, containLabel: true },
+	        xAxis: baseAxisValueMoney(),
+	        yAxis: {
+	          type: "category",
+	          data: Array.isArray(labels) && labels.length ? labels : ["--"],
+	          axisLabel: { color: C.inkSoft },
+	          axisLine: { lineStyle: { color: C.line } },
+	          axisTick: { show: false },
+	        },
+	        series: [
+	          {
+	            name,
+	            type: "bar",
+	            data: Array.isArray(data) && data.length ? data : [0],
+	            barMaxWidth: 14,
+	            itemStyle: {
+	              color: color || `rgba(${C.primaryRgb}, 0.55)`,
+	              borderRadius: [0, 8, 8, 0],
+	            },
+	          },
+	        ],
+	      };
+	    }
+
+    function optionPie(dataItems) {
+      const data = Array.isArray(dataItems) && dataItems.length ? dataItems : [{ name: "Aucune donnée", value: 1, itemStyle: { color: C.slate } }];
+      return {
+        backgroundColor: "transparent",
+        animationDuration: 700,
+        animationDurationUpdate: 420,
+        tooltip: { trigger: "item", formatter: "{b}: {c} ({d}%)" },
+        legend: { bottom: 0, textStyle: { color: C.inkSoft, fontSize: 11 } },
+        series: [
+          {
+            type: "pie",
+            radius: ["46%", "72%"],
+            center: ["50%", "44%"],
+            label: { show: false },
+            itemStyle: { borderColor: "rgba(255,255,255,0.9)", borderWidth: 2 },
+            data,
+          },
+        ],
+      };
+    }
+
+    function optionGaugePercent(value, colorStops) {
+      const v = Math.max(0, Math.min(100, toNumber(value)));
+      const stops =
+        Array.isArray(colorStops) && colorStops.length
+          ? colorStops
+          : [
+              [0.5, C.warn],
+              [1, C.good],
+            ];
+      return {
+        backgroundColor: "transparent",
+        animationDuration: 700,
+        animationDurationUpdate: 420,
+        animationEasing: "cubicOut",
+        series: [
+          {
+            type: "gauge",
+            startAngle: 210,
+            endAngle: -30,
+            radius: "92%",
+            progress: { show: true, width: 12 },
+            axisLine: { lineStyle: { width: 12, color: stops } },
+            axisTick: { show: false },
+            splitLine: { show: false },
+            axisLabel: { show: false },
+            pointer: { show: false },
+            detail: {
+              valueAnimation: true,
+              formatter: "{value}%",
+              color: C.ink,
+              fontSize: 22,
+              fontWeight: 800,
+              offsetCenter: [0, "0%"],
+            },
+            data: [{ value: round2(v) }],
+          },
+        ],
+      };
+    }
+
+    function topCounts(countObj, maxItems) {
+      const entries = Object.entries(countObj || {})
+        .filter(([, v]) => toNumber(v) > 0)
+        .sort((a, b) => toNumber(b[1]) - toNumber(a[1]));
+      const n = Math.max(3, toNumber(maxItems) || 6);
+      const top = entries.slice(0, n);
+      const rest = entries.slice(n).reduce((acc, [, v]) => acc + toNumber(v), 0);
+      const out = top.map(([k, v]) => ({ name: k || "autre", value: toNumber(v) }));
+      if (rest > 0) out.push({ name: "autres", value: rest });
+      return out;
+    }
+
+    const defs = [];
+
+    // ===== ALL =====
+    if (viewKey === "all") {
+      const series = [];
+      const baseLabels =
+        moduleStats.billing?.series?.cashIn30?.labels ||
+        moduleStats.restaurant?.series?.revenue30All?.labels ||
+        moduleStats.pos?.series?.posRevenue30?.labels ||
+        moduleStats.transport?.series?.revenue30?.labels ||
+        [];
+
+      if (modules.billing && moduleStats.billing?.series?.cashIn30) {
+        series.push({ name: "Encaissements", data: moduleStats.billing.series.cashIn30.values, color: C.primary, area: true });
+      }
+      if (modules.restaurant && moduleStats.restaurant?.series?.revenue30All) {
+        series.push({ name: "CA Resto", data: moduleStats.restaurant.series.revenue30All.values, color: C.good, area: false });
+      }
+      if (modules.pos && moduleStats.pos?.series?.posRevenue30) {
+        series.push({ name: "CA POS", data: moduleStats.pos.series.posRevenue30.values, color: C.warn, area: false });
+      }
+      if (modules.transport && moduleStats.transport?.series?.revenue30) {
+        series.push({ name: "CA Transport", data: moduleStats.transport.series.revenue30.values, color: C.slate, area: false });
+      }
+
+	      if (series.length) {
+	        defs.push({
+	          key: "all_revenue30",
+	          title: "Revenus (30 jours)",
+	          subtitle: "Comparaison multi-modules.",
+	          meta: "30j",
+	          option: optionLineMoney(baseLabels, series.slice(0, 4)),
+	        });
+	      }
+
+	      const volSeries = [];
+	      const volLabels =
+	        moduleStats.billing?.series?.invoicesIssued30?.labels ||
+	        moduleStats.restaurant?.series?.orders30All?.labels ||
+	        moduleStats.pos?.series?.posTickets30?.labels ||
+	        moduleStats.transport?.series?.shipments30?.labels ||
+	        [];
+
+	      if (modules.billing && moduleStats.billing?.series?.invoicesIssued30) {
+	        volSeries.push({
+	          name: "Factures",
+	          data: moduleStats.billing.series.invoicesIssued30.values,
+	          color: C.primary,
+	          area: true,
+	          areaColor: `rgba(${C.primaryRgb}, 0.10)`,
+	        });
+	      }
+	      if (modules.restaurant && moduleStats.restaurant?.series?.orders30All) {
+	        volSeries.push({ name: "Cmd Resto", data: moduleStats.restaurant.series.orders30All.values, color: C.good, area: false });
+	      }
+	      if (modules.pos && moduleStats.pos?.series?.posTickets30) {
+	        volSeries.push({ name: "Tickets POS", data: moduleStats.pos.series.posTickets30.values, color: C.warn, area: false });
+	      }
+	      if (modules.transport && moduleStats.transport?.series?.shipments30) {
+	        volSeries.push({ name: "Courses", data: moduleStats.transport.series.shipments30.values, color: C.slate, area: false });
+	      }
+
+	      if (volSeries.length) {
+	        defs.push({
+	          key: "all_volume30",
+	          title: "Volumes (30 jours)",
+	          subtitle: "Activite (factures, commandes, tickets, courses).",
+	          meta: "30j",
+	          option: optionLineCounts(volLabels, volSeries.slice(0, 4)),
+	        });
+	      }
+
+      const riskCats = [];
+      const riskVals = [];
+      const pushRisk = (label, v) => {
+        riskCats.push(label);
+        riskVals.push(toNumber(v));
+      };
+      if (modules.billing && moduleStats.billing) pushRisk("Factures en retard", moduleStats.billing.overdueInvoices);
+      if ((modules.fleet || modules.transport) && moduleStats.fleet) pushRisk("Alertes vehicules", moduleStats.fleet.alerts30);
+      if (modules.logistics && moduleStats.logistics) pushRisk("Stock bas", moduleStats.logistics.lowStockAlerts);
+      if (modules.restaurant && moduleStats.restaurant) pushRisk("Cmd a traiter", moduleStats.restaurant.openOrders);
+      if (modules.purchases && moduleStats.purchases) pushRisk("BC en cours", moduleStats.purchases.openOrders);
+      if (modules.rental && moduleStats.rental) pushRisk("Arrivees (7j)", moduleStats.rental.arrivals7);
+
+	      if (riskCats.length) {
+	        defs.push({
+	          key: "all_risks",
+	          title: "Points de vigilance",
+	          subtitle: "Indicateurs a traiter en priorite.",
+	          meta: "Live",
+	          option: optionBarCounts(riskCats, "Alertes", riskVals, `rgba(${C.primaryRgb}, 0.46)`),
+	        });
+	      }
+
+	      const wl = [];
+	      const pushWl = (label, v) => {
+	        const n = toNumber(v);
+	        if (n <= 0) return;
+	        wl.push([label, n]);
+	      };
+	      if (modules.restaurant && moduleStats.restaurant) pushWl("Cmd resto a traiter", moduleStats.restaurant.openOrders);
+	      if (modules.pos && moduleStats.pos) pushWl("Tickets POS (jour)", moduleStats.pos.posTicketsToday);
+	      if (modules.billing && moduleStats.billing) pushWl("Factures en retard", moduleStats.billing.overdueInvoices);
+	      if (modules.billing && moduleStats.billing) pushWl("Factures ouvertes", moduleStats.billing.openInvoices);
+	      if (modules.billing && moduleStats.billing) pushWl("Devis ouverts", moduleStats.billing.openQuotes);
+	      if (modules.crm && moduleStats.crm) pushWl("Deals ouverts", moduleStats.crm.openDeals);
+	      if (modules.transport && moduleStats.transport) pushWl("Courses actives", moduleStats.transport.activeShipments);
+	      if (modules.transport && moduleStats.transport) pushWl("Tournees ouvertes", moduleStats.transport.openTours);
+	      if (modules.purchases && moduleStats.purchases) pushWl("BC en cours", moduleStats.purchases.openOrders);
+	      if (modules.rental && moduleStats.rental) pushWl("Resa ouvertes", moduleStats.rental.openReservations);
+	      if (modules.logistics && moduleStats.logistics) pushWl("Stock bas", moduleStats.logistics.lowStockAlerts);
+	      if (modules.interventions) {
+	        const inProg = (rows || []).filter((r) => r && r.status_bucket === "inProgress").length;
+	        pushWl("Interv en cours", inProg);
+	      }
+
+	      wl.sort((a, b) => toNumber(b[1]) - toNumber(a[1]));
+	      if (wl.length) {
+	        defs.push({
+	          key: "all_workload",
+	          title: "Charge actuelle",
+	          subtitle: "Ce qui est a traiter maintenant (open / en cours).",
+	          meta: "Live",
+	          option: optionBarHorizontalCounts(
+	            wl.slice(0, 10).map((x) => x[0]),
+	            "A traiter",
+	            wl.slice(0, 10).map((x) => x[1]),
+	            `rgba(${C.primaryRgb}, 0.46)`
+	          ),
+	        });
+	      }
+
+	      const revMix = [];
+	      const pushRev = (label, v, color) => {
+	        const n = toNumber(v);
+	        if (n <= 0) return;
+	        revMix.push({ name: label, value: round2(n), itemStyle: { color } });
+	      };
+	      if (modules.billing && moduleStats.billing) pushRev("Facturation", moduleStats.billing.paidMonth, C.primary);
+	      if (modules.transport && moduleStats.transport) pushRev("Transport", moduleStats.transport.monthRevenue, C.slate);
+	      if (modules.restaurant && moduleStats.restaurant) pushRev("Restaurant", moduleStats.restaurant.monthRevenue, C.good);
+	      if (modules.pos && moduleStats.pos) pushRev("POS", moduleStats.pos.posRevenueMonth, C.warn);
+	      if (modules.rental && moduleStats.rental) pushRev("Location", moduleStats.rental.revenueMonth, "#a855f7");
+	      if (modules.crm && moduleStats.crm) pushRev("CRM (won)", moduleStats.crm.wonMonth, "#6366f1");
+
+	      if (revMix.length) {
+	        defs.push({
+	          key: "all_mix_month",
+	          title: "Repartition revenus (mois)",
+	          subtitle: "Mix du mois par module (quand disponible).",
+	          meta: "Mois",
+	          option: optionPie(revMix),
+	        });
+	      }
+	    }
+
+    // ===== BILLING =====
+    if (viewKey === "billing" && modules.billing && moduleStats.billing) {
+      const cash = moduleStats.billing.series?.cashIn30 || { labels: [], values: [] };
+      const issued = moduleStats.billing.series?.invoicesIssued30 || { labels: [], values: [] };
+      defs.push({
+        key: "billing_cash",
+        title: "Encaissements & factures (30j)",
+        subtitle: "Courbe des encaissements + volume de factures emises.",
+        meta: "30j",
+        option: {
+          backgroundColor: "transparent",
+          animationDuration: 700,
+          animationDurationUpdate: 420,
+          animationEasing: "cubicOut",
+          tooltip: { trigger: "axis" },
+          legend: { data: ["Encaissements", "Factures"], textStyle: { color: C.inkSoft, fontSize: 11 } },
+          grid: baseGrid(),
+          xAxis: baseAxisCategory(cash.labels),
+          yAxis: [baseAxisValueMoney(), { ...baseAxisValueCount(), position: "right", splitLine: { show: false } }],
+          series: [
+            {
+              name: "Encaissements",
+              type: "line",
+              smooth: true,
+              symbol: "none",
+              lineStyle: { width: 2.4, color: C.primary },
+              areaStyle: { opacity: 1, color: `rgba(${C.primaryRgb}, 0.12)` },
+              data: cash.values.length ? cash.values : [0],
+              tooltip: { valueFormatter: (v) => money(v) },
+            },
+            {
+              name: "Factures",
+              type: "bar",
+              yAxisIndex: 1,
+              barMaxWidth: 12,
+              itemStyle: { color: `rgba(${C.primaryRgb}, 0.32)`, borderRadius: [8, 8, 0, 0] },
+              data: issued.values.length ? issued.values : [0],
+            },
+          ],
+        },
+      });
+
+      const inv = moduleStats.billing.breakdown?.invoiceBuckets || {};
+      defs.push({
+        key: "billing_invoice_status",
+        title: "Statuts factures",
+        subtitle: "Repartition des factures (compte).",
+        meta: "Global",
+        option: optionPie([
+          { name: "Payees", value: toNumber(inv.paid), itemStyle: { color: C.good } },
+          { name: "Ouvertes", value: toNumber(inv.open), itemStyle: { color: C.warn } },
+          { name: "En retard", value: toNumber(inv.overdue), itemStyle: { color: C.bad } },
+          { name: "Autres", value: toNumber(inv.other), itemStyle: { color: C.slate } },
+        ].filter((d) => d.value > 0)),
+      });
+
+      const qb = moduleStats.billing.breakdown?.quoteBuckets || {};
+      defs.push({
+        key: "billing_quote_status",
+        title: "Statuts devis",
+        subtitle: "Brouillons, envoyes, acceptes, refuses.",
+        meta: "Global",
+        option: optionBarCounts(
+          ["Brouillons", "Envoyes", "Acceptes", "Refuses"],
+          "Devis",
+          [toNumber(qb.draft), toNumber(qb.sent), toNumber(qb.accepted), toNumber(qb.declined)],
+          `rgba(${C.primaryRgb}, 0.50)`
+        ),
+      });
+
+      const qa = moduleStats.billing.series?.quotesAccepted6m || { labels: [], values: [] };
+	      defs.push({
+	        key: "billing_quotes_6m",
+	        title: "Devis acceptes (6 mois)",
+	        subtitle: "Valeur (HT/TTC selon tes datas).",
+	        meta: "6m",
+	        option: optionLineMoney(qa.labels, [
+	          { name: "Acceptes", data: qa.values, color: C.primary, area: true, areaColor: `rgba(${C.primaryRgb}, 0.12)` },
+	        ]),
+	      });
+
+	      defs.push({
+	        key: "billing_amounts",
+	        title: "Montants ouverts",
+	        subtitle: "Ouvert vs en retard (montants).",
+	        meta: "Live",
+	        option: {
+	          backgroundColor: "transparent",
+	          animationDuration: 650,
+	          animationDurationUpdate: 400,
+	          animationEasing: "cubicOut",
+	          tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, valueFormatter: (v) => money(v) },
+	          grid: { top: 18, left: 10, right: 12, bottom: 10, containLabel: true },
+	          xAxis: baseAxisValueMoney(),
+	          yAxis: {
+	            type: "category",
+	            data: ["Ouvert", "En retard"],
+	            axisLabel: { color: C.inkSoft },
+	            axisLine: { lineStyle: { color: C.line } },
+	            axisTick: { show: false },
+	          },
+	          series: [
+	            {
+	              name: "Montant",
+	              type: "bar",
+	              barMaxWidth: 14,
+	              itemStyle: { borderRadius: [0, 8, 8, 0] },
+	              data: [
+	                { value: round2(toNumber(moduleStats.billing.openAmount)), itemStyle: { color: C.warn } },
+	                { value: round2(toNumber(moduleStats.billing.overdueAmount)), itemStyle: { color: C.bad } },
+	              ],
+	            },
+	          ],
+	        },
+	      });
+
+	      defs.push({
+	        key: "billing_ontime",
+	        title: "Paiement a l'heure",
+	        subtitle: "Sur les factures payees (avec date d'echeance).",
+	        meta: "Live",
+	        option: optionGaugePercent(moduleStats.billing.onTimeRate, [
+	          [0.6, C.bad],
+	          [0.85, C.warn],
+	          [1, C.good],
+	        ]),
+	      });
+
+	      defs.push({
+	        key: "billing_delay",
+	        title: "Delai moyen (jours)",
+	        subtitle: "Delai entre emission et paiement (moyenne).",
+	        meta: "Live",
+	        option: {
+	          backgroundColor: "transparent",
+	          animationDuration: 650,
+	          animationDurationUpdate: 400,
+	          animationEasing: "cubicOut",
+	          graphic: [
+	            {
+	              type: "text",
+	              left: "center",
+	              top: "38%",
+	              style: { text: `${round2(moduleStats.billing.avgPaymentDelayDays)} j`, fill: C.ink, fontSize: 30, fontWeight: 900 },
+	            },
+	            {
+	              type: "text",
+	              left: "center",
+	              top: "56%",
+	              style: { text: "delai moyen", fill: C.inkSoft, fontSize: 12, fontWeight: 700 },
+	            },
+	          ],
+	        },
+	      });
+	    }
+
+    // ===== CRM =====
+    if (viewKey === "crm" && modules.crm && moduleStats.crm) {
+      const sc = moduleStats.crm.breakdown?.statusCounts || {};
+      const sv = moduleStats.crm.breakdown?.statusValues || {};
+      defs.push({
+        key: "crm_pipeline",
+        title: "Valeur par statut",
+        subtitle: "Open / Won / Lost (valeur).",
+        meta: "EUR",
+        option: {
+          backgroundColor: "transparent",
+          animationDuration: 650,
+          animationDurationUpdate: 400,
+          animationEasing: "cubicOut",
+          tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, valueFormatter: (v) => money(v) },
+          grid: baseGrid(),
+          xAxis: baseAxisCategory(["Open", "Won", "Lost"]),
+          yAxis: baseAxisValueMoney(),
+          series: [
+            {
+              type: "bar",
+              data: [round2(toNumber(sv.open)), round2(toNumber(sv.won)), round2(toNumber(sv.lost))],
+              barMaxWidth: 18,
+              itemStyle: {
+                borderRadius: [8, 8, 0, 0],
+                color: new window.echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                  { offset: 0, color: `rgba(${C.primaryRgb}, 0.90)` },
+                  { offset: 1, color: `rgba(${C.primaryRgb}, 0.30)` },
+                ]),
+              },
+            },
+          ],
+        },
+      });
+
+      const won6m = moduleStats.crm.series?.won6m || { labels: [], values: [] };
+      defs.push({
+        key: "crm_won6m",
+        title: "Gagne (6 mois)",
+        subtitle: "Historique des montants gagnes.",
+        meta: "6m",
+        option: optionLineMoney(won6m.labels, [{ name: "Won", data: won6m.values, color: C.good, area: true, areaColor: "rgba(34, 197, 94, 0.14)" }]),
+      });
+
+      defs.push({
+        key: "crm_status",
+        title: "Repartition statuts",
+        subtitle: "Volume d'opportunites par statut.",
+        meta: "Global",
+        option: optionPie([
+          { name: "Open", value: toNumber(sc.open), itemStyle: { color: C.primary } },
+          { name: "Won", value: toNumber(sc.won), itemStyle: { color: C.good } },
+          { name: "Lost", value: toNumber(sc.lost), itemStyle: { color: C.bad } },
+          { name: "Autres", value: toNumber(sc.other), itemStyle: { color: C.slate } },
+        ].filter((d) => d.value > 0)),
+      });
+
+	      defs.push({
+	        key: "crm_winrate",
+	        title: "Taux de gain (mois)",
+	        subtitle: "Won / (Won + Lost) sur le mois.",
+	        meta: "Mois",
+	        option: optionGaugePercent(moduleStats.crm.winRate),
+	      });
+
+	      defs.push({
+	        key: "crm_status_counts",
+	        title: "Opportunites par statut",
+	        subtitle: "Repartition (volume) des opportunites.",
+	        meta: "Global",
+	        option: optionBarCounts(
+	          ["Open", "Won", "Lost", "Autres"],
+	          "Opportunites",
+	          [toNumber(sc.open), toNumber(sc.won), toNumber(sc.lost), toNumber(sc.other)],
+	          `rgba(${C.primaryRgb}, 0.46)`
+	        ),
+	      });
+
+	      defs.push({
+	        key: "crm_avg_open",
+	        title: "Deal moyen (ouvert)",
+	        subtitle: "Valeur moyenne sur les opportunites open.",
+	        meta: "Live",
+	        option: {
+	          backgroundColor: "transparent",
+	          animationDuration: 650,
+	          animationDurationUpdate: 400,
+	          animationEasing: "cubicOut",
+	          graphic: [
+	            {
+	              type: "text",
+	              left: "center",
+	              top: "38%",
+	              style: { text: money(moduleStats.crm.avgOpenDeal), fill: C.ink, fontSize: 26, fontWeight: 900 },
+	            },
+	            {
+	              type: "text",
+	              left: "center",
+	              top: "56%",
+	              style: { text: "deal moyen (open)", fill: C.inkSoft, fontSize: 12, fontWeight: 700 },
+	            },
+	          ],
+	        },
+	      });
+	    }
+
+	    // ===== TRANSPORT =====
+	    if (viewKey === "transport" && modules.transport && moduleStats.transport) {
+	      const rev30 = moduleStats.transport.series?.revenue30 || { labels: [], values: [] };
+	      defs.push({
+	        key: "transport_rev30",
+	        title: "CA transport (30 jours)",
+	        subtitle: "Evolution du chiffre d'affaires transport.",
+	        meta: "30j",
+	        option: optionLineMoney(rev30.labels, [{ name: "CA", data: rev30.values, color: C.primary, area: true, areaColor: `rgba(${C.primaryRgb}, 0.12)` }]),
+	      });
+
+	      const ship30 = moduleStats.transport.series?.shipments30 || { labels: [], values: [] };
+	      defs.push({
+	        key: "transport_ship30",
+	        title: "Courses (30 jours)",
+	        subtitle: "Volume de courses (hors annulees).",
+	        meta: "30j",
+	        option: optionLineCounts(ship30.labels, [
+	          { name: "Courses", data: ship30.values, color: C.primary, area: true, areaColor: `rgba(${C.primaryRgb}, 0.10)` },
+	        ]),
+	      });
+
+	      const dist30 = moduleStats.transport.series?.distance30 || { labels: [], values: [] };
+	      defs.push({
+	        key: "transport_rev_dist",
+	        title: "CA & distance (30j)",
+	        subtitle: "Distance (km) vs CA sur 30 jours.",
+	        meta: "30j",
+	        option: {
+	          backgroundColor: "transparent",
+	          animationDuration: 700,
+	          animationDurationUpdate: 420,
+	          animationEasing: "cubicOut",
+	          tooltip: {
+	            trigger: "axis",
+	            formatter: function (params) {
+	              const list = Array.isArray(params) ? params : [];
+	              const title = list[0] ? String(list[0].axisValueLabel || "") : "";
+	              const lines = list.map((p) => {
+	                const raw = p && p.data != null ? p.data : 0;
+	                const v = p.seriesName === "Distance (km)" ? `${round2(raw)} km` : money(raw);
+	                return `${p.marker || ""}${escapeHtml(String(p.seriesName || ""))}: ${escapeHtml(String(v))}`;
+	              });
+	              return [escapeHtml(title)].concat(lines).join("<br/>");
+	            },
+	          },
+	          legend: { data: ["CA", "Distance (km)"], textStyle: { color: C.inkSoft, fontSize: 11 } },
+	          grid: baseGrid(),
+	          xAxis: baseAxisCategory(rev30.labels),
+	          yAxis: [
+	            baseAxisValueMoney(),
+	            {
+	              ...baseAxisValueCount(),
+	              position: "right",
+	              axisLabel: { color: C.inkSoft, formatter: (v) => `${Math.round(toNumber(v))} km` },
+	              splitLine: { show: false },
+	            },
+	          ],
+	          series: [
+	            {
+	              name: "CA",
+	              type: "line",
+	              smooth: true,
+	              symbol: "none",
+	              lineStyle: { width: 2.4, color: C.primary },
+	              areaStyle: { opacity: 1, color: `rgba(${C.primaryRgb}, 0.10)` },
+	              data: rev30.values.length ? rev30.values : [0],
+	            },
+	            {
+	              name: "Distance (km)",
+	              type: "bar",
+	              yAxisIndex: 1,
+	              barMaxWidth: 12,
+	              itemStyle: { color: "rgba(148, 163, 184, 0.40)", borderRadius: [8, 8, 0, 0] },
+	              data: dist30.values.length ? dist30.values : [0],
+	            },
+	          ],
+	        },
+	      });
+
+	      defs.push({
+	        key: "transport_ship_status",
+	        title: "Statuts courses",
+        subtitle: "Repartition (volume).",
+        meta: "Global",
+        option: optionPie(topCounts(moduleStats.transport.breakdown?.shipmentStatusCounts || {}, 6).map((d, idx) => ({
+          name: d.name,
+          value: d.value,
+          itemStyle: { color: idx === 0 ? C.primary : idx === 1 ? C.good : idx === 2 ? C.warn : C.slate },
+        }))),
+      });
+
+      const tsc = moduleStats.transport.breakdown?.tourStatusCounts || {};
+      const tLabels = Object.keys(tsc);
+      const tVals = tLabels.map((k) => toNumber(tsc[k]));
+      if (tLabels.length) {
+        defs.push({
+          key: "transport_tours",
+          title: "Statuts tournees",
+          subtitle: "Repartition des tournees (volume).",
+          meta: "Global",
+          option: optionBarCounts(tLabels, "Tournees", tVals, `rgba(${C.primaryRgb}, 0.44)`),
+        });
+      }
+
+      defs.push({
+        key: "transport_rpk",
+        title: "Revenu / km",
+        subtitle: "Ratio CA / distance planifiee.",
+        meta: "Mois",
+        option: {
+          backgroundColor: "transparent",
+          animationDuration: 650,
+          animationDurationUpdate: 400,
+          animationEasing: "cubicOut",
+          grid: { top: 18, left: 10, right: 10, bottom: 0, containLabel: true },
+          xAxis: { show: false, min: 0, max: 1 },
+          yAxis: { show: false, min: 0, max: 1 },
+          graphic: [
+            {
+              type: "text",
+              left: "center",
+              top: "38%",
+              style: { text: money(moduleStats.transport.revPerKm), fill: C.ink, fontSize: 26, fontWeight: 900 },
+            },
+            {
+              type: "text",
+              left: "center",
+              top: "56%",
+              style: { text: "EUR / km (mois)", fill: C.inkSoft, fontSize: 12, fontWeight: 700 },
+            },
+          ],
+        },
+      });
+    }
+
+    // ===== FLEET =====
+	    if (viewKey === "fleet" && (modules.fleet || modules.transport) && moduleStats.fleet) {
+	      const br = moduleStats.fleet.breakdown || {};
+	      defs.push({
+	        key: "fleet_alerts_type",
+	        title: "Alertes (30j) par type",
+	        subtitle: "CT, assurance, entretien, permis, visite medicale.",
+	        meta: "30j",
+	        option: optionBarCounts(
+	          ["CT", "Assurance", "Entretien", "Permis", "Medical"],
+	          "Alertes",
+	          [toNumber(br.ctDue30), toNumber(br.insuranceDue30), toNumber(br.serviceDue30), toNumber(br.licenseDue30), toNumber(br.medicalDue30)],
+	          `rgba(${C.primaryRgb}, 0.52)`
+	        ),
+	      });
+
+	      defs.push({
+	        key: "fleet_compliance",
+	        title: "Conformite (30j)",
+	        subtitle: "Part des vehicules/chauffeurs sans echeance proche.",
+	        meta: "30j",
+	        option: optionGaugePercent(moduleStats.fleet.complianceRate30, [
+	          [0.6, C.bad],
+	          [0.8, C.warn],
+	          [1, C.good],
+	        ]),
+	      });
+
+	      defs.push({
+	        key: "fleet_alerts_total",
+	        title: "Alertes (30j)",
+	        subtitle: "Echeances a traiter (CT, assurance, etc.).",
+	        meta: "30j",
+	        option: {
+	          backgroundColor: "transparent",
+	          animationDuration: 650,
+	          animationDurationUpdate: 400,
+	          animationEasing: "cubicOut",
+	          graphic: [
+	            {
+	              type: "text",
+	              left: "center",
+	              top: "38%",
+	              style: { text: String(moduleStats.fleet.alerts30), fill: C.ink, fontSize: 34, fontWeight: 900 },
+	            },
+	            {
+	              type: "text",
+	              left: "center",
+	              top: "56%",
+	              style: { text: "echeances (30j)", fill: C.inkSoft, fontSize: 12, fontWeight: 700 },
+	            },
+	          ],
+	        },
+	      });
+
+	      defs.push({
+	        key: "fleet_entities_alerted",
+	        title: "A verifier (30j)",
+	        subtitle: "Vehicules vs chauffeurs avec au moins une echeance.",
+	        meta: "30j",
+	        option: optionBarCounts(
+	          ["Vehicules", "Chauffeurs"],
+	          "A verifier",
+	          [toNumber(moduleStats.fleet.vehiclesAlerted30), toNumber(moduleStats.fleet.driversAlerted30)],
+	          `rgba(${C.primaryRgb}, 0.44)`
+	        ),
+	      });
+
+	      defs.push({
+	        key: "fleet_active",
+	        title: "Actifs",
+	        subtitle: "Vehicules et chauffeurs actifs.",
+	        meta: "Global",
+	        option: optionBarCounts(
+	          ["Vehicules", "Chauffeurs"],
+	          "Actifs",
+	          [toNumber(moduleStats.fleet.vehiclesActive), toNumber(moduleStats.fleet.driversActive)],
+	          `rgba(${C.primaryRgb}, 0.46)`
+	        ),
+	      });
+	    }
+
+    // ===== LOGISTICS =====
+    if (viewKey === "logistics" && modules.logistics && moduleStats.logistics) {
+      const ss = moduleStats.logistics.breakdown?.stockStateCounts || {};
+      defs.push({
+        key: "log_stock_states",
+        title: "Etats de stock",
+        subtitle: "Repartition par etat (available/reserved/etc).",
+        meta: "Global",
+        option: optionPie(topCounts(ss, 6).map((d, idx) => ({
+          name: d.name,
+          value: d.value,
+          itemStyle: { color: idx === 0 ? C.primary : idx === 1 ? C.good : idx === 2 ? C.warn : C.slate },
+        }))),
+      });
+
+      defs.push({
+        key: "log_alerts",
+        title: "Alertes",
+        subtitle: "Stock bas, ruptures et ratio reserve.",
+        meta: "Live",
+        option: optionBarCounts(
+          ["Stock bas", "Ruptures", "Reserve %"],
+          "Valeur",
+          [toNumber(moduleStats.logistics.lowStockAlerts), toNumber(moduleStats.logistics.outOfStock), round2(toNumber(moduleStats.logistics.reserveRatio))],
+          `rgba(${C.primaryRgb}, 0.46)`
+        ),
+      });
+
+      defs.push({
+        key: "log_reserve",
+        title: "Reserve (%)",
+        subtitle: "Quantite reservee / quantite totale.",
+        meta: "Live",
+        option: optionGaugePercent(moduleStats.logistics.reserveRatio, [
+          [0.5, C.good],
+          [0.75, C.warn],
+          [1, C.bad],
+        ]),
+      });
+    }
+
+    // ===== PURCHASES =====
+    if (viewKey === "purchases" && modules.purchases && moduleStats.purchases) {
+      const s6 = moduleStats.purchases.series?.spend6m || { labels: [], values: [] };
+      defs.push({
+        key: "pur_spend6m",
+        title: "Depenses (6 mois)",
+        subtitle: "Montants receptionnes (statut received).",
+        meta: "6m",
+        option: optionLineMoney(s6.labels, [{ name: "Depenses", data: s6.values, color: C.primary, area: true, areaColor: `rgba(${C.primaryRgb}, 0.12)` }]),
+      });
+
+      defs.push({
+        key: "pur_status",
+        title: "Statuts BC",
+        subtitle: "Repartition des bons de commande.",
+        meta: "Global",
+        option: optionPie(topCounts(moduleStats.purchases.breakdown?.statusCounts || {}, 6).map((d, idx) => ({
+          name: d.name,
+          value: d.value,
+          itemStyle: { color: idx === 0 ? C.primary : idx === 1 ? C.warn : C.slate },
+        }))),
+      });
+
+      defs.push({
+        key: "pur_open_amount",
+        title: "Montant BC en cours",
+        subtitle: "Total des BC non receptionnes.",
+        meta: "Live",
+        option: {
+          backgroundColor: "transparent",
+          animationDuration: 650,
+          animationDurationUpdate: 400,
+          animationEasing: "cubicOut",
+          graphic: [
+            {
+              type: "text",
+              left: "center",
+              top: "38%",
+              style: { text: money(moduleStats.purchases.openAmount), fill: C.ink, fontSize: 26, fontWeight: 900 },
+            },
+            {
+              type: "text",
+              left: "center",
+              top: "56%",
+              style: { text: "BC en cours (EUR)", fill: C.inkSoft, fontSize: 12, fontWeight: 700 },
+            },
+          ],
+        },
+      });
+    }
+
+    // ===== RESTAURANT =====
+	    if (viewKey === "restaurant" && modules.restaurant && moduleStats.restaurant) {
+	      const hr = moduleStats.restaurant.series?.ordersTodayHourly || { labels: [], values: [] };
+	      defs.push({
+	        key: "res_hourly",
+	        title: "Commandes (jour) par heure",
+	        subtitle: "Charge operationnelle sur la journee.",
+	        meta: "Jour",
+	        option: optionBarCounts(hr.labels, "Commandes", hr.values, `rgba(${C.primaryRgb}, 0.46)`),
+	      });
+
+	      const rev30 = moduleStats.restaurant.series?.revenue30All || { labels: [], values: [] };
+	      defs.push({
+	        key: "res_rev30",
+	        title: "CA (30 jours)",
+	        subtitle: "Evolution du chiffre d'affaires resto.",
+	        meta: "30j",
+	        option: optionLineMoney(rev30.labels, [{ name: "CA", data: rev30.values, color: C.good, area: true, areaColor: "rgba(34, 197, 94, 0.14)" }]),
+	      });
+
+	      const o30 = moduleStats.restaurant.series?.orders30All || { labels: [], values: [] };
+	      defs.push({
+	        key: "res_orders30",
+	        title: "Commandes (30 jours)",
+	        subtitle: "Volume de commandes sur 30 jours.",
+	        meta: "30j",
+	        option: optionLineCounts(o30.labels, [
+	          { name: "Commandes", data: o30.values, color: C.primary, area: true, areaColor: `rgba(${C.primaryRgb}, 0.10)` },
+	        ]),
+	      });
+
+	      defs.push({
+	        key: "res_status",
+	        title: "Statuts commandes",
+	        subtitle: "Repartition (volume).",
+        meta: "Global",
+        option: optionPie(topCounts(moduleStats.restaurant.breakdown?.statusCounts || {}, 6).map((d, idx) => ({
+          name: d.name,
+          value: d.value,
+          itemStyle: { color: idx === 0 ? C.primary : idx === 1 ? C.good : idx === 2 ? C.warn : C.slate },
+        }))),
+      });
+
+      const sc = moduleStats.restaurant.breakdown?.sourceCounts || {};
+      const sLabels = Object.keys(sc);
+      const sVals = sLabels.map((k) => toNumber(sc[k]));
+	      if (sLabels.length) {
+	        defs.push({
+	          key: "res_source",
+	          title: "Sources",
+	          subtitle: "QR / POS / autres (volume).",
+	          meta: "Global",
+	          option: optionBarCounts(sLabels, "Sources", sVals, `rgba(${C.primaryRgb}, 0.42)`),
+	        });
+	      }
+
+	      const pay = moduleStats.restaurant.breakdown?.paymentStatusCounts || {};
+	      const payKeys = Object.keys(pay);
+	      if (payKeys.length) {
+	        defs.push({
+	          key: "res_payment",
+	          title: "Paiements",
+	          subtitle: "Statuts de paiement (volume).",
+	          meta: "Global",
+	          option: optionPie(topCounts(pay, 6).map((d, idx) => ({
+	            name: d.name,
+	            value: d.value,
+	            itemStyle: { color: idx === 0 ? C.primary : idx === 1 ? C.good : idx === 2 ? C.warn : C.slate },
+	          }))),
+	        });
+	      }
+	    }
+
+    // ===== POS =====
+	    if (viewKey === "pos" && modules.pos && moduleStats.pos) {
+	      const rev30 = moduleStats.pos.series?.posRevenue30 || { labels: [], values: [] };
+	      defs.push({
+	        key: "pos_rev30",
+	        title: "CA POS (30 jours)",
+	        subtitle: "Evolution du chiffre d'affaires POS.",
+	        meta: "30j",
+	        option: optionLineMoney(rev30.labels, [{ name: "CA POS", data: rev30.values, color: C.primary, area: true, areaColor: `rgba(${C.primaryRgb}, 0.12)` }]),
+	      });
+
+	      const t30 = moduleStats.pos.series?.posTickets30 || { labels: [], values: [] };
+	      defs.push({
+	        key: "pos_tickets30",
+	        title: "Tickets (30 jours)",
+	        subtitle: "Volume de tickets POS sur 30 jours.",
+	        meta: "30j",
+	        option: optionLineCounts(t30.labels, [
+	          { name: "Tickets", data: t30.values, color: C.warn, area: true, areaColor: "rgba(245, 158, 11, 0.12)" },
+	        ]),
+	      });
+
+	      defs.push({
+	        key: "pos_month",
+	        title: "CA POS (mois)",
+	        subtitle: "Cumul du mois (POS).",
+	        meta: "Mois",
+	        option: {
+	          backgroundColor: "transparent",
+	          animationDuration: 650,
+	          animationDurationUpdate: 400,
+	          animationEasing: "cubicOut",
+	          graphic: [
+	            { type: "text", left: "center", top: "38%", style: { text: money(moduleStats.pos.posRevenueMonth), fill: C.ink, fontSize: 26, fontWeight: 900 } },
+	            { type: "text", left: "center", top: "56%", style: { text: "cumul (mois)", fill: C.inkSoft, fontSize: 12, fontWeight: 700 } },
+	          ],
+	        },
+	      });
+
+	      defs.push({
+	        key: "pos_status",
+	        title: "Statuts tickets",
+	        subtitle: "Repartition des statuts POS.",
+        meta: "Global",
+        option: optionPie(topCounts(moduleStats.pos.breakdown?.posStatusCounts || {}, 6).map((d, idx) => ({
+          name: d.name,
+          value: d.value,
+          itemStyle: { color: idx === 0 ? C.primary : idx === 1 ? C.warn : C.slate },
+        }))),
+      });
+
+      const pay = moduleStats.pos.breakdown?.posPaymentStatusCounts || {};
+      const pLabels = Object.keys(pay);
+      const pVals = pLabels.map((k) => toNumber(pay[k]));
+      if (pLabels.length) {
+        defs.push({
+          key: "pos_payment",
+          title: "Paiement",
+          subtitle: "Statuts de paiement (POS).",
+          meta: "Global",
+          option: optionBarCounts(pLabels, "Paiements", pVals, `rgba(${C.primaryRgb}, 0.42)`),
+        });
+      }
+
+      defs.push({
+        key: "pos_avg",
+        title: "Ticket moyen (jour)",
+        subtitle: "Moyenne du jour.",
+        meta: "Jour",
+        option: {
+          backgroundColor: "transparent",
+          animationDuration: 650,
+          animationDurationUpdate: 400,
+          animationEasing: "cubicOut",
+          graphic: [
+            { type: "text", left: "center", top: "38%", style: { text: money(moduleStats.pos.avgTicketToday), fill: C.ink, fontSize: 26, fontWeight: 900 } },
+            { type: "text", left: "center", top: "56%", style: { text: "ticket moyen (POS)", fill: C.inkSoft, fontSize: 12, fontWeight: 700 } },
+          ],
+        },
+      });
+    }
+
+    // ===== LOYALTY =====
+    if (viewKey === "loyalty" && modules.loyalty && moduleStats.loyalty) {
+      const issued = moduleStats.loyalty.series?.issued6m || { labels: [], values: [] };
+      const redeemed = moduleStats.loyalty.series?.redeemed6m || { labels: [], values: [] };
+      defs.push({
+        key: "loy_points",
+        title: "Points (6 mois)",
+        subtitle: "Emis vs utilises.",
+        meta: "6m",
+        option: {
+          backgroundColor: "transparent",
+          animationDuration: 700,
+          animationDurationUpdate: 420,
+          animationEasing: "cubicOut",
+          tooltip: { trigger: "axis" },
+          legend: { data: ["Emis", "Utilises"], textStyle: { color: C.inkSoft, fontSize: 11 } },
+          grid: baseGrid(),
+          xAxis: baseAxisCategory(issued.labels),
+          yAxis: baseAxisValueCount(),
+          series: [
+            { name: "Emis", type: "line", smooth: true, symbol: "none", lineStyle: { width: 2.4, color: C.good }, areaStyle: { opacity: 1, color: "rgba(34, 197, 94, 0.12)" }, data: issued.values },
+            { name: "Utilises", type: "line", smooth: true, symbol: "none", lineStyle: { width: 2.4, color: C.warn }, areaStyle: { opacity: 1, color: "rgba(245, 158, 11, 0.12)" }, data: redeemed.values },
+          ],
+        },
+      });
+
+	      defs.push({
+	        key: "loy_members",
+	        title: "Membres actifs",
+	        subtitle: "Volume total d'adherents actifs.",
+	        meta: "Global",
+	        option: {
+	          backgroundColor: "transparent",
+	          animationDuration: 650,
+	          animationDurationUpdate: 400,
+	          animationEasing: "cubicOut",
+	          graphic: [
+	            { type: "text", left: "center", top: "38%", style: { text: String(moduleStats.loyalty.activeMembers), fill: C.ink, fontSize: 32, fontWeight: 900 } },
+	            { type: "text", left: "center", top: "56%", style: { text: "membres actifs", fill: C.inkSoft, fontSize: 12, fontWeight: 700 } },
+	          ],
+	        },
+	      });
+
+	      const issuedMonth = toNumber(moduleStats.loyalty.pointsIssuedMonth);
+	      const redeemedMonth = toNumber(moduleStats.loyalty.pointsRedeemedMonth);
+	      const usageRate = issuedMonth > 0 ? Math.min(100, round2((redeemedMonth / issuedMonth) * 100)) : 0;
+	      defs.push({
+	        key: "loy_usage",
+	        title: "Taux d'utilisation (mois)",
+	        subtitle: "Points utilises / points emis.",
+	        meta: "Mois",
+	        option: optionGaugePercent(usageRate, [
+	          [0.35, C.bad],
+	          [0.7, C.warn],
+	          [1, C.good],
+	        ]),
+	      });
+	    }
+
+    // ===== RENTAL =====
+    if (viewKey === "rental" && modules.rental && moduleStats.rental) {
+      const rev6 = moduleStats.rental.series?.revenue6m || { labels: [], values: [] };
+      defs.push({
+        key: "rent_rev6m",
+        title: "CA location (6 mois)",
+        subtitle: "Evolution (reservations confirmees).",
+        meta: "6m",
+        option: optionLineMoney(rev6.labels, [{ name: "CA", data: rev6.values, color: C.primary, area: true, areaColor: `rgba(${C.primaryRgb}, 0.12)` }]),
+      });
+
+      const arr7 = moduleStats.rental.series?.arrivalsNext7 || { labels: [], values: [] };
+      defs.push({
+        key: "rent_arr7",
+        title: "Arrivees (7 jours)",
+        subtitle: "Planification court terme.",
+        meta: "7j",
+        option: optionBarCounts(arr7.labels, "Arrivees", arr7.values, `rgba(${C.primaryRgb}, 0.46)`),
+      });
+
+      defs.push({
+        key: "rent_status",
+        title: "Statuts reservations",
+        subtitle: "Repartition (volume).",
+        meta: "Global",
+        option: optionPie(topCounts(moduleStats.rental.breakdown?.statusCounts || {}, 6).map((d, idx) => ({
+          name: d.name,
+          value: d.value,
+          itemStyle: { color: idx === 0 ? C.primary : idx === 1 ? C.good : idx === 2 ? C.warn : C.slate },
+        }))),
+      });
+    }
+
+    // ===== INTERVENTIONS =====
+    if (viewKey === "interventions" && modules.interventions) {
+      // 1) Margin trend by month
+      const byMonth = new Map();
+      (rows || []).forEach((r) => {
+        if (!r.effective_date) return;
+        const d = new Date(r.effective_date);
+        const k = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+        if (!byMonth.has(k)) byMonth.set(k, { sum: 0, n: 0 });
+        const it = byMonth.get(k);
+        it.sum += toNumber(r.margin);
+        it.n += 1;
+      });
+      const mKeys = Array.from(byMonth.keys()).sort();
+      const mLabels = mKeys.map((k) => shortMonthLabelFromKey(k));
+      const mVals = mKeys.map((k) => {
+        const it = byMonth.get(k);
+        return it && it.n ? round2(it.sum / it.n) : 0;
+      });
+      if (mKeys.length) {
+        defs.push({
+          key: "inter_margin",
+          title: "Marge moyenne",
+          subtitle: "Marge (%) moyenne par mois.",
+          meta: " %",
+          option: optionLinePercent(mLabels, "Marge", mVals),
+        });
+      }
+
+      // 2) Profit by status bucket
+      const bucketProfit = { done: 0, in_progress: 0, pending: 0, canceled: 0, other: 0 };
+      (rows || []).forEach((r) => {
+        const b = r.status_bucket === "inProgress" ? "in_progress" : r.status_bucket || "other";
+        if (bucketProfit[b] == null) bucketProfit.other += toNumber(r.profit);
+        else bucketProfit[b] += toNumber(r.profit);
+      });
+      defs.push({
+        key: "inter_profit_bucket",
+        title: "Benefice par statut",
+        subtitle: "Benefice (EUR) par bucket.",
+        meta: "EUR",
+        option: {
+          backgroundColor: "transparent",
+          animationDuration: 650,
+          animationDurationUpdate: 400,
+          animationEasing: "cubicOut",
+          tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, valueFormatter: (v) => money(v) },
+          grid: baseGrid(),
+          xAxis: baseAxisCategory(["Done", "En cours", "Pending", "Annule", "Autres"]),
+          yAxis: baseAxisValueMoney(),
+          series: [
+            {
+              type: "bar",
+              data: [
+                round2(bucketProfit.done),
+                round2(bucketProfit.in_progress),
+                round2(bucketProfit.pending),
+                round2(bucketProfit.canceled),
+                round2(bucketProfit.other),
+              ],
+              barMaxWidth: 18,
+              itemStyle: { color: `rgba(${C.primaryRgb}, 0.52)`, borderRadius: [8, 8, 0, 0] },
+            },
+          ],
+        },
+      });
+
+      // 3) Top clients by profit
+      const byClient = new Map();
+      (rows || []).forEach((r) => {
+        const key = (r.client_name || "Client non renseigne").trim() || "Client non renseigne";
+        byClient.set(key, (byClient.get(key) || 0) + toNumber(r.profit));
+      });
+      const topClients = Array.from(byClient.entries())
+        .sort((a, b) => toNumber(b[1]) - toNumber(a[1]))
+        .slice(0, 8)
+        .reverse();
+      if (topClients.length) {
+        defs.push({
+          key: "inter_top_clients_profit",
+          title: "Top clients (benefice)",
+          subtitle: "Top 8 clients par benefice.",
+          meta: "EUR",
+          option: {
+            backgroundColor: "transparent",
+            animationDuration: 650,
+            animationDurationUpdate: 400,
+            animationEasing: "cubicOut",
+            tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, valueFormatter: (v) => money(v) },
+            grid: baseGrid(),
+            xAxis: {
+              type: "value",
+              axisLabel: { color: C.inkSoft, formatter: (v) => compactCurrency(v, state.config.locale, state.config.currency) },
+              axisLine: { lineStyle: { color: C.line } },
+              splitLine: { lineStyle: { color: C.grid } },
+            },
+            yAxis: {
+              type: "category",
+              data: topClients.map((x) => x[0]),
+              axisLabel: { color: C.inkSoft },
+              axisLine: { lineStyle: { color: C.line } },
+            },
+            series: [
+              {
+                type: "bar",
+                data: topClients.map((x) => round2(x[1])),
+                barMaxWidth: 16,
+                itemStyle: {
+                  borderRadius: [0, 8, 8, 0],
+                  color: new window.echarts.graphic.LinearGradient(0, 0, 1, 0, [
+                    { offset: 0, color: `rgba(${C.primaryRgb}, 0.30)` },
+                    { offset: 1, color: `rgba(${C.primaryRgb}, 0.92)` },
+                  ]),
+                },
+              },
+            ],
+          },
+        });
+      }
+
+      // 4) PV status distribution (if available)
+      const pvCounts = {};
+      (state.data?.interventions || []).forEach((it) => {
+        const st = normalizeStatus(it.pv_status || "unknown");
+        pvCounts[st] = (pvCounts[st] || 0) + 1;
+      });
+      if (Object.keys(pvCounts).length) {
+        defs.push({
+          key: "inter_pv_status",
+          title: "PV (statuts)",
+          subtitle: "Repartition des PV.",
+          meta: "Global",
+          option: optionPie(topCounts(pvCounts, 6).map((d, idx) => ({
+            name: d.name,
+            value: d.value,
+            itemStyle: { color: idx === 0 ? C.primary : idx === 1 ? C.good : idx === 2 ? C.warn : C.slate },
+          }))),
+        });
+      }
+    }
+
+    const sig = defs.map((d) => d.key).join("|");
+    const prevSig = String(mount.dataset.insightsSig || "");
+
+    if (!defs.length) {
+      // Dispose old charts and clear.
+      if (canChart) {
+        mount.querySelectorAll("[data-insight-chart]").forEach((el) => {
+          try {
+            const inst = window.echarts.getInstanceByDom(el);
+            if (inst) inst.dispose();
+          } catch (_) {}
+        });
+      }
+      if (state.charts.dynamic) state.charts.dynamic.clear();
+      mount.dataset.insightsSig = "";
+      mount.innerHTML = "";
+      return;
+    }
+
+    if (sig !== prevSig) {
+      // Replace layout (with entry animation).
+      if (canChart) {
+        mount.querySelectorAll("[data-insight-chart]").forEach((el) => {
+          try {
+            const inst = window.echarts.getInstanceByDom(el);
+            if (inst) inst.dispose();
+          } catch (_) {}
+        });
+      }
+      if (state.charts.dynamic) state.charts.dynamic.clear();
+
+      mount.dataset.insightsSig = sig;
+      mount.innerHTML = `
+        <section class="mbl-insights-grid">
+          ${defs
+            .map((d, idx) => {
+              return `
+                <article class="mbl-card mbl-insight-card" style="--idx:${idx}">
+                  <div class="mbl-insight-head">
+                    <div>
+                      <h2>${escapeHtml(d.title)}</h2>
+                      <p class="mbl-insight-sub">${escapeHtml(d.subtitle || "")}</p>
+                    </div>
+                    <span class="mbl-insight-meta">${escapeHtml(d.meta || "")}</span>
+                  </div>
+                  <div class="mbl-chart" data-insight-chart="${escapeHtml(d.key)}">
+                    ${!canChart ? "<div style=\"padding:10px;color:rgba(2,6,23,.62);font-weight:700;\">Charts indisponibles</div>" : ""}
+                  </div>
+                </article>
+              `;
+            })
+            .join("")}
+        </section>
+      `;
+    }
+
+    if (!canChart) return;
+
+    // Update charts options.
+    defs.forEach((d) => {
+      const safeKey = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(d.key) : String(d.key).replace(/"/g, '\\"');
+      const el = mount.querySelector(`[data-insight-chart="${safeKey}"]`);
+      if (!el) return;
+      let chart = null;
+      try {
+        chart = window.echarts.getInstanceByDom(el) || window.echarts.init(el);
+      } catch (_) {
+        return;
+      }
+      try {
+        chart.setOption(d.option || {}, true);
+      } catch (_) {}
+      try {
+        state.charts.dynamic && state.charts.dynamic.set(d.key, chart);
+      } catch (_) {}
+    });
+  }
+
   function renderContextSummary() {
     const root = getRoot(state.config.container);
     if (!root) return;
@@ -2659,40 +4864,21 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
       }
     }
 
-    if (!strip) return;
+	    if (!strip) return;
 
-    const moduleLabels = {
-      billing: "Facturation",
-      interventions: "Interventions",
-      crm: "CRM",
-      transport: "Transport",
-      fleet: "Vehicules",
-      logistics: "Logistique",
-      restaurant: "Restauration",
-      pos: "POS",
-      purchases: "Achats",
-      loyalty: "Fidelite",
-      rental: "Location",
-    };
-    const activeModules = Object.keys(state.context?.modules || {}).filter((k) => state.context.modules[k]);
-    const modulePreview = activeModules
-      .map((m) => moduleLabels[m] || m)
-      .slice(0, 4)
-      .join(", ");
-    const moduleSuffix = activeModules.length > 4 ? ` +${activeModules.length - 4}` : "";
-    const planLabel = state.context?.planName || "Sans plan";
-    const statusLabel = state.context?.subscriptionActive ? "Abonnement actif" : "Abonnement inactif";
-    const orgLabel = state.context?.orgName || "Organisation";
-    const viewLabel = viewKeyLabel(viewKey);
+	    const statusLabel = state.context?.subscriptionActive ? "Abonnement actif" : "Abonnement inactif";
+	    const orgLabel = state.context?.orgName || "Organisation";
+	    const viewLabel = viewKeyLabel(viewKey);
+	    const planLabel = state.context?.planName || "Sans plan";
+	    const subBtnLabel = state.context?.subscriptionActive ? "Abonnement" : "Activer un plan";
 
-    strip.innerHTML = `
-      <span class="mbl-context-pill ${state.context?.subscriptionActive ? "is-ok" : "is-warn"}">${escapeHtml(statusLabel)}</span>
-      <span class="mbl-context-pill">Plan: ${escapeHtml(planLabel)}</span>
-      <span class="mbl-context-pill">${escapeHtml(orgLabel)}</span>
-      <span class="mbl-context-pill">Vue: ${escapeHtml(viewLabel)}</span>
-      <span class="mbl-context-pill">${escapeHtml(activeModules.length)} module(s): ${escapeHtml(modulePreview || "Aucun")}${escapeHtml(moduleSuffix)}</span>
-    `;
-  }
+	    strip.innerHTML = `
+	      <span class="mbl-context-pill ${state.context?.subscriptionActive ? "is-ok" : "is-warn"}">${escapeHtml(statusLabel)}</span>
+	      <span class="mbl-context-pill">${escapeHtml(orgLabel)}</span>
+	      <span class="mbl-context-pill">Vue: ${escapeHtml(viewLabel)}</span>
+	      <button class="mbl-context-pill mbl-context-btn" type="button" data-open-subscriptions title="Plan: ${escapeHtml(planLabel)}">${escapeHtml(subBtnLabel)}</button>
+	    `;
+	  }
 
   function createEnrichedRows() {
     return (state.data.interventions || []).map((row) => {
@@ -2806,113 +4992,187 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
     const moduleStats = state.moduleStats || {};
     const viewKey = normalizeViewKey(state.view?.business);
 
-    const kpis = [];
-    const add = (label, value, tone) => kpis.push({ label, value, tone: tone || "slate" });
+	    const kpis = [];
+	    const add = (label, value, tone) => kpis.push({ label, value, tone: tone || "slate" });
 
-    const activeModuleCount = Object.keys(modules).filter((k) => modules[k]).length;
-    add("Plan actif", state.context?.planName || "Sans plan", "slate");
-    add("Modules actifs", String(activeModuleCount), "slate");
+	    const addInterventions = (full) => {
+	      add("CA interventions", money(stats.revenue), "blue");
+	      add("Benefice net", money(stats.profit), stats.profit >= 0 ? "green" : "red");
+	      add("Interventions", String(stats.count), "slate");
+	      if (full) {
+	        add("Marge moyenne", percent(stats.margin), stats.margin >= 0 ? "green" : "red");
+	        add("Terminees", String(stats.done), "green");
+	        add("En cours", String(stats.inProgress), "blue");
+	        add("Ticket moyen", money(stats.avgTicket), "violet");
+	      }
+	    };
 
-    const addInterventions = (full) => {
-      add("CA interventions", money(stats.revenue), "blue");
-      add("Benefice net", money(stats.profit), stats.profit >= 0 ? "green" : "red");
-      add("Interventions", String(stats.count), "slate");
-      if (full) {
-        add("En cours", String(stats.inProgress), "blue");
-        add("Ticket moyen", money(stats.avgTicket), "violet");
-      }
-    };
+	    const addBilling = (full) => {
+	      if (!moduleStats.billing) return;
+	      add("Encaisse mois", money(moduleStats.billing.paidMonth), "green");
+	      add(
+	        "Montant ouvert",
+	        money(moduleStats.billing.openAmount),
+	        toNumber(moduleStats.billing.openAmount) > 0 ? "amber" : "green"
+	      );
+	      add(
+	        "Montant en retard",
+	        money(moduleStats.billing.overdueAmount),
+	        toNumber(moduleStats.billing.overdueAmount) > 0 ? "red" : "green"
+	      );
+	      add("Factures ouvertes", String(moduleStats.billing.openInvoices), "amber");
+	      add("Factures en retard", String(moduleStats.billing.overdueInvoices), "red");
+	      add(
+	        "Paiement a l'heure",
+	        percent(moduleStats.billing.onTimeRate),
+	        toNumber(moduleStats.billing.onTimeRate) >= 90 ? "green" : "amber"
+	      );
+	      add(
+	        "Delai paiement",
+	        `${round2(moduleStats.billing.avgPaymentDelayDays)} j`,
+	        toNumber(moduleStats.billing.avgPaymentDelayDays) <= 15 ? "green" : "amber"
+	      );
+	      if (full) {
+	        add("Devis ouverts", String(moduleStats.billing.openQuotes), "blue");
+	        const accepted = toNumber(moduleStats.billing.breakdown?.quoteBuckets?.accepted);
+	        if (accepted) add("Devis acceptes", String(accepted), "green");
+	        add("Clients actifs", String(moduleStats.billing.activeClients), "slate");
+	      }
+	    };
 
-    const addBilling = (full) => {
-      if (!moduleStats.billing) return;
-      add("Encaisse mois", money(moduleStats.billing.paidMonth), "green");
-      add("Factures en retard", String(moduleStats.billing.overdueInvoices), "red");
-      add("Factures ouvertes", String(moduleStats.billing.openInvoices), "amber");
-      if (full) {
-        add("Devis ouverts", String(moduleStats.billing.openQuotes), "blue");
-        add("Clients actifs", String(moduleStats.billing.activeClients), "slate");
-      }
-    };
+	    const addCrm = () => {
+	      if (!moduleStats.crm) return;
+	      add("Opportunites ouvertes", String(moduleStats.crm.openDeals), "blue");
+	      add("Pipeline CRM", money(moduleStats.crm.pipelineValue), "violet");
+	      add("Gagne ce mois", money(moduleStats.crm.wonMonth), "green");
+	      add("Gagne (nb)", String(moduleStats.crm.wonMonthCount), "green");
+	      add("Perdu (nb)", String(moduleStats.crm.lostMonthCount), "red");
+	      add(
+	        "Taux de gain",
+	        percent(moduleStats.crm.winRate),
+	        toNumber(moduleStats.crm.winRate) >= 50 ? "green" : "amber"
+	      );
+	      add("Deal moyen (ouvert)", money(moduleStats.crm.avgOpenDeal), "slate");
+	    };
 
-    const addCrm = () => {
-      if (!moduleStats.crm) return;
-      add("Opportunites ouvertes", String(moduleStats.crm.openDeals), "blue");
-      add("Pipeline CRM", money(moduleStats.crm.pipelineValue), "violet");
-      add("Gagne ce mois", money(moduleStats.crm.wonMonth), "green");
-    };
+	    const addTransport = (full) => {
+	      if (!moduleStats.transport) return;
+	      add("Courses actives", String(moduleStats.transport.activeShipments), "blue");
+	      add("CA transport mois", money(moduleStats.transport.monthRevenue), "green");
+	      add("Rev / km", money(moduleStats.transport.revPerKm), "violet");
+	      add("Courses terminees (mois)", String(moduleStats.transport.doneMonth), "slate");
+	      if (full) {
+	        add("Distance planifiee", `${Math.round(toNumber(moduleStats.transport.distanceKm))} km`, "amber");
+	        add("Tournees ouvertes", String(moduleStats.transport.openTours), "slate");
+	      }
+	    };
 
-    const addTransport = (full) => {
-      if (!moduleStats.transport) return;
-      add("Courses actives", String(moduleStats.transport.activeShipments), "blue");
-      add("CA transport mois", money(moduleStats.transport.monthRevenue), "green");
-      if (full) {
-        add("Distance planifiee", `${Math.round(toNumber(moduleStats.transport.distanceKm))} km`, "amber");
-        add("Tournees ouvertes", String(moduleStats.transport.openTours), "slate");
-      }
-    };
+	    const addFleet = () => {
+	      if (!moduleStats.fleet) return;
+	      add("Vehicules actifs", String(moduleStats.fleet.vehiclesActive), "slate");
+	      add("Chauffeurs actifs", String(moduleStats.fleet.driversActive), "slate");
+	      add(
+	        "Alertes conformite (30j)",
+	        String(moduleStats.fleet.alerts30),
+	        moduleStats.fleet.alerts30 > 0 ? "red" : "green"
+	      );
+	      add(
+	        "Conformite (30j)",
+	        percent(moduleStats.fleet.complianceRate30),
+	        toNumber(moduleStats.fleet.complianceRate30) >= 90 ? "green" : toNumber(moduleStats.fleet.complianceRate30) >= 75 ? "amber" : "red"
+	      );
+	      const br = moduleStats.fleet.breakdown || {};
+	      if (br.ctDue30 != null) add("CT (30j)", String(br.ctDue30), toNumber(br.ctDue30) > 0 ? "amber" : "green");
+	      if (br.insuranceDue30 != null)
+	        add("Assurance (30j)", String(br.insuranceDue30), toNumber(br.insuranceDue30) > 0 ? "amber" : "green");
+	      if (br.serviceDue30 != null) add("Entretien (30j)", String(br.serviceDue30), toNumber(br.serviceDue30) > 0 ? "amber" : "green");
+	      if (br.licenseDue30 != null) add("Permis (30j)", String(br.licenseDue30), toNumber(br.licenseDue30) > 0 ? "amber" : "green");
+	      if (br.medicalDue30 != null) add("Visite med. (30j)", String(br.medicalDue30), toNumber(br.medicalDue30) > 0 ? "amber" : "green");
+	    };
 
-    const addFleet = () => {
-      if (!moduleStats.fleet) return;
-      add("Vehicules actifs", String(moduleStats.fleet.vehiclesActive), "slate");
-      add("Chauffeurs actifs", String(moduleStats.fleet.driversActive), "slate");
-      add(
-        "Alertes conformite (30j)",
-        String(moduleStats.fleet.alerts30),
-        moduleStats.fleet.alerts30 > 0 ? "red" : "green"
-      );
-    };
+	    const addLogistics = (full) => {
+	      if (!moduleStats.logistics) return;
+	      add("Entrepots actifs", String(moduleStats.logistics.activeWarehouses), "slate");
+	      add("Stock disponible", String(Math.round(toNumber(moduleStats.logistics.availableQty))), "blue");
+	      add("Ruptures", String(moduleStats.logistics.outOfStock), toNumber(moduleStats.logistics.outOfStock) > 0 ? "red" : "green");
+	      add("Reserve (%)", percent(moduleStats.logistics.reserveRatio), toNumber(moduleStats.logistics.reserveRatio) >= 50 ? "amber" : "slate");
+	      if (full) {
+	        add(
+	          "Alertes reappro",
+	          String(moduleStats.logistics.lowStockAlerts),
+	          moduleStats.logistics.lowStockAlerts > 0 ? "amber" : "green"
+	        );
+	      }
+	    };
 
-    const addLogistics = (full) => {
-      if (!moduleStats.logistics) return;
-      add("Entrepots actifs", String(moduleStats.logistics.activeWarehouses), "slate");
-      add("Stock disponible", String(Math.round(toNumber(moduleStats.logistics.availableQty))), "blue");
-      if (full) {
-        add(
-          "Alertes reappro",
-          String(moduleStats.logistics.lowStockAlerts),
-          moduleStats.logistics.lowStockAlerts > 0 ? "amber" : "green"
-        );
-      }
-    };
+	    const addRestaurant = (full) => {
+	      if (!moduleStats.restaurant) return;
+	      add("Commandes jour", String(moduleStats.restaurant.todayOrders), "blue");
+	      add("CA resto jour", money(moduleStats.restaurant.todayRevenue), "green");
+	      if (full) {
+	        add("Commandes mois", String(moduleStats.restaurant.monthOrders), "slate");
+	        add("CA resto mois", money(moduleStats.restaurant.monthRevenue), "green");
+	        add("Ticket moyen jour", money(moduleStats.restaurant.avgTicketToday), "violet");
+	        add("Commandes a traiter", String(moduleStats.restaurant.openOrders), "amber");
+	        add(
+	          "Annulations jour",
+	          percent(moduleStats.restaurant.cancelRateToday),
+	          toNumber(moduleStats.restaurant.cancelRateToday) > 5 ? "amber" : "green"
+	        );
+	        add("Menus actifs", String(moduleStats.restaurant.activeMenus), "slate");
+	        add("Lieux actifs", String(moduleStats.restaurant.activeLocations), "slate");
+	      }
+	    };
 
-    const addRestaurant = (full) => {
-      if (!moduleStats.restaurant) return;
-      const avgTicket = moduleStats.restaurant.todayOrders
-        ? toNumber(moduleStats.restaurant.todayRevenue) / Math.max(1, toNumber(moduleStats.restaurant.todayOrders))
-        : 0;
-      add("Commandes jour", String(moduleStats.restaurant.todayOrders), "blue");
-      add("CA resto jour", money(moduleStats.restaurant.todayRevenue), "green");
-      if (full) {
-        add("Ticket moyen jour", money(avgTicket), "violet");
-        add("Commandes a traiter", String(moduleStats.restaurant.openOrders), "amber");
-      }
-    };
+	    const addPos = () => {
+	      if (!moduleStats.pos) return;
+	      add("Tickets POS jour", String(moduleStats.pos.posTicketsToday), "blue");
+	      add("CA POS jour", money(moduleStats.pos.posRevenueToday), "green");
+	      add("Ticket moyen POS", money(moduleStats.pos.avgTicketToday), "violet");
+	      if (moduleStats.pos.posTicketsMonth != null) add("Tickets POS mois", String(moduleStats.pos.posTicketsMonth), "slate");
+	      if (moduleStats.pos.posRevenueMonth != null) add("CA POS mois", money(moduleStats.pos.posRevenueMonth), "green");
+	      const s30 = moduleStats.pos.series?.posRevenue30?.values;
+	      if (Array.isArray(s30) && s30.length) {
+	        const total30 = s30.reduce((acc, v) => acc + toNumber(v), 0);
+	        add("CA POS (30j)", money(total30), "green");
+	      }
+	    };
 
-    const addPos = () => {
-      if (!moduleStats.pos) return;
-      add("Tickets POS jour", String(moduleStats.pos.posTicketsToday), "blue");
-      add("CA POS jour", money(moduleStats.pos.posRevenueToday), "green");
-    };
+	    const addPurchases = () => {
+	      if (!moduleStats.purchases) return;
+	      add("BC en cours", String(moduleStats.purchases.openOrders), "amber");
+	      add(
+	        "Montant BC",
+	        money(moduleStats.purchases.openAmount),
+	        toNumber(moduleStats.purchases.openAmount) > 0 ? "amber" : "green"
+	      );
+	      add("Depenses mois", money(moduleStats.purchases.spendMonth), "green");
+	      add("Fournisseurs actifs", String(moduleStats.purchases.activeSuppliers), "slate");
+	    };
 
-    const addPurchases = () => {
-      if (!moduleStats.purchases) return;
-      add("BC en cours", String(moduleStats.purchases.openOrders), "amber");
-      add("Depenses mois", money(moduleStats.purchases.spendMonth), "green");
-      add("Fournisseurs actifs", String(moduleStats.purchases.activeSuppliers), "slate");
-    };
+	    const addLoyalty = () => {
+	      if (!moduleStats.loyalty) return;
+	      add("Membres actifs", String(moduleStats.loyalty.activeMembers), "blue");
+	      add("Points emis (mois)", String(moduleStats.loyalty.pointsIssuedMonth), "violet");
+	      add("Points utilises (mois)", String(moduleStats.loyalty.pointsRedeemedMonth), "amber");
+	      add(
+	        "Net points (mois)",
+	        String(toNumber(moduleStats.loyalty.pointsIssuedMonth) - toNumber(moduleStats.loyalty.pointsRedeemedMonth)),
+	        "slate"
+	      );
+	    };
 
-    const addLoyalty = () => {
-      if (!moduleStats.loyalty) return;
-      add("Membres actifs", String(moduleStats.loyalty.activeMembers), "blue");
-      add("Points emis (mois)", String(moduleStats.loyalty.pointsIssuedMonth), "violet");
-    };
-
-    const addRental = () => {
-      if (!moduleStats.rental) return;
-      add("Reservations ouvertes", String(moduleStats.rental.openReservations), "amber");
-      add("Arrivees (7j)", String(moduleStats.rental.arrivals7), "blue");
-      add("CA location mois", money(moduleStats.rental.revenueMonth), "green");
-    };
+	    const addRental = () => {
+	      if (!moduleStats.rental) return;
+	      add("Reservations ouvertes", String(moduleStats.rental.openReservations), "amber");
+	      add("Arrivees (7j)", String(moduleStats.rental.arrivals7), "blue");
+	      add("CA location mois", money(moduleStats.rental.revenueMonth), "green");
+	      const s6 = moduleStats.rental.series?.revenue6m?.values;
+	      if (Array.isArray(s6) && s6.length) {
+	        const total6 = s6.reduce((acc, v) => acc + toNumber(v), 0);
+	        add("CA location (6m)", money(total6), "green");
+	      }
+	    };
 
     if (viewKey === "billing") {
       if (modules.billing) addBilling(true);
@@ -2954,7 +5214,7 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
       if (modules.rental) addRental();
     }
 
-    const maxCards = viewKey === "all" ? 16 : 18;
+    const maxCards = viewKey === "all" ? 20 : 24;
     const visibleKpis = kpis.slice(0, maxCards);
 
     mount.innerHTML = visibleKpis
