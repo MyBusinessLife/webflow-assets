@@ -111,6 +111,9 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
       status: "all",
       search: "",
     },
+    view: {
+      business: "all", // all | billing | interventions | crm | transport | fleet | logistics | purchases | restaurant | pos | loyalty | rental
+    },
     loading: false,
   };
 
@@ -129,7 +132,132 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
     statusChart: ".mbl-chart-status",
     clientsChart: ".mbl-chart-clients",
     techChart: ".mbl-chart-tech",
+    viewBar: ".mbl-viewbar",
+    viewChips: "[data-view-chips]",
+    viewHint: "[data-view-hint]",
+    actionsArea: "[data-actions]",
+    alertsArea: "[data-alerts]",
   };
+
+  const VIEW_STORAGE_KEY = "mbl-admin-dashboard:view";
+
+  const VIEW_ICON = {
+    all:
+      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm9 0h7v7h-7v-7Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
+    billing:
+      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 3h10v18l-2-1-3 1-3-1-2 1V3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 8h6M9 12h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+    interventions:
+      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M14 7l3 3-7 7H7v-3l7-7Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M13 8l3 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+    crm:
+      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 20v-2a4 4 0 0 1 4-4h2a4 4 0 0 1 4 4v2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
+    transport:
+      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 7h12v10H3V7Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M15 10h3l3 3v4h-6v-7Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M7 18a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm12 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z" fill="currentColor"/></svg>',
+    fleet:
+      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 16l1-6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2l1 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M7 16h10v4H7v-4Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2Zm8 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" fill="currentColor"/></svg>',
+    logistics:
+      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 7l8-4 8 4v10l-8 4-8-4V7Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 3v18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+    purchases:
+      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 6h15l-2 9H8L6 6Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M6 6L5 3H2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M9 20a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm9 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z" fill="currentColor"/></svg>',
+    restaurant:
+      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 3v7M10 3v7M7 10h3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M16 3v9a3 3 0 0 0 3 3h0v6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+    pos:
+      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 2h12v20H6V2Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 6h6M9 10h6M10 18h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+    loyalty:
+      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 17l-4.2 2.2.8-4.7-3.4-3.3 4.7-.7L12 6l2.1 4.5 4.7.7-3.4 3.3.8 4.7L12 17Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
+    rental:
+      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 11l8-8 8 8v9a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1v-9Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
+    lock:
+      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 11V8a5 5 0 0 1 10 0v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M6 11h12v10H6V11Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
+    arrow:
+      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 17L17 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M10 7h7v7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  };
+
+  const VIEW_DEFS = [
+    {
+      key: "all",
+      label: "Tout",
+      hint: "Vue globale. Filtre les KPIs, actions et alertes par module.",
+      enabled: () => true,
+      icon: VIEW_ICON.all,
+    },
+    {
+      key: "billing",
+      label: "Facturation",
+      hint: "Devis, factures, paiements et clients.",
+      enabled: (m) => Boolean(m.billing),
+      icon: VIEW_ICON.billing,
+    },
+    {
+      key: "interventions",
+      label: "Interventions",
+      hint: "Rentabilite, planning, statuts et details des interventions.",
+      enabled: (m) => Boolean(m.interventions),
+      icon: VIEW_ICON.interventions,
+    },
+    {
+      key: "crm",
+      label: "CRM",
+      hint: "Pipeline, opportunites, relances et valeur en cours.",
+      enabled: (m) => Boolean(m.crm),
+      icon: VIEW_ICON.crm,
+    },
+    {
+      key: "transport",
+      label: "Transport",
+      hint: "Tournees, courses, distances et suivi chauffeur.",
+      enabled: (m) => Boolean(m.transport),
+      icon: VIEW_ICON.transport,
+    },
+    {
+      key: "fleet",
+      label: "Vehicules",
+      hint: "Parc, conformite (CT) et alertes de renouvellement.",
+      enabled: (m) => Boolean(m.fleet || m.transport),
+      icon: VIEW_ICON.fleet,
+    },
+    {
+      key: "logistics",
+      label: "Logistique",
+      hint: "Stocks, entrepots, mouvements et reappro.",
+      enabled: (m) => Boolean(m.logistics),
+      icon: VIEW_ICON.logistics,
+    },
+    {
+      key: "purchases",
+      label: "Achats",
+      hint: "Bons de commande, receptions et depenses fournisseur.",
+      enabled: (m) => Boolean(m.purchases),
+      icon: VIEW_ICON.purchases,
+    },
+    {
+      key: "restaurant",
+      label: "Restauration",
+      hint: "Menus, commandes (QR) et production.",
+      enabled: (m) => Boolean(m.restaurant),
+      icon: VIEW_ICON.restaurant,
+    },
+    {
+      key: "pos",
+      label: "Caisse (POS)",
+      hint: "Encaissements et tickets de caisse.",
+      enabled: (m) => Boolean(m.pos),
+      icon: VIEW_ICON.pos,
+    },
+    {
+      key: "loyalty",
+      label: "Fidelite",
+      hint: "Programme, membres, points et activite.",
+      enabled: (m) => Boolean(m.loyalty),
+      icon: VIEW_ICON.loyalty,
+    },
+    {
+      key: "rental",
+      label: "Location",
+      hint: "Biens, reservations et revenus.",
+      enabled: (m) => Boolean(m.rental),
+      icon: VIEW_ICON.rental,
+    },
+  ];
 
   const DASHBOARD_CSS = `
     [data-mbl-admin-dashboard], #mbl-admin-dashboard, .mbl-admin-dashboard {
@@ -137,43 +265,43 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
       min-height: 100%;
     }
 
-    .mbl-shell {
-      --brand-teal: #0f766e;
-      --brand-blue: #0c4a6e;
-      --brand-sky: #0ea5e9;
-      --bg-0: #f4f8fc;
-      --bg-1: #edf4fb;
-      --stroke: #d6e1ed;
-      --text-main: #10233f;
-      --text-soft: #55708c;
-      --card-bg: #ffffff;
-      position: relative;
-      overflow: hidden;
-      padding: clamp(14px, 1.9vw, 28px);
-      color: var(--text-main);
-      font-family: inherit;
-      background:
-        radial-gradient(900px 420px at 8% -8%, rgba(15, 118, 110, 0.14), transparent 68%),
-        radial-gradient(880px 480px at 100% 0%, rgba(14, 165, 233, 0.14), transparent 70%),
-        linear-gradient(180deg, var(--bg-0), var(--bg-1));
-      border-radius: 20px;
-      border: 1px solid var(--stroke);
-      isolation: isolate;
-      box-shadow: 0 16px 34px rgba(12, 37, 66, 0.08);
-    }
+	    .mbl-shell {
+	      --accent: var(--mbl-primary, #0ea5e9);
+	      --accent-rgb: var(--mbl-primary-rgb, 14, 165, 233);
+	      --accent-2: var(--mbl-secondary, #0c4a6e);
+	      --bg-0: rgba(250, 252, 255, 0.96);
+	      --bg-1: rgba(241, 245, 249, 0.86);
+	      --stroke: rgba(15, 23, 42, 0.12);
+	      --text-main: var(--mbl-text, #020617);
+	      --text-soft: rgba(2, 6, 23, 0.62);
+	      --card-bg: var(--mbl-surface, rgba(255, 255, 255, 0.88));
+	      position: relative;
+	      overflow: hidden;
+	      padding: clamp(14px, 1.9vw, 28px);
+	      color: var(--text-main);
+	      font-family: inherit;
+	      background:
+	        radial-gradient(920px 440px at 8% -8%, rgba(var(--accent-rgb), 0.16), transparent 68%),
+	        radial-gradient(860px 520px at 100% 0%, rgba(var(--accent-rgb), 0.12), transparent 70%),
+	        linear-gradient(180deg, var(--bg-0), var(--bg-1));
+	      border-radius: 20px;
+	      border: 1px solid var(--stroke);
+	      isolation: isolate;
+	      box-shadow: 0 16px 34px rgba(2, 6, 23, 0.08);
+	    }
 
-    .mbl-shell::before {
+	    .mbl-shell::before {
       content: "";
       position: absolute;
       inset: 0;
       z-index: -1;
-      background-image:
-        linear-gradient(rgba(12, 74, 110, 0.04) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(12, 74, 110, 0.04) 1px, transparent 1px);
-      background-size: 30px 30px;
-      opacity: 0.45;
-      pointer-events: none;
-    }
+	      background-image:
+	        linear-gradient(rgba(var(--accent-rgb), 0.05) 1px, transparent 1px),
+	        linear-gradient(90deg, rgba(var(--accent-rgb), 0.05) 1px, transparent 1px);
+	      background-size: 30px 30px;
+	      opacity: 0.45;
+	      pointer-events: none;
+	    }
 
     .mbl-bg-glow {
       position: absolute;
@@ -186,19 +314,19 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
       z-index: -1;
     }
 
-    .mbl-bg-glow-a {
+	    .mbl-bg-glow-a {
       top: -18%;
       left: -6%;
-      background: radial-gradient(circle at center, rgba(15, 118, 110, 0.52), transparent 72%);
-      animation: mblFloatA 12s ease-in-out infinite;
-    }
+	      background: radial-gradient(circle at center, rgba(var(--accent-rgb), 0.52), transparent 72%);
+	      animation: mblFloatA 12s ease-in-out infinite;
+	    }
 
-    .mbl-bg-glow-b {
+	    .mbl-bg-glow-b {
       right: -7%;
       bottom: -30%;
-      background: radial-gradient(circle at center, rgba(14, 165, 233, 0.44), transparent 70%);
-      animation: mblFloatB 14s ease-in-out infinite;
-    }
+	      background: radial-gradient(circle at center, rgba(var(--accent-rgb), 0.44), transparent 70%);
+	      animation: mblFloatB 14s ease-in-out infinite;
+	    }
 
     @keyframes mblFloatA {
       0% { transform: translate3d(0, 0, 0); }
@@ -212,19 +340,19 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
       100% { transform: translate3d(0, 0, 0); }
     }
 
-    .mbl-shell.is-loading::after {
+	    .mbl-shell.is-loading::after {
       content: "Chargement des donnees...";
       position: absolute;
       inset: 0;
       display: grid;
       place-items: center;
-      background: rgba(245, 250, 255, 0.72);
-      backdrop-filter: blur(2px);
-      color: #294f74;
-      letter-spacing: 0.02em;
-      font-weight: 700;
-      z-index: 9;
-    }
+	      background: rgba(255, 255, 255, 0.72);
+	      backdrop-filter: blur(2px);
+	      color: rgba(2, 6, 23, 0.82);
+	      letter-spacing: 0.02em;
+	      font-weight: 700;
+	      z-index: 9;
+	    }
 
     .mbl-card {
       background: var(--card-bg);
@@ -233,42 +361,42 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
       box-shadow: 0 10px 20px rgba(12, 37, 66, 0.06);
     }
 
-    .mbl-header {
+	    .mbl-header {
       padding: clamp(14px, 1.8vw, 24px);
       display: flex;
       justify-content: space-between;
       gap: 16px;
       align-items: flex-start;
       flex-wrap: wrap;
-      background: linear-gradient(
-        130deg,
-        rgba(15, 118, 110, 0.08),
-        rgba(14, 165, 233, 0.05) 45%,
-        rgba(255, 255, 255, 0.9) 78%
-      );
-    }
+	      background: linear-gradient(
+	        130deg,
+	        rgba(var(--accent-rgb), 0.10),
+	        rgba(var(--accent-rgb), 0.06) 45%,
+	        rgba(255, 255, 255, 0.9) 78%
+	      );
+	    }
 
     .mbl-header-title-wrap {
       min-width: min(460px, 100%);
     }
 
-    .mbl-overline {
+	    .mbl-overline {
       margin: 0 0 8px;
       text-transform: uppercase;
       letter-spacing: 0.14em;
-      color: #0f766e;
-      font-size: 10px;
-      font-weight: 700;
-    }
+	      color: rgba(var(--accent-rgb), 0.95);
+	      font-size: 10px;
+	      font-weight: 700;
+	    }
 
-    .mbl-title {
+	    .mbl-title {
       margin: 0;
       font-size: clamp(23px, 3.2vw, 36px);
       line-height: 1.05;
       letter-spacing: -0.02em;
-      color: #0c3154;
-      font-weight: 800;
-    }
+	      color: var(--text-main);
+	      font-weight: 800;
+	    }
 
     .mbl-subtitle {
       margin: 8px 0 0;
@@ -283,16 +411,16 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
       gap: 8px;
     }
 
-    .mbl-context-pill {
+	    .mbl-context-pill {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      border: 1px solid #d7e4f1;
-      background: rgba(255, 255, 255, 0.95);
-      color: #244666;
-      border-radius: 999px;
-      padding: 5px 10px;
-      font-size: 11px;
+	      border: 1px solid var(--stroke);
+	      background: rgba(255, 255, 255, 0.95);
+	      color: rgba(2, 6, 23, 0.78);
+	      border-radius: 999px;
+	      padding: 5px 10px;
+	      font-size: 11px;
       font-weight: 700;
       letter-spacing: 0.01em;
     }
@@ -334,28 +462,248 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
     .mbl-btn:hover { transform: translateY(-1px); }
     .mbl-btn:active { transform: translateY(0); }
 
-    .mbl-btn-solid {
-      color: #ffffff;
-      background: linear-gradient(120deg, #0f766e, #0c4a6e);
-      box-shadow: 0 8px 20px rgba(12, 74, 110, 0.23);
-    }
+	    .mbl-btn-solid {
+	      color: #ffffff;
+	      background: linear-gradient(120deg, var(--accent), var(--accent-2));
+	      box-shadow: 0 8px 20px rgba(var(--accent-rgb), 0.23);
+	    }
 
-    .mbl-btn-ghost {
-      color: #0c4a6e;
-      border: 1px solid rgba(12, 74, 110, 0.22);
-      background: #ffffff;
-    }
+	    .mbl-btn-ghost {
+	      color: rgba(2, 6, 23, 0.84);
+	      border: 1px solid rgba(var(--accent-rgb), 0.25);
+	      background: rgba(255, 255, 255, 0.9);
+	    }
 
-    .mbl-last-sync {
-      display: block;
-      font-size: 11px;
-      color: var(--text-soft);
-      margin-left: 4px;
-    }
+	    .mbl-last-sync {
+	      display: block;
+	      font-size: 11px;
+	      color: var(--text-soft);
+	      margin-left: 4px;
+	    }
 
-    .mbl-filters {
-      margin-top: 14px;
-      padding: 12px;
+	    .mbl-viewbar {
+	      margin-top: 14px;
+	      padding: 14px;
+	      display: flex;
+	      align-items: flex-start;
+	      justify-content: space-between;
+	      gap: 12px;
+	      flex-wrap: wrap;
+	      background: linear-gradient(
+	        135deg,
+	        rgba(var(--accent-rgb), 0.06),
+	        rgba(255, 255, 255, 0.90) 55%,
+	        rgba(var(--accent-rgb), 0.04)
+	      );
+	    }
+
+	    .mbl-viewbar h2 {
+	      margin: 0;
+	      font-size: 15px;
+	      letter-spacing: -0.01em;
+	    }
+
+	    .mbl-viewhint {
+	      margin: 6px 0 0;
+	      color: var(--text-soft);
+	      font-size: 12px;
+	      max-width: 640px;
+	    }
+
+	    .mbl-viewchips {
+	      display: flex;
+	      align-items: center;
+	      gap: 8px;
+	      flex-wrap: wrap;
+	      justify-content: flex-end;
+	    }
+
+	    .mbl-viewchip {
+	      appearance: none;
+	      border: 1px solid rgba(var(--accent-rgb), 0.18);
+	      background: rgba(255, 255, 255, 0.92);
+	      color: rgba(2, 6, 23, 0.78);
+	      border-radius: 999px;
+	      padding: 8px 12px;
+	      font-size: 12px;
+	      font-weight: 750;
+	      letter-spacing: 0.01em;
+	      display: inline-flex;
+	      align-items: center;
+	      gap: 8px;
+	      cursor: pointer;
+	      transition: transform 0.16s ease, box-shadow 0.2s ease, background 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
+	      user-select: none;
+	      white-space: nowrap;
+	    }
+
+	    .mbl-viewchip:hover {
+	      transform: translateY(-1px);
+	      border-color: rgba(var(--accent-rgb), 0.32);
+	      box-shadow: 0 10px 22px rgba(var(--accent-rgb), 0.14);
+	    }
+
+	    .mbl-viewchip:active { transform: translateY(0); }
+
+	    .mbl-viewchip:focus-visible {
+	      outline: none;
+	      box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.18);
+	    }
+
+	    .mbl-viewchip.is-active {
+	      background: linear-gradient(120deg, var(--accent), var(--accent-2));
+	      border-color: rgba(var(--accent-rgb), 0.42);
+	      color: #ffffff;
+	      box-shadow: 0 12px 26px rgba(var(--accent-rgb), 0.22);
+	    }
+
+	    .mbl-viewchip.is-locked {
+	      opacity: 0.62;
+	    }
+
+	    .mbl-viewchip .mbl-chip-ico {
+	      display: inline-grid;
+	      place-items: center;
+	      width: 18px;
+	      height: 18px;
+	    }
+
+	    .mbl-panels {
+	      margin-top: 14px;
+	      display: grid;
+	      grid-template-columns: 1.2fr 0.8fr;
+	      gap: 12px;
+	    }
+
+	    .mbl-panel {
+	      padding: 14px;
+	      position: relative;
+	      overflow: hidden;
+	    }
+
+	    .mbl-panel h3 {
+	      margin: 0;
+	      font-size: 14px;
+	      letter-spacing: -0.01em;
+	    }
+
+	    .mbl-panel p {
+	      margin: 8px 0 0;
+	      color: var(--text-soft);
+	      font-size: 12px;
+	    }
+
+	    .mbl-actions-grid {
+	      margin-top: 12px;
+	      display: grid;
+	      grid-template-columns: repeat(2, minmax(0, 1fr));
+	      gap: 10px;
+	    }
+
+	    .mbl-action {
+	      appearance: none;
+	      cursor: pointer;
+	      display: flex;
+	      align-items: center;
+	      justify-content: space-between;
+	      gap: 10px;
+	      padding: 10px 12px;
+	      border-radius: 14px;
+	      border: 1px solid rgba(15, 23, 42, 0.12);
+	      background: rgba(255, 255, 255, 0.92);
+	      color: rgba(2, 6, 23, 0.84);
+	      text-decoration: none;
+	      width: 100%;
+	      text-align: left;
+	      font-family: inherit;
+	      font-weight: 750;
+	      font-size: 13px;
+	      letter-spacing: -0.01em;
+	      transition: transform 0.16s ease, box-shadow 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
+	    }
+
+	    .mbl-action:hover {
+	      transform: translateY(-1px);
+	      border-color: rgba(var(--accent-rgb), 0.30);
+	      box-shadow: 0 14px 30px rgba(2, 6, 23, 0.10);
+	    }
+
+	    .mbl-action:active { transform: translateY(0); }
+
+	    .mbl-action.is-locked {
+	      opacity: 0.62;
+	      cursor: pointer;
+	    }
+
+	    .mbl-action.is-cta {
+	      background: linear-gradient(120deg, var(--accent), var(--accent-2));
+	      border-color: rgba(var(--accent-rgb), 0.42);
+	      color: #ffffff;
+	      box-shadow: 0 14px 30px rgba(var(--accent-rgb), 0.22);
+	    }
+
+	    .mbl-action.is-cta .mbl-action-meta {
+	      color: rgba(255, 255, 255, 0.92);
+	    }
+
+	    .mbl-action .mbl-action-meta {
+	      color: rgba(2, 6, 23, 0.60);
+	      font-size: 12px;
+	      font-weight: 650;
+	      letter-spacing: 0.01em;
+	      white-space: nowrap;
+	    }
+
+	    .mbl-alert-list {
+	      margin-top: 12px;
+	      display: grid;
+	      gap: 10px;
+	    }
+
+	    .mbl-alert {
+	      border-radius: 14px;
+	      padding: 10px 12px;
+	      border: 1px solid rgba(15, 23, 42, 0.12);
+	      background: rgba(255, 255, 255, 0.92);
+	    }
+
+	    .mbl-alert strong {
+	      display: block;
+	      font-size: 13px;
+	      letter-spacing: -0.01em;
+	    }
+
+	    .mbl-alert span {
+	      display: block;
+	      margin-top: 4px;
+	      color: var(--text-soft);
+	      font-size: 12px;
+	    }
+
+	    .mbl-alert.is-good { border-color: rgba(34, 197, 94, 0.25); background: rgba(34, 197, 94, 0.06); }
+	    .mbl-alert.is-warn { border-color: rgba(245, 158, 11, 0.28); background: rgba(245, 158, 11, 0.07); }
+	    .mbl-alert.is-bad { border-color: rgba(239, 68, 68, 0.26); background: rgba(239, 68, 68, 0.06); }
+
+	    .mbl-kpi-grid,
+	    .mbl-panels,
+	    .mbl-analytics-grid,
+	    .mbl-table-card,
+	    .mbl-filters {
+	      transition: opacity 0.18s ease, transform 0.18s ease;
+	    }
+
+	    .mbl-shell.is-switching .mbl-kpi-grid,
+	    .mbl-shell.is-switching .mbl-panels,
+	    .mbl-shell.is-switching .mbl-analytics-grid,
+	    .mbl-shell.is-switching .mbl-table-card,
+	    .mbl-shell.is-switching .mbl-filters {
+	      opacity: 0.35;
+	      transform: translateY(2px);
+	    }
+
+	    .mbl-filters {
+	      margin-top: 14px;
+	      padding: 12px;
       display: grid;
       grid-template-columns: repeat(7, minmax(0, 1fr));
       gap: 10px;
@@ -371,33 +719,33 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
       grid-column: span 2;
     }
 
-    .mbl-filter label {
+	    .mbl-filter label {
       font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.07em;
-      color: #5c7590;
-      font-weight: 700;
-    }
+	      color: rgba(2, 6, 23, 0.62);
+	      font-weight: 700;
+	    }
 
-    .mbl-filter input,
-    .mbl-filter select {
-      border: 1px solid #cfdeeb;
-      outline: none;
-      border-radius: 10px;
-      padding: 10px 11px;
-      font-size: 13px;
-      line-height: 1;
-      background: #ffffff;
-      color: #10233f;
-      min-width: 0;
-    }
+	    .mbl-filter input,
+	    .mbl-filter select {
+	      border: 1px solid rgba(15, 23, 42, 0.14);
+	      outline: none;
+	      border-radius: 10px;
+	      padding: 10px 11px;
+	      font-size: 13px;
+	      line-height: 1;
+	      background: rgba(255, 255, 255, 0.92);
+	      color: var(--text-main);
+	      min-width: 0;
+	    }
 
     .mbl-filter input::placeholder { color: #8095ad; }
-    .mbl-filter input:focus,
-    .mbl-filter select:focus {
-      border-color: #0ea5e9;
-      box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.16);
-    }
+	    .mbl-filter input:focus,
+	    .mbl-filter select:focus {
+	      border-color: rgba(var(--accent-rgb), 0.85);
+	      box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.16);
+	    }
 
     .mbl-error {
       margin-top: 12px;
@@ -449,30 +797,30 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
       pointer-events: none;
     }
 
-    .mbl-kpi-label {
+	    .mbl-kpi-label {
       margin: 0;
       font-size: 11px;
       letter-spacing: 0.07em;
       text-transform: uppercase;
-      color: #5d7590;
-      font-weight: 700;
-    }
+	      color: rgba(2, 6, 23, 0.62);
+	      font-weight: 700;
+	    }
 
-    .mbl-kpi-value {
+	    .mbl-kpi-value {
       margin: 8px 0 0;
       font-size: clamp(19px, 2.1vw, 27px);
       font-weight: 800;
       line-height: 1.04;
       letter-spacing: -0.02em;
-      color: #0e2c4b;
-    }
+	      color: var(--text-main);
+	    }
 
-    .tone-blue::before { background: radial-gradient(circle at center, #0ea5e9, transparent 70%); }
-    .tone-green::before { background: radial-gradient(circle at center, #0f766e, transparent 70%); }
-    .tone-amber::before { background: radial-gradient(circle at center, #f59e0b, transparent 70%); }
-    .tone-red::before { background: radial-gradient(circle at center, #ef4444, transparent 70%); }
-    .tone-slate::before { background: radial-gradient(circle at center, #94a3b8, transparent 70%); }
-    .tone-violet::before { background: radial-gradient(circle at center, #6366f1, transparent 70%); }
+	    .tone-blue::before { background: radial-gradient(circle at center, rgba(var(--accent-rgb), 1), transparent 70%); }
+	    .tone-green::before { background: radial-gradient(circle at center, #0f766e, transparent 70%); }
+	    .tone-amber::before { background: radial-gradient(circle at center, #f59e0b, transparent 70%); }
+	    .tone-red::before { background: radial-gradient(circle at center, #ef4444, transparent 70%); }
+	    .tone-slate::before { background: radial-gradient(circle at center, #94a3b8, transparent 70%); }
+	    .tone-violet::before { background: radial-gradient(circle at center, #6366f1, transparent 70%); }
 
     .mbl-analytics-grid {
       margin-top: 14px;
@@ -637,16 +985,17 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
       to { opacity: 1; transform: translateY(0); }
     }
 
-    @media (max-width: 1180px) {
-      .mbl-filters { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-      .mbl-filter-search { grid-column: span 2; }
-      .mbl-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .mbl-analytics-grid { grid-template-columns: 1fr; }
-    }
+	    @media (max-width: 1180px) {
+	      .mbl-filters { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+	      .mbl-filter-search { grid-column: span 2; }
+	      .mbl-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+	      .mbl-panels { grid-template-columns: 1fr; }
+	      .mbl-analytics-grid { grid-template-columns: 1fr; }
+	    }
 
-    @media (max-width: 760px) {
-      .mbl-shell { padding: 10px; border-radius: 14px; }
-      .mbl-header { padding: 12px; }
+	    @media (max-width: 760px) {
+	      .mbl-shell { padding: 10px; border-radius: 14px; }
+	      .mbl-header { padding: 12px; }
       .mbl-header-actions {
         width: 100%;
         grid-auto-flow: row;
@@ -654,14 +1003,40 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
         justify-items: stretch;
       }
       .mbl-btn { width: 100%; }
-      .mbl-last-sync { margin: 0; font-size: 10px; }
-      .mbl-filters { grid-template-columns: 1fr 1fr; }
-      .mbl-filter-search { grid-column: span 2; }
-      .mbl-kpi-grid { grid-template-columns: 1fr; }
-      .mbl-chart-card { min-height: 265px; }
-      .mbl-chart { height: 230px; }
-    }
-  `;
+	      .mbl-last-sync { margin: 0; font-size: 10px; }
+	      .mbl-viewbar { padding: 12px; }
+	      .mbl-viewchips {
+	        width: 100%;
+	        flex-wrap: nowrap;
+	        overflow-x: auto;
+	        justify-content: flex-start;
+	        padding-bottom: 6px;
+	        -webkit-overflow-scrolling: touch;
+	      }
+	      .mbl-viewchips::-webkit-scrollbar { height: 6px; }
+	      .mbl-viewchips::-webkit-scrollbar-thumb { background: rgba(15, 23, 42, 0.14); border-radius: 999px; }
+	      .mbl-viewchip { padding: 7px 11px; }
+	      .mbl-panels { grid-template-columns: 1fr; }
+	      .mbl-actions-grid { grid-template-columns: 1fr; }
+	      .mbl-filters { grid-template-columns: 1fr 1fr; }
+	      .mbl-filter-search { grid-column: span 2; }
+	      .mbl-kpi-grid { grid-template-columns: 1fr; }
+	      .mbl-chart-card { min-height: 265px; }
+	      .mbl-chart { height: 230px; }
+	    }
+
+	    @media (prefers-reduced-motion: reduce) {
+	      .mbl-bg-glow-a,
+	      .mbl-bg-glow-b {
+	        animation: none !important;
+	      }
+	      .mbl-btn,
+	      .mbl-viewchip,
+	      .mbl-action {
+	        transition: none !important;
+	      }
+	    }
+	  `;
 
   function init(userConfig) {
     const globalConfig = getGlobalConfig();
@@ -725,14 +1100,17 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
         }
       }
 
-      initSupabase(config);
-      primeDefaultDates();
-      applyDatePreset(config.defaultPreset || "all", true);
-      await refreshAll();
-      return {
-        refresh: refreshAll,
-        destroy: () => destroy(root),
-      };
+	      initSupabase(config);
+	      primeDefaultDates();
+	      applyDatePreset(config.defaultPreset || "all", true);
+	      // View selection can be overridden by ?view=...; otherwise keep last choice.
+	      const urlView = readViewFromUrl();
+	      state.view.business = urlView !== "all" ? urlView : loadSavedViewKey();
+	      await refreshAll();
+	      return {
+	        refresh: refreshAll,
+	        destroy: () => destroy(root),
+	      };
     } catch (error) {
       renderError(error);
       throw error;
@@ -857,6 +1235,95 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
       out[k] = boolFromAny(input[k]);
     });
     return out;
+  }
+
+  function normalizeViewKey(input) {
+    const key = String(input || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, "_");
+    if (!key) return "all";
+    if (VIEW_DEFS.some((v) => v.key === key)) return key;
+    return "all";
+  }
+
+  function viewKeyLabel(key) {
+    const k = normalizeViewKey(key);
+    const def = VIEW_DEFS.find((v) => v.key === k);
+    return def ? def.label : "Tout";
+  }
+
+  function viewStorageKey() {
+    const orgId = String(state.context?.orgId || "").trim();
+    return orgId ? `${VIEW_STORAGE_KEY}:${orgId}` : VIEW_STORAGE_KEY;
+  }
+
+  function loadSavedViewKey() {
+    try {
+      const raw = localStorage.getItem(viewStorageKey());
+      return normalizeViewKey(raw);
+    } catch (_) {
+      return "all";
+    }
+  }
+
+  function saveViewKey(key) {
+    try {
+      localStorage.setItem(viewStorageKey(), normalizeViewKey(key));
+    } catch (_) {}
+  }
+
+  function readViewFromUrl() {
+    try {
+      const url = new URL(location.href);
+      const q = url.searchParams.get("view") || url.searchParams.get("business") || "";
+      return normalizeViewKey(q);
+    } catch (_) {
+      return "all";
+    }
+  }
+
+  function getAppRoot() {
+    const p = String(location.pathname || "");
+    const m = p.match(/^\/(applications|application)(?=\/|$)/);
+    return m ? "/" + m[1] : "/applications";
+  }
+
+  function isViewEnabled(viewKey, modules) {
+    const m = modules && typeof modules === "object" ? modules : {};
+    const key = normalizeViewKey(viewKey);
+    const def = VIEW_DEFS.find((v) => v.key === key);
+    if (!def) return key === "all";
+    try {
+      return Boolean(def.enabled ? def.enabled(m) : false);
+    } catch (_) {
+      return key === "all";
+    }
+  }
+
+  function ensureValidViewSelection(modules) {
+    const current = normalizeViewKey(state.view?.business);
+    if (current === "all") return "all";
+    if (isViewEnabled(current, modules)) return current;
+    return "all";
+  }
+
+  function setViewSelection(nextKey, opts = {}) {
+    const key = normalizeViewKey(nextKey);
+    const modules = state.context?.modules || {};
+
+    // locked views never apply, they open the subscriptions modal instead.
+    if (key !== "all" && !isViewEnabled(key, modules)) {
+      if (opts?.openSubscriptions !== false) {
+        try {
+          window.MBL?.openSubscriptionsModal?.({ source: `dashboard:view:${key}` });
+        } catch (_) {}
+      }
+      return;
+    }
+
+    state.view.business = key;
+    saveViewKey(key);
   }
 
   function isSubscriptionRowActive(sub) {
@@ -1024,15 +1491,18 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
 
   async function fetchModuleStats(context) {
     const modules = context?.modules || {};
-    const stats = {
-      billing: null,
-      crm: null,
-      transport: null,
-      fleet: null,
-      logistics: null,
-      restaurant: null,
-      pos: null,
-    };
+	    const stats = {
+	      billing: null,
+	      crm: null,
+	      transport: null,
+	      fleet: null,
+	      logistics: null,
+	      purchases: null,
+	      loyalty: null,
+	      rental: null,
+	      restaurant: null,
+	      pos: null,
+	    };
 
     if (modules.billing) {
       const [factures, devis, clients] = await Promise.all([
@@ -1170,10 +1640,70 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
       };
     }
 
-    if (modules.restaurant || modules.billing) {
-      const orders = await safeTableRows("restaurant_orders", "source,status,total_cents,created_at,payment_status", (q) =>
-        q.order("created_at", { ascending: false }).limit(8000)
-      );
+	    if (modules.purchases) {
+	      const [orders, suppliers] = await Promise.all([
+	        safeTableRows("purchase_orders", "status,total_cents,issue_date,created_at", (q) =>
+	          q.order("created_at", { ascending: false }).limit(8000)
+	        ),
+	        safeTableRows("purchase_suppliers", "is_active,created_at", (q) => q.limit(8000)),
+	      ]);
+	      const monthStart = startOfMonth();
+	      let openOrders = 0;
+	      let spendMonth = 0;
+	      orders.forEach((o) => {
+	        const st = normalizeStatus(o.status);
+	        if (["draft", "sent", "confirmed", "partially_received"].includes(st)) openOrders += 1;
+	        if (st === "received" && isSameOrAfter(o.issue_date || o.created_at, monthStart)) spendMonth += toNumber(o.total_cents) / 100;
+	      });
+	      stats.purchases = {
+	        openOrders,
+	        spendMonth,
+	        activeSuppliers: suppliers.filter((s) => s.is_active !== false).length,
+	      };
+	    }
+
+	    if (modules.loyalty) {
+	      const [members, events] = await Promise.all([
+	        safeTableRows("loyalty_members", "status,points_balance,created_at", (q) => q.order("created_at", { ascending: false }).limit(8000)),
+	        safeTableRows("loyalty_events", "points,created_at", (q) => q.order("created_at", { ascending: false }).limit(8000)),
+	      ]);
+	      const monthStart = startOfMonth();
+	      let pointsIssuedMonth = 0;
+	      events.forEach((e) => {
+	        const pts = toNumber(e.points);
+	        if (pts > 0 && isSameOrAfter(e.created_at, monthStart)) pointsIssuedMonth += pts;
+	      });
+	      stats.loyalty = {
+	        activeMembers: members.filter((m) => normalizeStatus(m.status) === "active").length,
+	        pointsIssuedMonth,
+	      };
+	    }
+
+	    if (modules.rental) {
+	      const reservations = await safeTableRows("rental_reservations", "status,check_in,total_cents,created_at", (q) =>
+	        q.order("created_at", { ascending: false }).limit(8000)
+	      );
+	      const monthStart = startOfMonth();
+	      let openReservations = 0;
+	      let arrivals7 = 0;
+	      let revenueMonth = 0;
+	      reservations.forEach((r) => {
+	        const st = normalizeStatus(r.status);
+	        if (["pending", "confirmed", "blocked"].includes(st)) openReservations += 1;
+	        if (["pending", "confirmed"].includes(st) && isWithinDays(r.check_in, 7)) arrivals7 += 1;
+	        if (st === "confirmed" && isSameOrAfter(r.check_in || r.created_at, monthStart)) revenueMonth += toNumber(r.total_cents) / 100;
+	      });
+	      stats.rental = {
+	        openReservations,
+	        arrivals7,
+	        revenueMonth,
+	      };
+	    }
+
+	    if (modules.restaurant || modules.billing || modules.pos) {
+	      const orders = await safeTableRows("restaurant_orders", "source,status,total_cents,created_at,payment_status", (q) =>
+	        q.order("created_at", { ascending: false }).limit(8000)
+	      );
       const today = startOfToday();
       const todayOrders = orders.filter((o) => isSameOrAfter(o.created_at, today));
       const todayRevenue = todayOrders
@@ -1264,24 +1794,34 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
         <div class="mbl-bg-glow mbl-bg-glow-a"></div>
         <div class="mbl-bg-glow mbl-bg-glow-b"></div>
 
-        <header class="mbl-header mbl-card">
-          <div class="mbl-header-title-wrap">
-            <p class="mbl-overline">Admin analytics</p>
-            <h1 class="mbl-title">${escapeHtml(labels.title || "")}</h1>
-            <p class="mbl-subtitle">${escapeHtml(labels.subtitle || "")}</p>
-            <div class="mbl-context-strip"></div>
-          </div>
-          <div class="mbl-header-actions">
-            <button class="mbl-btn mbl-btn-ghost mbl-export" type="button">Exporter CSV</button>
-            <button class="mbl-btn mbl-btn-solid mbl-refresh" type="button">Rafraichir</button>
-            <span class="mbl-last-sync">Derniere synchro: --</span>
-          </div>
-        </header>
+	        <header class="mbl-header mbl-card">
+	          <div class="mbl-header-title-wrap">
+	            <p class="mbl-overline">Admin analytics</p>
+	            <h1 class="mbl-title">${escapeHtml(labels.title || "")}</h1>
+	            <p class="mbl-subtitle">${escapeHtml(labels.subtitle || "")}</p>
+	            <div class="mbl-context-strip"></div>
+	          </div>
+	          <div class="mbl-header-actions">
+	            <button class="mbl-btn mbl-btn-ghost mbl-export" type="button">Exporter CSV</button>
+	            <button class="mbl-btn mbl-btn-solid mbl-refresh" type="button">Rafraichir</button>
+	            <span class="mbl-last-sync">Derniere synchro: --</span>
+	          </div>
+	        </header>
 
-        <section class="mbl-filters mbl-card mbl-interventions-only">
-          <div class="mbl-filter">
-            <label for="mbl-preset">Periode</label>
-            <select id="mbl-preset" name="preset">
+	        <section class="mbl-viewbar mbl-card">
+	          <div>
+	            <h2>Vue</h2>
+	            <p class="mbl-viewhint" data-view-hint>Chargement des modules...</p>
+	          </div>
+	          <div class="mbl-viewchips" data-view-chips></div>
+	        </section>
+
+	        <section class="mbl-module-note" hidden></section>
+
+	        <section class="mbl-filters mbl-card mbl-interventions-only">
+	          <div class="mbl-filter">
+	            <label for="mbl-preset">Periode</label>
+	            <select id="mbl-preset" name="preset">
               <option value="7d">7 derniers jours</option>
               <option value="30d">30 derniers jours</option>
               <option value="90d">90 derniers jours</option>
@@ -1322,15 +1862,19 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
           </div>
         </section>
 
-        <section class="mbl-error" hidden></section>
+	        <section class="mbl-error" hidden></section>
 
-        <section class="mbl-kpi-grid"></section>
-        <section class="mbl-module-note" hidden></section>
+	        <section class="mbl-kpi-grid"></section>
 
-        <section class="mbl-analytics-grid mbl-interventions-only">
-          <article class="mbl-card mbl-chart-card">
-            <h2>CA / Couts / Benefice</h2>
-            <div class="mbl-chart mbl-chart-trend"></div>
+	        <section class="mbl-panels">
+	          <article class="mbl-card mbl-panel" data-actions></article>
+	          <article class="mbl-card mbl-panel" data-alerts></article>
+	        </section>
+
+	        <section class="mbl-analytics-grid mbl-interventions-only">
+	          <article class="mbl-card mbl-chart-card">
+	            <h2>CA / Couts / Benefice</h2>
+	            <div class="mbl-chart mbl-chart-trend"></div>
           </article>
           <article class="mbl-card mbl-chart-card">
             <h2>Repartition statuts</h2>
@@ -1388,6 +1932,33 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
 
   function bindGlobalEvents(root) {
     root.addEventListener("click", function (event) {
+      const openSub = event.target.closest("[data-open-subscriptions]");
+      if (openSub) {
+        event.preventDefault();
+        event.stopPropagation();
+        try {
+          window.MBL?.openSubscriptionsModal?.({ source: "dashboard:cta" });
+        } catch (_) {}
+        return;
+      }
+
+      const chip = event.target.closest(".mbl-viewchip[data-business]");
+      if (chip) {
+        event.preventDefault();
+        const next = normalizeViewKey(chip.getAttribute("data-business"));
+        if (next !== normalizeViewKey(state.view?.business)) {
+          setViewSelection(next, { openSubscriptions: true });
+          const shell = root.querySelector(SELECTORS.shell);
+          if (shell) {
+            shell.classList.add("is-switching");
+            setTimeout(() => shell.classList.remove("is-switching"), 220);
+          }
+          updateDashboard();
+          setTimeout(resizeCharts, 0);
+        }
+        return;
+      }
+
       const th = event.target.closest("th[data-sort]");
       if (th) {
         const key = th.getAttribute("data-sort");
@@ -1492,12 +2063,20 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
     setLoading(true);
     clearError();
 
-    try {
-      state.context = await resolveDashboardContext();
-      const payload = await fetchDashboardPayload(state.context);
-      state.data = payload;
-      state.moduleStats = payload.moduleStats || {};
-      state.indices = buildIndices(payload);
+	    try {
+	      state.context = await resolveDashboardContext();
+	      // Re-apply view selection once org/modules are known (org-scoped localStorage).
+	      {
+	        const urlView = readViewFromUrl();
+	        const savedView = loadSavedViewKey();
+	        state.view.business = urlView !== "all" ? urlView : savedView;
+	        state.view.business = ensureValidViewSelection(state.context?.modules || {});
+	        saveViewKey(state.view.business);
+	      }
+	      const payload = await fetchDashboardPayload(state.context);
+	      state.data = payload;
+	      state.moduleStats = payload.moduleStats || {};
+	      state.indices = buildIndices(payload);
       hydrateFilterOptions();
       updateDashboard();
       updateLastSync();
@@ -1775,8 +2354,12 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
     const sorted = sortRows(filtered);
     state.filteredRows = sorted;
 
+    renderViewBar();
     renderKpis(sorted);
-    if (Boolean(state.context?.modules?.interventions)) {
+    renderActions(sorted);
+    renderAlerts(sorted);
+    const viewKey = normalizeViewKey(state.view?.business);
+    if (Boolean(state.context?.modules?.interventions) && viewKey === "interventions") {
       renderTable(sorted);
       renderCharts(sorted);
     } else {
@@ -1784,25 +2367,295 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
     }
   }
 
+  function renderViewBar() {
+    const root = getRoot(state.config.container);
+    if (!root) return;
+    const chipsMount = root.querySelector(SELECTORS.viewChips);
+    const hintEl = root.querySelector(SELECTORS.viewHint);
+    if (!chipsMount) return;
+
+    const modules = state.context?.modules || {};
+    const viewKey = normalizeViewKey(state.view?.business);
+    const subActive = Boolean(state.context?.subscriptionActive);
+
+    const effectiveModules = subActive ? modules : {};
+    const currentDef = VIEW_DEFS.find((v) => v.key === viewKey) || VIEW_DEFS[0];
+    if (hintEl) {
+      const parts = [];
+      parts.push(`${currentDef.label}: ${currentDef.hint}`);
+      if (!subActive) parts.push("Abonnement requis pour activer les modules.");
+      hintEl.textContent = parts.join(" ");
+    }
+
+    chipsMount.innerHTML = VIEW_DEFS.map((def) => {
+      const enabled = def.key === "all" ? true : isViewEnabled(def.key, effectiveModules);
+      const locked = def.key !== "all" && !enabled;
+      const active = def.key === viewKey;
+
+      const icon = def.icon || "";
+      const lockIcon = locked ? `<span class="mbl-chip-ico">${VIEW_ICON.lock}</span>` : "";
+      const cls = ["mbl-viewchip", active ? "is-active" : "", locked ? "is-locked" : ""].filter(Boolean).join(" ");
+      return `
+        <button
+          type="button"
+          class="${cls}"
+          data-business="${escapeHtml(def.key)}"
+          ${locked ? 'data-open-subscriptions="1"' : ""}
+          aria-pressed="${active ? "true" : "false"}"
+          aria-disabled="${locked ? "true" : "false"}"
+          title="${escapeHtml(def.label + (locked ? " (verrouille)" : ""))}"
+        >
+          <span class="mbl-chip-ico">${icon}</span>
+          <span>${escapeHtml(def.label)}</span>
+          ${lockIcon}
+        </button>
+      `;
+    }).join("");
+  }
+
+  function renderActions(rows) {
+    const root = getRoot(state.config.container);
+    if (!root) return;
+    const mount = root.querySelector(SELECTORS.actionsArea);
+    if (!mount) return;
+
+    const modules = state.context?.modules || {};
+    const viewKey = normalizeViewKey(state.view?.business);
+    const appRoot = getAppRoot();
+
+    const routes = {
+      subscriptions: "/subscriptions",
+      settings: `${appRoot}/settings`,
+      crm: `${appRoot}/crm/crm`,
+      transport: `${appRoot}/transport`,
+      logistics: `${appRoot}/logistics`,
+      purchases: `${appRoot}/purchases`,
+      loyalty: `${appRoot}/loyalty`,
+      restaurant: `${appRoot}/restaurant`,
+      pos: `${appRoot}/pos`,
+      rental: `${appRoot}/rental`,
+      interventions: `${appRoot}/admin/interventions`,
+      products: `${appRoot}/admin/products`,
+      categories: `${appRoot}/admin/categories`,
+      invoiceNew: `${appRoot}/facturation/invoice`,
+      invoicesList: `${appRoot}/facturation/invoices-list`,
+      quoteNew: `${appRoot}/facturation/devis-add`,
+      quotesList: `${appRoot}/facturation/devis-list`,
+      clients: `${appRoot}/facturation/clients`,
+    };
+
+    const actions = [];
+
+    const push = (a) => actions.push(a);
+    const withMods = (key) => Boolean(modules[key]);
+
+    if (viewKey === "billing") {
+      push({ kind: "link", label: "Nouvelle facture", href: routes.invoiceNew });
+      push({ kind: "link", label: "Factures", href: routes.invoicesList });
+      push({ kind: "link", label: "Nouveau devis", href: routes.quoteNew });
+      push({ kind: "link", label: "Devis", href: routes.quotesList });
+      push({ kind: "link", label: "Clients", href: routes.clients });
+      push({ kind: "link", label: "Produits", href: routes.products });
+    } else if (viewKey === "interventions") {
+      push({ kind: "link", label: "Interventions", href: routes.interventions });
+      push({ kind: "link", label: "Produits", href: routes.products });
+      push({ kind: "link", label: "Categories", href: routes.categories });
+    } else if (viewKey === "crm") {
+      push({ kind: "link", label: "Ouvrir CRM", href: routes.crm });
+      if (withMods("billing")) push({ kind: "link", label: "Clients", href: routes.clients });
+    } else if (viewKey === "transport") {
+      push({ kind: "link", label: "Ouvrir Transport", href: routes.transport });
+    } else if (viewKey === "fleet") {
+      push({ kind: "link", label: "Parc & Chauffeurs", href: routes.transport });
+    } else if (viewKey === "logistics") {
+      push({ kind: "link", label: "Ouvrir Logistique", href: routes.logistics });
+    } else if (viewKey === "purchases") {
+      push({ kind: "link", label: "Ouvrir Achats", href: routes.purchases });
+    } else if (viewKey === "restaurant") {
+      push({ kind: "link", label: "Ouvrir Restauration", href: routes.restaurant });
+      if (withMods("pos")) push({ kind: "link", label: "Caisse (POS)", href: routes.pos });
+    } else if (viewKey === "pos") {
+      push({ kind: "link", label: "Ouvrir Caisse (POS)", href: routes.pos });
+    } else if (viewKey === "loyalty") {
+      push({ kind: "link", label: "Ouvrir Fidelite", href: routes.loyalty });
+    } else if (viewKey === "rental") {
+      push({ kind: "link", label: "Ouvrir Location", href: routes.rental });
+    } else {
+      // all
+      if (withMods("billing")) {
+        push({ kind: "link", label: "Nouvelle facture", href: routes.invoiceNew });
+        push({ kind: "link", label: "Clients", href: routes.clients });
+      }
+      if (withMods("interventions")) push({ kind: "link", label: "Interventions", href: routes.interventions });
+      if (withMods("crm")) push({ kind: "link", label: "CRM", href: routes.crm });
+      if (withMods("transport")) push({ kind: "link", label: "Transport", href: routes.transport });
+      if (withMods("logistics")) push({ kind: "link", label: "Logistique", href: routes.logistics });
+      if (withMods("purchases")) push({ kind: "link", label: "Achats", href: routes.purchases });
+      if (withMods("restaurant")) push({ kind: "link", label: "Restauration", href: routes.restaurant });
+      if (withMods("pos")) push({ kind: "link", label: "Caisse (POS)", href: routes.pos });
+      if (withMods("loyalty")) push({ kind: "link", label: "Fidelite", href: routes.loyalty });
+      if (withMods("rental")) push({ kind: "link", label: "Location", href: routes.rental });
+      push({ kind: "link", label: "Parametres", href: routes.settings });
+      push({ kind: "subscriptions", label: "Abonnements", href: routes.subscriptions });
+    }
+
+    const maxActions = viewKey === "all" ? 10 : 8;
+    const visible = actions.slice(0, maxActions);
+
+    mount.innerHTML = `
+      <h3>Actions rapides</h3>
+      <p>Raccourcis adaptes a la vue <strong>${escapeHtml(viewKeyLabel(viewKey))}</strong>.</p>
+      <div class="mbl-actions-grid">
+        ${visible
+          .map((a) => {
+            if (a.kind === "subscriptions") {
+              return `
+                <button type="button" class="mbl-action is-cta" data-open-subscriptions="1">
+                  <span>${escapeHtml(a.label)}</span>
+                  <span class="mbl-action-meta">${VIEW_ICON.arrow}</span>
+                </button>
+              `;
+            }
+            return `
+              <a class="mbl-action" href="${escapeHtml(a.href)}">
+                <span>${escapeHtml(a.label)}</span>
+                <span class="mbl-action-meta">${VIEW_ICON.arrow}</span>
+              </a>
+            `;
+          })
+          .join("")}
+      </div>
+    `;
+  }
+
+  function renderAlerts(rows) {
+    const root = getRoot(state.config.container);
+    if (!root) return;
+    const mount = root.querySelector(SELECTORS.alertsArea);
+    if (!mount) return;
+
+    const modules = state.context?.modules || {};
+    const moduleStats = state.moduleStats || {};
+    const viewKey = normalizeViewKey(state.view?.business);
+    const stats = computeStats(rows || []);
+
+    const alerts = [];
+    const push = (a) => alerts.push(a);
+    const inView = (keys) => keys.includes("all") || keys.includes(viewKey);
+
+    if (modules.billing && moduleStats.billing && inView(["all", "billing"])) {
+      const overdue = toNumber(moduleStats.billing.overdueInvoices);
+      const open = toNumber(moduleStats.billing.openInvoices);
+      if (overdue > 0) push({ tone: "bad", title: "Factures en retard", desc: `${overdue} a relancer / regler.` });
+      else if (viewKey === "billing") push({ tone: "good", title: "Factures a jour", desc: "Aucune facture en retard." });
+      if (open > 0 && overdue === 0) push({ tone: "warn", title: "Factures ouvertes", desc: `${open} en attente de paiement.` });
+    }
+
+    if (modules.interventions && inView(["all", "interventions"])) {
+      if (stats.inProgress > 0) push({ tone: "warn", title: "Interventions en cours", desc: `${stats.inProgress} intervention(s) en execution.` });
+      else if (viewKey === "interventions") push({ tone: "good", title: "Terrain stable", desc: "Aucune intervention en cours." });
+    }
+
+    if ((modules.fleet || modules.transport) && moduleStats.fleet && inView(["all", "fleet", "transport"])) {
+      const a30 = toNumber(moduleStats.fleet.alerts30);
+      if (a30 > 0) push({ tone: "bad", title: "Alertes conformite (30j)", desc: `${a30} element(s) a verifier (CT, assurance, etc).` });
+      else if (viewKey === "fleet") push({ tone: "good", title: "Conformite OK", desc: "Aucune alerte sur 30 jours." });
+    }
+
+    if (modules.logistics && moduleStats.logistics && inView(["all", "logistics"])) {
+      const low = toNumber(moduleStats.logistics.lowStockAlerts);
+      if (low > 0) push({ tone: "warn", title: "Reapprovisionnement", desc: `${low} alerte(s) stock bas.` });
+      else if (viewKey === "logistics") push({ tone: "good", title: "Stock OK", desc: "Aucune alerte stock bas." });
+    }
+
+    if (modules.restaurant && moduleStats.restaurant && inView(["all", "restaurant"])) {
+      const openOrders = toNumber(moduleStats.restaurant.openOrders);
+      if (openOrders > 0) push({ tone: "warn", title: "Commandes a traiter", desc: `${openOrders} commande(s) en attente.` });
+      else if (viewKey === "restaurant") push({ tone: "good", title: "Cuisine fluide", desc: "Aucune commande en attente." });
+    }
+
+    if (modules.purchases && moduleStats.purchases && inView(["all", "purchases"])) {
+      const openPO = toNumber(moduleStats.purchases.openOrders);
+      if (openPO > 0) push({ tone: "warn", title: "Achats en cours", desc: `${openPO} bon(s) de commande non receptionnes.` });
+      else if (viewKey === "purchases") push({ tone: "good", title: "Achats OK", desc: "Aucun bon de commande en attente." });
+    }
+
+    if (modules.loyalty && moduleStats.loyalty && inView(["all", "loyalty"])) {
+      const members = toNumber(moduleStats.loyalty.activeMembers);
+      if (viewKey === "loyalty") push({ tone: "good", title: "Membres actifs", desc: `${members} membre(s) fidelite.` });
+    }
+
+    if (modules.rental && moduleStats.rental && inView(["all", "rental"])) {
+      const upcoming = toNumber(moduleStats.rental.arrivals7);
+      if (upcoming > 0) push({ tone: "warn", title: "Arrivees (7j)", desc: `${upcoming} arrivee(s) a preparer.` });
+      else if (viewKey === "rental") push({ tone: "good", title: "Aucune arrivee proche", desc: "Rien a preparer sur 7 jours." });
+    }
+
+    // In "Tout", keep only issues first (avoid noise).
+    let visible = alerts.slice();
+    if (viewKey === "all") {
+      const issues = visible.filter((a) => a.tone === "bad" || a.tone === "warn");
+      visible = issues.length ? issues : visible;
+    }
+
+    visible.sort((a, b) => {
+      const prio = (t) => (t === "bad" ? 0 : t === "warn" ? 1 : 2);
+      return prio(a.tone) - prio(b.tone);
+    });
+    visible = visible.slice(0, 4);
+
+    if (!visible.length) {
+      visible = [{ tone: "good", title: "Aucune alerte", desc: "Tout est OK pour le moment." }];
+    }
+
+    mount.innerHTML = `
+      <h3>Alertes</h3>
+      <p>Elements a surveiller (selon la vue).</p>
+      <div class="mbl-alert-list">
+        ${visible
+          .map((a) => {
+            const cls = a.tone === "bad" ? "is-bad" : a.tone === "warn" ? "is-warn" : "is-good";
+            return `
+              <div class="mbl-alert ${cls}">
+                <strong>${escapeHtml(a.title)}</strong>
+                <span>${escapeHtml(a.desc)}</span>
+              </div>
+            `;
+          })
+          .join("")}
+      </div>
+    `;
+  }
+
   function renderContextSummary() {
     const root = getRoot(state.config.container);
     if (!root) return;
     const strip = root.querySelector(SELECTORS.contextStrip);
     const note = root.querySelector(SELECTORS.moduleNote);
-    const interventionsEnabled = Boolean(state.context?.modules?.interventions);
+    const modules = state.context?.modules || {};
+    const viewKey = normalizeViewKey(state.view?.business);
+    const showInterventions = Boolean(modules.interventions) && viewKey === "interventions";
 
     root.querySelectorAll(".mbl-interventions-only").forEach((el) => {
-      el.style.display = interventionsEnabled ? "" : "none";
+      el.style.display = showInterventions ? "" : "none";
     });
 
+    const exportButton = root.querySelector(SELECTORS.exportButton);
+    if (exportButton) {
+      exportButton.disabled = !showInterventions;
+      exportButton.style.opacity = showInterventions ? "" : "0.5";
+      exportButton.style.pointerEvents = showInterventions ? "" : "none";
+    }
+
     if (note) {
-      if (interventionsEnabled) {
-        note.hidden = true;
-        note.textContent = "";
-      } else {
+      const subOk = Boolean(state.context?.subscriptionActive);
+      if (!subOk) {
         note.hidden = false;
         note.textContent =
-          "Le module Interventions n'est pas actif sur cet abonnement. Le dashboard affiche automatiquement les KPIs des modules activés (facturation, CRM, transport, logistique, restauration, POS).";
+          "Abonnement requis. Active un plan pour acceder aux modules et aux dashboards metier.";
+      } else {
+        note.hidden = true;
+        note.textContent = "";
       }
     }
 
@@ -1813,9 +2666,13 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
       interventions: "Interventions",
       crm: "CRM",
       transport: "Transport",
-      fleet: "Véhicules",
+      fleet: "Vehicules",
       logistics: "Logistique",
       restaurant: "Restauration",
+      pos: "POS",
+      purchases: "Achats",
+      loyalty: "Fidelite",
+      rental: "Location",
     };
     const activeModules = Object.keys(state.context?.modules || {}).filter((k) => state.context.modules[k]);
     const modulePreview = activeModules
@@ -1826,11 +2683,13 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
     const planLabel = state.context?.planName || "Sans plan";
     const statusLabel = state.context?.subscriptionActive ? "Abonnement actif" : "Abonnement inactif";
     const orgLabel = state.context?.orgName || "Organisation";
+    const viewLabel = viewKeyLabel(viewKey);
 
     strip.innerHTML = `
       <span class="mbl-context-pill ${state.context?.subscriptionActive ? "is-ok" : "is-warn"}">${escapeHtml(statusLabel)}</span>
       <span class="mbl-context-pill">Plan: ${escapeHtml(planLabel)}</span>
       <span class="mbl-context-pill">${escapeHtml(orgLabel)}</span>
+      <span class="mbl-context-pill">Vue: ${escapeHtml(viewLabel)}</span>
       <span class="mbl-context-pill">${escapeHtml(activeModules.length)} module(s): ${escapeHtml(modulePreview || "Aucun")}${escapeHtml(moduleSuffix)}</span>
     `;
   }
@@ -1942,72 +2801,160 @@ document.documentElement.setAttribute("data-page", "admin-dashboard");
     const mount = root.querySelector(SELECTORS.kpiArea);
     if (!mount) return;
 
-    const stats = computeStats(rows);
+    const stats = computeStats(rows || []);
     const modules = state.context?.modules || {};
     const moduleStats = state.moduleStats || {};
+    const viewKey = normalizeViewKey(state.view?.business);
+
     const kpis = [];
+    const add = (label, value, tone) => kpis.push({ label, value, tone: tone || "slate" });
 
     const activeModuleCount = Object.keys(modules).filter((k) => modules[k]).length;
-    kpis.push({ label: "Plan actif", value: state.context?.planName || "Sans plan", tone: "violet" });
-    kpis.push({ label: "Modules actifs", value: String(activeModuleCount), tone: "slate" });
+    add("Plan actif", state.context?.planName || "Sans plan", "slate");
+    add("Modules actifs", String(activeModuleCount), "slate");
 
-    if (modules.interventions) {
-      kpis.push({ label: "CA interventions", value: money(stats.revenue), tone: "blue" });
-      kpis.push({ label: "Benefice net", value: money(stats.profit), tone: stats.profit >= 0 ? "green" : "red" });
-      kpis.push({ label: "Interventions", value: String(stats.count), tone: "slate" });
-      kpis.push({ label: "En cours", value: String(stats.inProgress), tone: "blue" });
-      kpis.push({ label: "Ticket moyen", value: money(stats.avgTicket), tone: "violet" });
-    }
+    const addInterventions = (full) => {
+      add("CA interventions", money(stats.revenue), "blue");
+      add("Benefice net", money(stats.profit), stats.profit >= 0 ? "green" : "red");
+      add("Interventions", String(stats.count), "slate");
+      if (full) {
+        add("En cours", String(stats.inProgress), "blue");
+        add("Ticket moyen", money(stats.avgTicket), "violet");
+      }
+    };
 
-    if (modules.billing && moduleStats.billing) {
-      kpis.push({ label: "Encaisse mois", value: money(moduleStats.billing.paidMonth), tone: "green" });
-      kpis.push({ label: "Factures ouvertes", value: String(moduleStats.billing.openInvoices), tone: "amber" });
-      kpis.push({ label: "Factures en retard", value: String(moduleStats.billing.overdueInvoices), tone: "red" });
-      kpis.push({ label: "Devis ouverts", value: String(moduleStats.billing.openQuotes), tone: "blue" });
-      kpis.push({ label: "Clients actifs", value: String(moduleStats.billing.activeClients), tone: "slate" });
-    }
+    const addBilling = (full) => {
+      if (!moduleStats.billing) return;
+      add("Encaisse mois", money(moduleStats.billing.paidMonth), "green");
+      add("Factures en retard", String(moduleStats.billing.overdueInvoices), "red");
+      add("Factures ouvertes", String(moduleStats.billing.openInvoices), "amber");
+      if (full) {
+        add("Devis ouverts", String(moduleStats.billing.openQuotes), "blue");
+        add("Clients actifs", String(moduleStats.billing.activeClients), "slate");
+      }
+    };
 
-    if (modules.crm && moduleStats.crm) {
-      kpis.push({ label: "Opportunites ouvertes", value: String(moduleStats.crm.openDeals), tone: "blue" });
-      kpis.push({ label: "Pipeline CRM", value: money(moduleStats.crm.pipelineValue), tone: "violet" });
-      kpis.push({ label: "Gagne ce mois", value: money(moduleStats.crm.wonMonth), tone: "green" });
-    }
+    const addCrm = () => {
+      if (!moduleStats.crm) return;
+      add("Opportunites ouvertes", String(moduleStats.crm.openDeals), "blue");
+      add("Pipeline CRM", money(moduleStats.crm.pipelineValue), "violet");
+      add("Gagne ce mois", money(moduleStats.crm.wonMonth), "green");
+    };
 
-    if (modules.transport && moduleStats.transport) {
-      kpis.push({ label: "Courses actives", value: String(moduleStats.transport.activeShipments), tone: "blue" });
-      kpis.push({ label: "CA transport mois", value: money(moduleStats.transport.monthRevenue), tone: "green" });
-      kpis.push({ label: "Distance planifiee", value: `${Math.round(toNumber(moduleStats.transport.distanceKm))} km`, tone: "amber" });
-      kpis.push({ label: "Tournees ouvertes", value: String(moduleStats.transport.openTours), tone: "slate" });
-    }
+    const addTransport = (full) => {
+      if (!moduleStats.transport) return;
+      add("Courses actives", String(moduleStats.transport.activeShipments), "blue");
+      add("CA transport mois", money(moduleStats.transport.monthRevenue), "green");
+      if (full) {
+        add("Distance planifiee", `${Math.round(toNumber(moduleStats.transport.distanceKm))} km`, "amber");
+        add("Tournees ouvertes", String(moduleStats.transport.openTours), "slate");
+      }
+    };
 
-    if ((modules.fleet || modules.transport) && moduleStats.fleet) {
-      kpis.push({ label: "Vehicules actifs", value: String(moduleStats.fleet.vehiclesActive), tone: "slate" });
-      kpis.push({ label: "Chauffeurs actifs", value: String(moduleStats.fleet.driversActive), tone: "slate" });
-      kpis.push({ label: "Alertes conformite (30j)", value: String(moduleStats.fleet.alerts30), tone: moduleStats.fleet.alerts30 > 0 ? "red" : "green" });
-    }
+    const addFleet = () => {
+      if (!moduleStats.fleet) return;
+      add("Vehicules actifs", String(moduleStats.fleet.vehiclesActive), "slate");
+      add("Chauffeurs actifs", String(moduleStats.fleet.driversActive), "slate");
+      add(
+        "Alertes conformite (30j)",
+        String(moduleStats.fleet.alerts30),
+        moduleStats.fleet.alerts30 > 0 ? "red" : "green"
+      );
+    };
 
-    if (modules.logistics && moduleStats.logistics) {
-      kpis.push({ label: "Entrepots actifs", value: String(moduleStats.logistics.activeWarehouses), tone: "slate" });
-      kpis.push({ label: "Stock disponible", value: String(Math.round(toNumber(moduleStats.logistics.availableQty))), tone: "blue" });
-      kpis.push({ label: "Alertes reappro", value: String(moduleStats.logistics.lowStockAlerts), tone: moduleStats.logistics.lowStockAlerts > 0 ? "amber" : "green" });
-    }
+    const addLogistics = (full) => {
+      if (!moduleStats.logistics) return;
+      add("Entrepots actifs", String(moduleStats.logistics.activeWarehouses), "slate");
+      add("Stock disponible", String(Math.round(toNumber(moduleStats.logistics.availableQty))), "blue");
+      if (full) {
+        add(
+          "Alertes reappro",
+          String(moduleStats.logistics.lowStockAlerts),
+          moduleStats.logistics.lowStockAlerts > 0 ? "amber" : "green"
+        );
+      }
+    };
 
-    if (modules.restaurant && moduleStats.restaurant) {
+    const addRestaurant = (full) => {
+      if (!moduleStats.restaurant) return;
       const avgTicket = moduleStats.restaurant.todayOrders
         ? toNumber(moduleStats.restaurant.todayRevenue) / Math.max(1, toNumber(moduleStats.restaurant.todayOrders))
         : 0;
-      kpis.push({ label: "Commandes jour", value: String(moduleStats.restaurant.todayOrders), tone: "blue" });
-      kpis.push({ label: "CA resto jour", value: money(moduleStats.restaurant.todayRevenue), tone: "green" });
-      kpis.push({ label: "Ticket moyen jour", value: money(avgTicket), tone: "violet" });
-      kpis.push({ label: "Commandes a traiter", value: String(moduleStats.restaurant.openOrders), tone: "amber" });
+      add("Commandes jour", String(moduleStats.restaurant.todayOrders), "blue");
+      add("CA resto jour", money(moduleStats.restaurant.todayRevenue), "green");
+      if (full) {
+        add("Ticket moyen jour", money(avgTicket), "violet");
+        add("Commandes a traiter", String(moduleStats.restaurant.openOrders), "amber");
+      }
+    };
+
+    const addPos = () => {
+      if (!moduleStats.pos) return;
+      add("Tickets POS jour", String(moduleStats.pos.posTicketsToday), "blue");
+      add("CA POS jour", money(moduleStats.pos.posRevenueToday), "green");
+    };
+
+    const addPurchases = () => {
+      if (!moduleStats.purchases) return;
+      add("BC en cours", String(moduleStats.purchases.openOrders), "amber");
+      add("Depenses mois", money(moduleStats.purchases.spendMonth), "green");
+      add("Fournisseurs actifs", String(moduleStats.purchases.activeSuppliers), "slate");
+    };
+
+    const addLoyalty = () => {
+      if (!moduleStats.loyalty) return;
+      add("Membres actifs", String(moduleStats.loyalty.activeMembers), "blue");
+      add("Points emis (mois)", String(moduleStats.loyalty.pointsIssuedMonth), "violet");
+    };
+
+    const addRental = () => {
+      if (!moduleStats.rental) return;
+      add("Reservations ouvertes", String(moduleStats.rental.openReservations), "amber");
+      add("Arrivees (7j)", String(moduleStats.rental.arrivals7), "blue");
+      add("CA location mois", money(moduleStats.rental.revenueMonth), "green");
+    };
+
+    if (viewKey === "billing") {
+      if (modules.billing) addBilling(true);
+      if (modules.pos) addPos();
+    } else if (viewKey === "interventions") {
+      if (modules.interventions) addInterventions(true);
+    } else if (viewKey === "crm") {
+      if (modules.crm) addCrm();
+    } else if (viewKey === "transport") {
+      if (modules.transport) addTransport(true);
+      if (modules.fleet || modules.transport) addFleet();
+    } else if (viewKey === "fleet") {
+      if (modules.fleet || modules.transport) addFleet();
+    } else if (viewKey === "logistics") {
+      if (modules.logistics) addLogistics(true);
+    } else if (viewKey === "purchases") {
+      if (modules.purchases) addPurchases();
+    } else if (viewKey === "restaurant") {
+      if (modules.restaurant) addRestaurant(true);
+      if (modules.pos) addPos();
+    } else if (viewKey === "pos") {
+      if (modules.pos) addPos();
+    } else if (viewKey === "loyalty") {
+      if (modules.loyalty) addLoyalty();
+    } else if (viewKey === "rental") {
+      if (modules.rental) addRental();
+    } else {
+      // all view
+      if (modules.billing) addBilling(false);
+      if (modules.interventions) addInterventions(false);
+      if (modules.crm) addCrm();
+      if (modules.transport) addTransport(false);
+      if (modules.fleet || modules.transport) addFleet();
+      if (modules.logistics) addLogistics(false);
+      if (modules.purchases) addPurchases();
+      if (modules.restaurant) addRestaurant(false);
+      if (modules.pos) addPos();
+      if (modules.loyalty) addLoyalty();
+      if (modules.rental) addRental();
     }
 
-    if ((modules.billing || modules.restaurant) && moduleStats.pos) {
-      kpis.push({ label: "Tickets POS jour", value: String(moduleStats.pos.posTicketsToday), tone: "blue" });
-      kpis.push({ label: "CA POS jour", value: money(moduleStats.pos.posRevenueToday), tone: "green" });
-    }
-
-    const maxCards = 16;
+    const maxCards = viewKey === "all" ? 16 : 18;
     const visibleKpis = kpis.slice(0, maxCards);
 
     mount.innerHTML = visibleKpis
