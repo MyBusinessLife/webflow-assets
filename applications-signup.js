@@ -120,12 +120,73 @@
       return null;
     }
 
+    function parseRgbLoose(input) {
+      const direct = parseRgb(input);
+      if (direct) return direct;
+
+      const s = String(input || "").trim();
+      if (!s) return null;
+
+      const m = s.match(/rgba?\([^)]*\)|#[0-9a-fA-F]{3,8}/);
+      if (!m) return null;
+      return parseRgb(m[0]);
+    }
+
+    function darkenRgb(rgb, factor = 0.74) {
+      const src = rgb && typeof rgb === "object" ? rgb : { r: 223, g: 91, b: 53 };
+      const f = Number.isFinite(Number(factor)) ? Number(factor) : 0.74;
+      const clamp = (n) => Math.max(0, Math.min(255, Math.round(n)));
+      return {
+        r: clamp(src.r * f),
+        g: clamp(src.g * f),
+        b: clamp(src.b * f),
+      };
+    }
+
+    function pickDomPrimaryColor() {
+      const selectors = [
+        ".submit-button-5",
+        'form input[type="submit"]',
+        'form button[type="submit"]',
+        ".primary-button.w-button",
+        "[data-auth-google]",
+      ];
+
+      for (const selector of selectors) {
+        const el = document.querySelector(selector);
+        if (!el) continue;
+
+        try {
+          const cs = getComputedStyle(el);
+          const candidates = [cs.backgroundColor, cs.backgroundImage, cs.color, cs.borderColor];
+          for (const c of candidates) {
+            const rgb = parseRgbLoose(c);
+            if (!rgb) continue;
+            const luminance = (rgb.r * 0.2126 + rgb.g * 0.7152 + rgb.b * 0.0722) / 255;
+            if (luminance < 0.96 && luminance > 0.06) return rgb;
+          }
+        } catch (_) {}
+      }
+
+      return null;
+    }
+
     function ensureThemeRgbVars() {
       try {
-        const existing = readCssVar("--mbl-primary-rgb");
-        if (existing) return;
+        const existingPrimary = readCssVar("--mbl-primary-rgb");
+        const existingSecondary = readCssVar("--mbl-secondary-rgb");
+        if (existingPrimary && existingSecondary) return;
 
-        const candidates = ["--mbl-primary", "--primary", "--brand", "--color-primary", "--color-brand"];
+        const candidates = [
+          "--mbl-primary",
+          "--primary",
+          "--brand",
+          "--color-primary",
+          "--color-brand",
+          "--accent",
+          "--color-accent",
+          "--orange",
+        ];
         let primary = "";
         for (const c of candidates) {
           const v = readCssVar(c);
@@ -134,9 +195,15 @@
             break;
           }
         }
-        if (!primary) primary = "#0ea5e9";
-        const rgb = parseRgb(primary) || { r: 14, g: 165, b: 233 };
+
+        let rgb = parseRgbLoose(primary);
+        if (!rgb) rgb = pickDomPrimaryColor();
+        if (!rgb) rgb = { r: 223, g: 91, b: 53 };
+
+        const secondary = darkenRgb(rgb, 0.74);
+
         document.documentElement.style.setProperty("--mbl-primary-rgb", `${rgb.r}, ${rgb.g}, ${rgb.b}`);
+        document.documentElement.style.setProperty("--mbl-secondary-rgb", `${secondary.r}, ${secondary.g}, ${secondary.b}`);
       } catch (_) {}
     }
 
@@ -222,11 +289,11 @@
         html[data-page="login"] .mbl-google-btn:hover,
         html[data-page="signup"] .mbl-google-btn:hover {
           transform: translateY(-1px);
-          border-color: rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.40);
+          border-color: rgba(var(--mbl-primary-rgb, 223, 91, 53), 0.40);
           background: rgba(255, 255, 255, 0.98);
           box-shadow:
             0 22px 52px rgba(2, 6, 23, 0.14),
-            0 0 0 4px rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.14);
+            0 0 0 4px rgba(var(--mbl-primary-rgb, 223, 91, 53), 0.14);
         }
 
         html[data-page="login"] .mbl-google-btn:active,
@@ -240,7 +307,7 @@
           outline: none;
           box-shadow:
             0 22px 52px rgba(2, 6, 23, 0.14),
-            0 0 0 4px rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.18);
+            0 0 0 4px rgba(var(--mbl-primary-rgb, 223, 91, 53), 0.18);
         }
 
         html[data-page="login"] .mbl-google-btn[aria-disabled="true"],
@@ -274,7 +341,7 @@
           height: 18px;
           border-radius: 999px;
           border: 2px solid rgba(2, 6, 23, 0.18);
-          border-top-color: rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.92);
+          border-top-color: rgba(var(--mbl-primary-rgb, 223, 91, 53), 0.92);
           animation: mblGSpin 900ms linear infinite;
           display: none;
         }
@@ -299,9 +366,9 @@
         html[data-page="signup"] body {
           min-height: 100%;
           background:
-            radial-gradient(1200px 800px at 15% -10%, rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.20), transparent 60%),
-            radial-gradient(900px 700px at 115% 10%, rgba(2, 132, 199, 0.16), transparent 55%),
-            linear-gradient(180deg, #f7fbff 0%, #f3f6fb 45%, #f3f6fb 100%);
+            radial-gradient(1250px 820px at 14% -12%, rgba(var(--mbl-primary-rgb, 223, 91, 53), 0.20), transparent 60%),
+            radial-gradient(980px 760px at 112% 8%, rgba(var(--mbl-secondary-rgb, 165, 67, 39), 0.16), transparent 58%),
+            linear-gradient(180deg, #fdf9f6 0%, #f7f1ed 52%, #f3ece7 100%);
         }
 
         html[data-page="login"] body.mbl-auth-mode > :not(.mbl-auth-shell):not(script):not(style),
@@ -331,12 +398,12 @@
           border-radius: 999px;
           background:
             radial-gradient(circle at 30% 30%,
-              rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.20),
-              rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.06) 45%,
+              rgba(var(--mbl-primary-rgb, 223, 91, 53), 0.24),
+              rgba(var(--mbl-secondary-rgb, 165, 67, 39), 0.10) 48%,
               transparent 70%);
-          filter: blur(18px);
+          filter: blur(20px);
           transform: translate3d(0,0,0);
-          opacity: 0.9;
+          opacity: 0.88;
           animation: mblAuthFloat 12s ease-in-out infinite;
         }
 
@@ -357,6 +424,22 @@
         @keyframes mblAuthHeroIn {
           from { opacity: 0; transform: translateY(8px); }
           to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes mblAuthFieldIn {
+          from { opacity: 0; transform: translateY(8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes mblBadgeFloat {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-2px); }
+        }
+
+        @keyframes mblAuthBtnFlow {
+          0% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
         }
 
         .mbl-auth-shell__grid {
@@ -389,8 +472,8 @@
           width: 10px;
           height: 10px;
           border-radius: 999px;
-          background: rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.95);
-          box-shadow: 0 0 0 4px rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.14);
+          background: rgba(var(--mbl-primary-rgb, 223, 91, 53), 0.95);
+          box-shadow: 0 0 0 4px rgba(var(--mbl-primary-rgb, 223, 91, 53), 0.14);
         }
         .mbl-auth-h1 {
           margin: 10px 0 10px;
@@ -425,21 +508,29 @@
           font-size: 13px;
           font-weight: 800;
           color: rgba(2, 6, 23, 0.76);
+          animation: mblBadgeFloat 5.8s ease-in-out infinite;
+        }
+        .mbl-auth-badge:nth-child(2) { animation-delay: -1.8s; }
+        .mbl-auth-badge:nth-child(3) { animation-delay: -3.2s; }
+
+        .mbl-auth-badge:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 14px 30px rgba(2, 6, 23, 0.11);
         }
         .mbl-auth-badge__icon {
           width: 10px;
           height: 10px;
           border-radius: 999px;
-          background: rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.95);
+          background: rgba(var(--mbl-primary-rgb, 223, 91, 53), 0.95);
         }
 
         .mbl-auth-card {
           animation: mblAuthCardIn 540ms ease both;
           background: rgba(255, 255, 255, 0.92);
-          border: 1px solid rgba(15, 23, 42, 0.10);
+          border: 1px solid rgba(var(--mbl-primary-rgb, 223, 91, 53), 0.16);
           border-radius: 22px;
           box-shadow:
-            0 28px 72px rgba(2, 6, 23, 0.12),
+            0 30px 76px rgba(95, 48, 35, 0.16),
             0 1px 0 rgba(255, 255, 255, 0.80) inset;
           padding: 20px 20px 18px;
           backdrop-filter: blur(6px);
@@ -479,6 +570,22 @@
         .mbl-auth-field {
           display: grid;
           gap: 6px;
+          opacity: 0;
+          transform: translateY(8px);
+          animation: mblAuthFieldIn 420ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
+        .mbl-auth-form .mbl-auth-field:nth-child(1) { animation-delay: 90ms; }
+        .mbl-auth-form .mbl-auth-field:nth-child(2) { animation-delay: 140ms; }
+        .mbl-auth-form .mbl-auth-field:nth-child(3) { animation-delay: 190ms; }
+        .mbl-auth-form .mbl-auth-field:nth-child(4) { animation-delay: 240ms; }
+        .mbl-auth-form .mbl-auth-field:nth-child(5) { animation-delay: 290ms; }
+        .mbl-auth-form .mbl-auth-field:nth-child(6) { animation-delay: 340ms; }
+        .mbl-auth-form .mbl-auth-field:nth-child(7) { animation-delay: 390ms; }
+        .mbl-auth-form .mbl-auth-field:nth-child(8) { animation-delay: 440ms; }
+        .mbl-auth-form .mbl-auth-field:nth-child(n+9) { animation-delay: 490ms; }
+
+        .mbl-auth-form .mbl-auth-submit-wrap {
+          animation-delay: 520ms;
         }
 
         .mbl-auth-label {
@@ -528,10 +635,10 @@
         .mbl-auth-card select:focus,
         .mbl-auth-card textarea:focus {
           outline: none;
-          border-color: rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.60);
+          border-color: rgba(var(--mbl-primary-rgb, 223, 91, 53), 0.56);
           box-shadow:
             0 10px 28px rgba(2, 6, 23, 0.10),
-            0 0 0 4px rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.15);
+            0 0 0 4px rgba(var(--mbl-primary-rgb, 223, 91, 53), 0.14);
           transform: translateY(-0.5px);
         }
 
@@ -540,12 +647,14 @@
           width: 100%;
           border-radius: 12px;
           min-height: 48px;
-          border: 1px solid rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.22);
-          background: linear-gradient(145deg, rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.96), rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.88));
+          border: 1px solid rgba(var(--mbl-primary-rgb, 223, 91, 53), 0.28);
+          background: linear-gradient(140deg, rgba(var(--mbl-primary-rgb, 223, 91, 53), 0.98), rgba(var(--mbl-secondary-rgb, 165, 67, 39), 0.95), rgba(var(--mbl-primary-rgb, 223, 91, 53), 0.90));
+          background-size: 180% 180%;
+          animation: mblAuthBtnFlow 6.5s ease infinite;
           color: #fff;
           font-weight: 950;
           letter-spacing: 0.01em;
-          box-shadow: 0 14px 36px rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.24);
+          box-shadow: 0 14px 38px rgba(var(--mbl-primary-rgb, 223, 91, 53), 0.30);
           transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
           cursor: pointer;
         }
@@ -553,8 +662,8 @@
         .mbl-auth-card button[type="submit"]:hover,
         .mbl-auth-card input[type="submit"]:hover {
           transform: translateY(-1px);
-          filter: saturate(1.02);
-          box-shadow: 0 20px 44px rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.28);
+          filter: saturate(1.06);
+          box-shadow: 0 22px 46px rgba(var(--mbl-primary-rgb, 223, 91, 53), 0.34);
         }
 
         .mbl-auth-card button[type="submit"]:disabled,
@@ -591,7 +700,7 @@
           font-weight: 750;
         }
         .mbl-auth-foot a {
-          color: rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.92);
+          color: rgba(var(--mbl-primary-rgb, 223, 91, 53), 0.96);
           text-decoration: none;
           font-weight: 950;
         }
@@ -615,8 +724,16 @@
         @media (prefers-reduced-motion: reduce) {
           .mbl-auth-shell__orb,
           .mbl-auth-hero,
-          .mbl-auth-card {
+          .mbl-auth-card,
+          .mbl-auth-badge,
+          .mbl-auth-field,
+          .mbl-auth-card button[type="submit"],
+          .mbl-auth-card input[type="submit"] {
             animation: none !important;
+          }
+          .mbl-auth-field {
+            opacity: 1 !important;
+            transform: none !important;
           }
         }
       `;
