@@ -183,6 +183,38 @@ window.Webflow.push(async function () {
     return u.toString();
   }
 
+  function resolveMenuImageUrl(rawValue) {
+    const raw = String(rawValue || "").trim();
+    if (!raw) return "";
+    if (raw.startsWith("data:image/")) return raw;
+    if (/^https?:\/\//i.test(raw)) return raw.replace(/^http:\/\//i, "https://");
+    if (raw.startsWith("//")) return `${location.protocol}${raw}`;
+    if (raw.startsWith("/")) {
+      try {
+        return new URL(raw, location.origin).toString();
+      } catch (_) {
+        return raw;
+      }
+    }
+
+    let storagePath = raw;
+    const marker = `/object/public/${CONFIG.MENU_IMAGE_BUCKET}/`;
+    const markerPos = storagePath.indexOf(marker);
+    if (markerPos >= 0) storagePath = storagePath.slice(markerPos + marker.length);
+    if (storagePath.startsWith(`${CONFIG.MENU_IMAGE_BUCKET}/`)) {
+      storagePath = storagePath.slice(CONFIG.MENU_IMAGE_BUCKET.length + 1);
+    }
+    storagePath = storagePath.replace(/^\/+/, "");
+
+    try {
+      const pub = state.supabase?.storage?.from(CONFIG.MENU_IMAGE_BUCKET).getPublicUrl(storagePath);
+      const publicUrl = String(pub?.data?.publicUrl || "").trim();
+      if (publicUrl) return publicUrl;
+    } catch (_) {}
+
+    return storagePath;
+  }
+
   function sanitizeFileName(name) {
     return String(name || "")
       .trim()
@@ -531,6 +563,17 @@ window.Webflow.push(async function () {
         padding: 10px;
         background: rgba(255,255,255,0.92);
       }
+      html[data-page="admin-restaurant"] .rst-item__head {
+        display:grid;
+        gap: 10px;
+        align-items:flex-start;
+      }
+      html[data-page="admin-restaurant"] .rst-item__head.has-image {
+        grid-template-columns: 120px minmax(0, 1fr);
+      }
+      html[data-page="admin-restaurant"] .rst-item__head .rst-item__row {
+        min-width: 0;
+      }
       html[data-page="admin-restaurant"] .rst-item__row {
         display:flex;
         justify-content: space-between;
@@ -677,11 +720,12 @@ window.Webflow.push(async function () {
       }
 
       html[data-page="admin-restaurant"] .rst-item__thumb {
-        width: 100%;
-        aspect-ratio: 16 / 9;
+        width: 120px;
+        height: 90px;
         border-radius: 10px;
         border: 1px solid rgba(15,23,42,0.10);
         object-fit: cover;
+        display:block;
         background: rgba(241,245,249,0.92);
       }
 
@@ -773,6 +817,8 @@ window.Webflow.push(async function () {
         html[data-page="admin-restaurant"] .rst-form { grid-template-columns: 1fr; }
         html[data-page="admin-restaurant"] .rst-qr__fields { grid-template-columns: 1fr; }
         html[data-page="admin-restaurant"] .rst-qr__actions { grid-template-columns: 1fr; }
+        html[data-page="admin-restaurant"] .rst-item__head.has-image { grid-template-columns: 92px minmax(0, 1fr); }
+        html[data-page="admin-restaurant"] .rst-item__thumb { width: 92px; height: 92px; border-radius: 10px; }
       }
     `;
     document.head.appendChild(st);
@@ -1084,21 +1130,24 @@ window.Webflow.push(async function () {
                 ? items
                     .map((it) => {
                       const recipeCount = state.recipes.filter((r) => r.menu_item_id === it.id).length;
+                      const imageUrl = resolveMenuImageUrl(it.image_url);
                       return `
                         <article class="rst-item" data-item-id="${escapeHTML(it.id)}">
-                          ${
-                            it.image_url
-                              ? `<img class="rst-item__thumb" src="${escapeHTML(it.image_url)}" alt="${escapeHTML(it.name || "Item")}" loading="lazy" />`
-                              : ""
-                          }
-                          <div class="rst-item__row">
-                            <div>
-                              <h4 class="rst-item__title">${escapeHTML(it.name || "Item")}</h4>
-                              <div class="rst-item__meta">${escapeHTML(categoryNameById(it.category_id))}</div>
-                            </div>
-                            <div style="text-align:right;">
-                              <div class="rst-item__title">${escapeHTML(formatMoney(it.price_cents, CONFIG.CURRENCY))}</div>
-                              <div class="rst-item__meta">TVA ${escapeHTML(String(it.vat_rate || 0))}%</div>
+                          <div class="rst-item__head${imageUrl ? " has-image" : ""}">
+                            ${
+                              imageUrl
+                                ? `<img class="rst-item__thumb" src="${escapeHTML(imageUrl)}" alt="${escapeHTML(it.name || "Item")}" loading="lazy" decoding="async" />`
+                                : ""
+                            }
+                            <div class="rst-item__row">
+                              <div>
+                                <h4 class="rst-item__title">${escapeHTML(it.name || "Item")}</h4>
+                                <div class="rst-item__meta">${escapeHTML(categoryNameById(it.category_id))}</div>
+                              </div>
+                              <div style="text-align:right;">
+                                <div class="rst-item__title">${escapeHTML(formatMoney(it.price_cents, CONFIG.CURRENCY))}</div>
+                                <div class="rst-item__meta">TVA ${escapeHTML(String(it.vat_rate || 0))}%</div>
+                              </div>
                             </div>
                           </div>
                           ${it.description ? `<div class="rst-item__meta" style="margin-top:8px;">${escapeHTML(it.description)}</div>` : ""}

@@ -31,6 +31,7 @@ window.Webflow.push(async function () {
 
     DEFAULT_QUERY_KEY: String(root.dataset.queryKey || "loc").trim() || "loc",
     DEFAULT_SOURCE: String(root.dataset.source || "qr").trim() || "qr",
+    MENU_IMAGE_BUCKET: String(root.dataset.menuImageBucket || CFG.MENU_IMAGE_BUCKET || "restaurant-media").trim() || "restaurant-media",
   };
 
   const STR = {
@@ -95,6 +96,38 @@ window.Webflow.push(async function () {
   function formatMoney(cents, currency = "EUR") {
     const n = Number(cents || 0) / 100;
     return n.toLocaleString("fr-FR", { style: "currency", currency: currency || "EUR" });
+  }
+
+  function resolveMenuImageUrl(rawValue) {
+    const raw = String(rawValue || "").trim();
+    if (!raw) return "";
+    if (raw.startsWith("data:image/")) return raw;
+    if (/^https?:\/\//i.test(raw)) return raw.replace(/^http:\/\//i, "https://");
+    if (raw.startsWith("//")) return `${location.protocol}${raw}`;
+    if (raw.startsWith("/")) {
+      try {
+        return new URL(raw, location.origin).toString();
+      } catch (_) {
+        return raw;
+      }
+    }
+
+    let storagePath = raw;
+    const marker = `/object/public/${CONFIG.MENU_IMAGE_BUCKET}/`;
+    const markerPos = storagePath.indexOf(marker);
+    if (markerPos >= 0) storagePath = storagePath.slice(markerPos + marker.length);
+    if (storagePath.startsWith(`${CONFIG.MENU_IMAGE_BUCKET}/`)) {
+      storagePath = storagePath.slice(CONFIG.MENU_IMAGE_BUCKET.length + 1);
+    }
+    storagePath = storagePath.replace(/^\/+/, "");
+
+    try {
+      const pub = state.supabase?.storage?.from(CONFIG.MENU_IMAGE_BUCKET).getPublicUrl(storagePath);
+      const publicUrl = String(pub?.data?.publicUrl || "").trim();
+      if (publicUrl) return publicUrl;
+    } catch (_) {}
+
+    return storagePath;
   }
 
   function resolveSource() {
@@ -345,8 +378,8 @@ window.Webflow.push(async function () {
 
       html[data-page="restaurant-order"] .ro-menu-grid {
         display:grid;
-        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-        gap: 10px;
+        grid-template-columns: 1fr;
+        gap: 12px;
         margin-top: 10px;
       }
       html[data-page="restaurant-order"] .ro-item {
@@ -355,12 +388,42 @@ window.Webflow.push(async function () {
         background: rgba(255,255,255,0.94);
         padding: 10px;
         display:grid;
+        grid-template-columns: 92px minmax(0, 1fr);
+        gap: 10px;
+        align-items: start;
+      }
+      html[data-page="restaurant-order"] .ro-item__media {
+        width: 92px;
+        height: 92px;
+        border-radius: 10px;
+        border: 1px solid rgba(15,23,42,0.10);
+        object-fit: cover;
+        object-position: center;
+        background: rgba(241,245,249,0.92);
+        display:block;
+      }
+      html[data-page="restaurant-order"] .ro-item__media.is-empty {
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        font-size: 22px;
+        color: rgba(100,116,139,0.70);
+      }
+      html[data-page="restaurant-order"] .ro-item__content {
+        min-width: 0;
+        display:grid;
         gap: 8px;
       }
       html[data-page="restaurant-order"] .ro-item__title {
         margin:0;
-        font-size: 14px;
+        font-size: 15px;
         font-weight: 950;
+      }
+      html[data-page="restaurant-order"] .ro-item__desc {
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
       }
       html[data-page="restaurant-order"] .ro-item__meta {
         font-size: 12px;
@@ -409,6 +472,30 @@ window.Webflow.push(async function () {
 
       @media (max-width: 980px) {
         html[data-page="restaurant-order"] .ro-grid { grid-template-columns: 1fr; }
+      }
+      @media (min-width: 640px) {
+        html[data-page="restaurant-order"] .ro-menu-grid {
+          grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        }
+        html[data-page="restaurant-order"] .ro-item {
+          grid-template-columns: 1fr;
+          gap: 9px;
+        }
+        html[data-page="restaurant-order"] .ro-item__media {
+          width: 100%;
+          height: auto;
+          aspect-ratio: 16 / 10;
+          border-radius: 12px;
+        }
+      }
+      @media (max-width: 520px) {
+        html[data-page="restaurant-order"] .ro-shell {
+          padding: 12px;
+          border-radius: 14px;
+        }
+        html[data-page="restaurant-order"] .ro-title {
+          font-size: 21px;
+        }
       }
     `;
     document.head.appendChild(st);
@@ -485,7 +572,11 @@ window.Webflow.push(async function () {
 
     state.location = payload.location || null;
     state.categories = Array.isArray(payload.categories) ? payload.categories : [];
-    state.items = Array.isArray(payload.items) ? payload.items : [];
+    const rawItems = Array.isArray(payload.items) ? payload.items : [];
+    state.items = rawItems.map((it) => ({
+      ...it,
+      image_url: resolveMenuImageUrl(it?.image_url),
+    }));
   }
 
   function renderLoading() {
@@ -549,14 +640,21 @@ window.Webflow.push(async function () {
                       .map(
                         (it) => `
                         <article class="ro-item" data-item-id="${escapeHTML(it.id)}">
-                          <div>
-                            <h4 class="ro-item__title">${escapeHTML(it.name)}</h4>
-                            ${it.description ? `<div class="ro-item__meta">${escapeHTML(it.description)}</div>` : ""}
-                          </div>
-                          <div class="ro-item__meta">TVA ${escapeHTML(String(it.vat_rate || 0))}%</div>
-                          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-                            <strong>${escapeHTML(formatMoney(it.price_cents, currency))}</strong>
-                            <button type="button" class="ro-btn ro-btn--primary" data-action="add">Ajouter</button>
+                          ${
+                            it.image_url
+                              ? `<img class="ro-item__media" src="${escapeHTML(it.image_url)}" alt="${escapeHTML(it.name || "Plat")}" loading="lazy" decoding="async" />`
+                              : `<div class="ro-item__media is-empty" aria-hidden="true">Photo</div>`
+                          }
+                          <div class="ro-item__content">
+                            <div>
+                              <h4 class="ro-item__title">${escapeHTML(it.name)}</h4>
+                              ${it.description ? `<div class="ro-item__meta ro-item__desc">${escapeHTML(it.description)}</div>` : ""}
+                            </div>
+                            <div class="ro-item__meta">TVA ${escapeHTML(String(it.vat_rate || 0))}%</div>
+                            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+                              <strong>${escapeHTML(formatMoney(it.price_cents, currency))}</strong>
+                              <button type="button" class="ro-btn ro-btn--primary" data-action="add">Ajouter</button>
+                            </div>
                           </div>
                         </article>
                       `
