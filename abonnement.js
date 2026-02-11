@@ -55,7 +55,157 @@
     missingPlans: "Aucune offre disponible.",
     pricingFootnote:
       "Les prix affiches sont indicatifs. Les taxes, mentions et facturation dependent de ton paramétrage et de ta situation.",
+    wizardStep1: "1. Activite",
+    wizardStep2: "2. Modules",
+    wizardStep3: "3. Recap",
+    pickBusiness: "Quel type de commerce geres-tu ?",
+    pickModules: "Selectionne les modules utiles",
+    pricingSummary: "Recapitulatif tarifaire",
+    next: "Continuer",
+    back: "Retour",
+    launchCheckout: "Continuer vers le paiement",
+    noModulePicked: "Selectionne au moins un module pour continuer.",
+    noBusinessPicked: "Selectionne ton type d'activite pour continuer.",
+    estimatedLabel: "Estimation",
+    comboApplied: "Remise pack appliquee",
+    noCombo: "Aucun pack applique",
+    monthlyTotal: "Total mensuel",
+    annualTotal: "Facturation annuelle",
+    planTarget: "Plan Stripe cible",
+    moduleIncludes: "Ce que tu actives",
   };
+
+  const BUSINESS_TYPES = [
+    {
+      key: "restaurant",
+      label: "Restaurant",
+      desc: "Service en salle, click & collect, QR menu, encaissement POS.",
+      highlight: "Optimise pour restauration",
+    },
+    {
+      key: "short_stay",
+      label: "Location courte duree",
+      desc: "Annonces, calendrier, reservations, facturation voyageurs.",
+      highlight: "Optimise location saisonniere",
+    },
+    {
+      key: "services",
+      label: "Prestations de services",
+      desc: "Interventions terrain, planning, devis et facturation.",
+      highlight: "Optimise terrain",
+    },
+    {
+      key: "transport",
+      label: "Transport / logistique",
+      desc: "Tournees, flotte, suivi courses, facturation.",
+      highlight: "Optimise flux et flotte",
+    },
+    {
+      key: "commerce",
+      label: "Commerce de proximite",
+      desc: "Point de vente, facturation, gestion clients.",
+      highlight: "Optimise vente comptoir",
+    },
+  ];
+
+  const MODULE_CATALOG = {
+    billing: {
+      key: "billing",
+      label: "Facturation",
+      desc: "Devis, factures, TVA et exports.",
+      monthly_price_cents: 1999,
+      businesses: ["restaurant", "short_stay", "services", "transport", "commerce"],
+    },
+    interventions: {
+      key: "interventions",
+      label: "Interventions",
+      desc: "Planning techniciens, suivi terrain et rapports.",
+      monthly_price_cents: 2999,
+      businesses: ["services"],
+    },
+    restaurant_qr: {
+      key: "restaurant_qr",
+      label: "QR Code menu",
+      desc: "Menu digital et prise de commande rapide.",
+      monthly_price_cents: 1599,
+      businesses: ["restaurant"],
+    },
+    restaurant_pos: {
+      key: "restaurant_pos",
+      label: "POS restauration",
+      desc: "Encaissement tablette, panier et tickets.",
+      monthly_price_cents: 3999,
+      businesses: ["restaurant"],
+    },
+    rental: {
+      key: "rental",
+      label: "Gestion locative",
+      desc: "Annonces, reservations, calendrier, blocages.",
+      monthly_price_cents: 3499,
+      businesses: ["short_stay"],
+    },
+    transport: {
+      key: "transport",
+      label: "Transport",
+      desc: "Missions, suivis, affectations.",
+      monthly_price_cents: 2999,
+      businesses: ["transport"],
+    },
+    fleet: {
+      key: "fleet",
+      label: "Flotte",
+      desc: "Vehicules, alertes conformite et maintenance.",
+      monthly_price_cents: 2499,
+      businesses: ["transport"],
+    },
+    logistics: {
+      key: "logistics",
+      label: "Logistique",
+      desc: "Stock, entrepots et mouvements.",
+      monthly_price_cents: 2499,
+      businesses: ["transport", "commerce"],
+    },
+    restaurant: {
+      key: "restaurant",
+      label: "Backoffice restaurant",
+      desc: "Cartes, categories, commandes et operationnel.",
+      monthly_price_cents: 1999,
+      businesses: ["restaurant"],
+    },
+  };
+
+  const COMBO_PRICING = [
+    {
+      business: "restaurant",
+      modules: ["restaurant_qr", "restaurant_pos"],
+      monthly_price_cents: 4999,
+      label: "Pack Salle + QR",
+    },
+    {
+      business: "restaurant",
+      modules: ["restaurant_qr", "restaurant_pos", "restaurant"],
+      monthly_price_cents: 5899,
+      label: "Pack Restaurant complet",
+    },
+    {
+      business: "short_stay",
+      modules: ["rental", "billing"],
+      monthly_price_cents: 4999,
+      label: "Pack Hote courte duree",
+    },
+    {
+      business: "transport",
+      modules: ["transport", "fleet"],
+      monthly_price_cents: 4699,
+      label: "Pack Exploitation flotte",
+    },
+    {
+      business: "services",
+      modules: ["interventions", "billing"],
+      monthly_price_cents: 4499,
+      label: "Pack Services terrain",
+    },
+  ];
 
   function getCached(key) {
     try {
@@ -1211,6 +1361,299 @@
         .mbl-sub-modal__body { padding: 0 8px 12px 8px; }
       }
     `;
+
+    style.textContent += `
+      [data-mbl-subscriptions="1"] .sb-assistant {
+        border: 1px solid rgba(210,225,255,0.95);
+        border-radius: var(--sb-radius);
+        background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.78));
+        box-shadow: var(--sb-shadow-soft);
+        padding: 14px;
+        backdrop-filter: blur(6px);
+      }
+
+      [data-mbl-subscriptions="1"] .sb-steps {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+
+      [data-mbl-subscriptions="1"] .sb-step {
+        border: 1px solid rgba(210,225,255,0.95);
+        background: rgba(255,255,255,0.76);
+        border-radius: 12px;
+        color: #1e293b;
+        font-size: 12px;
+        font-weight: 900;
+        min-height: 42px;
+        padding: 8px 10px;
+        cursor: pointer;
+        transition: transform .16s ease, border-color .18s ease, box-shadow .18s ease, background .18s ease;
+      }
+
+      [data-mbl-subscriptions="1"] .sb-step.is-done {
+        border-color: rgba(var(--sb-primary-rgb), 0.35);
+        background: rgba(var(--sb-primary-rgb), 0.10);
+        color: #0b4c72;
+      }
+
+      [data-mbl-subscriptions="1"] .sb-step.is-active {
+        border-color: transparent;
+        background: linear-gradient(180deg, var(--sb-primary), var(--sb-primary-2));
+        color: #fff;
+        box-shadow: 0 14px 34px rgba(var(--sb-primary-rgb), 0.24);
+      }
+
+      [data-mbl-subscriptions="1"] .sb-step:disabled {
+        opacity: .55;
+        cursor: not-allowed;
+        box-shadow: none;
+        transform: none;
+      }
+
+      [data-mbl-subscriptions="1"] .sb-stage {
+        display: none;
+        animation: sbStageIn .26s ease;
+      }
+
+      [data-mbl-subscriptions="1"] .sb-stage.is-active { display: block; }
+
+      [data-mbl-subscriptions="1"] .sb-stage h3 {
+        margin: 0 0 12px;
+        font-family: "Space Grotesk", sans-serif;
+        font-size: 22px;
+        line-height: 1.2;
+      }
+
+      [data-mbl-subscriptions="1"] .sb-biz-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      [data-mbl-subscriptions="1"] .sb-biz {
+        border: 1px solid rgba(210,225,255,0.95);
+        border-radius: 14px;
+        background: rgba(255,255,255,0.82);
+        padding: 12px;
+        text-align: left;
+        display: grid;
+        gap: 8px;
+        min-height: 132px;
+        cursor: pointer;
+        transition: transform .16s ease, border-color .18s ease, box-shadow .18s ease;
+      }
+
+      [data-mbl-subscriptions="1"] .sb-biz:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 16px 32px rgba(15, 23, 42, 0.08);
+      }
+
+      [data-mbl-subscriptions="1"] .sb-biz.is-active {
+        border-color: rgba(var(--sb-primary-rgb), 0.45);
+        background: linear-gradient(180deg, rgba(var(--sb-primary-rgb), 0.12), rgba(255,255,255,0.92));
+        box-shadow: 0 16px 34px rgba(var(--sb-primary-rgb), 0.18);
+      }
+
+      [data-mbl-subscriptions="1"] .sb-biz-title {
+        font-size: 16px;
+        font-weight: 900;
+        line-height: 1.2;
+      }
+
+      [data-mbl-subscriptions="1"] .sb-biz-desc {
+        font-size: 13px;
+        color: var(--sb-soft);
+        line-height: 1.45;
+      }
+
+      [data-mbl-subscriptions="1"] .sb-biz-tag {
+        align-self: end;
+        justify-self: start;
+        border-radius: 999px;
+        padding: 6px 10px;
+        font-size: 11px;
+        font-weight: 900;
+        color: #0b4c72;
+        border: 1px solid rgba(var(--sb-primary-rgb), 0.26);
+        background: rgba(var(--sb-primary-rgb), 0.10);
+      }
+
+      [data-mbl-subscriptions="1"] .sb-mod-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      [data-mbl-subscriptions="1"] .sb-mod {
+        border: 1px solid rgba(210,225,255,0.95);
+        border-radius: 14px;
+        background: rgba(255,255,255,0.84);
+        padding: 12px;
+        display: grid;
+        gap: 8px;
+        cursor: pointer;
+        transition: transform .16s ease, border-color .18s ease, box-shadow .18s ease;
+      }
+
+      [data-mbl-subscriptions="1"] .sb-mod:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 16px 32px rgba(15, 23, 42, 0.08);
+      }
+
+      [data-mbl-subscriptions="1"] .sb-mod input {
+        width: 18px;
+        height: 18px;
+      }
+
+      [data-mbl-subscriptions="1"] .sb-mod.is-active {
+        border-color: rgba(var(--sb-primary-rgb), 0.45);
+        background: linear-gradient(180deg, rgba(var(--sb-primary-rgb), 0.11), rgba(255,255,255,0.92));
+      }
+
+      [data-mbl-subscriptions="1"] .sb-mod-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        align-items: baseline;
+      }
+
+      [data-mbl-subscriptions="1"] .sb-mod-title {
+        font-size: 15px;
+        font-weight: 900;
+        line-height: 1.2;
+      }
+
+      [data-mbl-subscriptions="1"] .sb-mod-price {
+        font-size: 13px;
+        font-weight: 900;
+        color: #0b4c72;
+        white-space: nowrap;
+      }
+
+      [data-mbl-subscriptions="1"] .sb-mod-desc {
+        color: var(--sb-soft);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      [data-mbl-subscriptions="1"] .sb-recap-grid {
+        display: grid;
+        grid-template-columns: 1.1fr .9fr;
+        gap: 10px;
+      }
+
+      [data-mbl-subscriptions="1"] .sb-recap-box {
+        border: 1px solid rgba(210,225,255,0.95);
+        border-radius: 14px;
+        background: rgba(255,255,255,0.84);
+        padding: 12px;
+      }
+
+      [data-mbl-subscriptions="1"] .sb-recap-k {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.10em;
+        font-weight: 900;
+        color: var(--sb-soft);
+        margin-bottom: 8px;
+      }
+
+      [data-mbl-subscriptions="1"] .sb-recap-v {
+        font-size: 14px;
+        font-weight: 700;
+        line-height: 1.4;
+        color: #0f2945;
+        margin-bottom: 8px;
+      }
+
+      [data-mbl-subscriptions="1"] .sb-recap-list {
+        margin: 0;
+        padding: 0 0 0 16px;
+        display: grid;
+        gap: 6px;
+        font-size: 13px;
+        color: #1f3a56;
+      }
+
+      [data-mbl-subscriptions="1"] .sb-recap-lines {
+        display: grid;
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      [data-mbl-subscriptions="1"] .sb-recap-lines > div {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        align-items: baseline;
+        border-top: 1px dashed rgba(148, 163, 184, 0.36);
+        padding-top: 8px;
+      }
+
+      [data-mbl-subscriptions="1"] .sb-recap-lines span {
+        color: var(--sb-soft);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      [data-mbl-subscriptions="1"] .sb-recap-lines strong {
+        font-size: 14px;
+        color: #0f172a;
+        font-weight: 900;
+        text-align: right;
+      }
+
+      [data-mbl-subscriptions="1"] .sb-nav {
+        margin-top: 12px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+      }
+
+      [data-mbl-subscriptions="1"] .sb-nav .sb-btn {
+        width: auto;
+        min-width: 150px;
+      }
+
+      [data-mbl-subscriptions="1"] .sb-empty {
+        border: 1px dashed rgba(148, 163, 184, 0.5);
+        border-radius: 14px;
+        background: rgba(255,255,255,0.65);
+        color: var(--sb-soft);
+        padding: 20px;
+        font-weight: 700;
+        text-align: center;
+      }
+
+      @keyframes sbStageIn {
+        from { opacity: 0; transform: translateY(6px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      @media (max-width: 980px) {
+        [data-mbl-subscriptions="1"] .sb-biz-grid,
+        [data-mbl-subscriptions="1"] .sb-mod-grid,
+        [data-mbl-subscriptions="1"] .sb-recap-grid {
+          grid-template-columns: 1fr;
+        }
+
+        [data-mbl-subscriptions="1"] .sb-stage h3 { font-size: 20px; }
+      }
+
+      @media (max-width: 640px) {
+        [data-mbl-subscriptions="1"] .sb-assistant { padding: 12px; }
+        [data-mbl-subscriptions="1"] .sb-steps { grid-template-columns: 1fr; }
+        [data-mbl-subscriptions="1"] .sb-step { min-height: 40px; }
+        [data-mbl-subscriptions="1"] .sb-nav {
+          flex-direction: column;
+          align-items: stretch;
+        }
+        [data-mbl-subscriptions="1"] .sb-nav .sb-btn { width: 100%; }
+      }
+    `;
     document.head.appendChild(style);
   }
 
@@ -1267,27 +1710,7 @@
             </aside>
           </header>
           <div class="sb-banner" data-banner></div>
-          <div class="sb-plans" data-grid></div>
-          <section class="sb-section sb-anim" data-compare>
-            <div class="sb-section-head">
-              <div class="sb-section-kicker">Comparer</div>
-              <div class="sb-section-title">Comparer les offres</div>
-              <div class="sb-section-sub">Une vue rapide des modules et limites principales.</div>
-            </div>
-            <div class="sb-table-wrap">
-              <table class="sb-table" data-compare-table></table>
-            </div>
-          </section>
-
-          <section class="sb-section sb-anim" data-faq>
-            <div class="sb-section-head">
-              <div class="sb-section-kicker">FAQ</div>
-              <div class="sb-section-title">Questions frequentes</div>
-              <div class="sb-section-sub">Tu peux changer d'offre et faire evoluer tes modules au fil du temps.</div>
-            </div>
-            <div class="sb-qa-list" data-faq-list></div>
-          </section>
-
+          <section class="sb-assistant sb-anim" data-assistant></section>
           <footer class="sb-foot sb-anim">${escapeHTML(STR.pricingFootnote)}</footer>
         </div>
       </section>
@@ -1296,9 +1719,7 @@
     return {
       current: root.querySelector("[data-current]"),
       banner: root.querySelector("[data-banner]"),
-      grid: root.querySelector("[data-grid]"),
-      compareTable: root.querySelector("[data-compare-table]"),
-      faqList: root.querySelector("[data-faq-list]"),
+      assistant: root.querySelector("[data-assistant]"),
       toggle: root.querySelector("[data-toggle]"),
       intervalBtns: Array.from(root.querySelectorAll(".sb-toggle-btn[data-interval]")),
       saveHint: root.querySelector("[data-save]"),
@@ -1419,22 +1840,315 @@
     return rows;
   }
 
+  function getBusinessByKey(key) {
+    const k = String(key || "").trim();
+    return BUSINESS_TYPES.find((b) => b.key === k) || null;
+  }
+
+  function getModulesForBusiness(businessKey) {
+    const key = String(businessKey || "").trim();
+    return Object.values(MODULE_CATALOG)
+      .filter((m) => Array.isArray(m.businesses) && m.businesses.includes(key))
+      .sort((a, b) => Number(a.monthly_price_cents || 0) - Number(b.monthly_price_cents || 0));
+  }
+
+  function normalizeSelectedModules(input) {
+    const arr = Array.isArray(input) ? input : [];
+    return Array.from(
+      new Set(
+        arr
+          .map((x) => String(x || "").trim())
+          .filter(Boolean)
+      )
+    );
+  }
+
+  function comboMatchesSelection(combo, selected) {
+    const req = normalizeSelectedModules(combo?.modules || []);
+    if (!req.length) return false;
+    return req.every((m) => selected.includes(m));
+  }
+
+  function computeModulePricing(businessKey, selectedModules, interval) {
+    const selected = normalizeSelectedModules(selectedModules);
+    const catalog = MODULE_CATALOG;
+    const baseMonthly = selected.reduce((acc, key) => acc + Number(catalog[key]?.monthly_price_cents || 0), 0);
+
+    const combos = COMBO_PRICING.filter((c) => String(c.business || "") === String(businessKey || ""));
+    let best = null;
+    let bestSavings = 0;
+
+    combos.forEach((combo) => {
+      if (!comboMatchesSelection(combo, selected)) return;
+      const comboModules = normalizeSelectedModules(combo.modules || []);
+      const comboBase = comboModules.reduce((acc, key) => acc + Number(catalog[key]?.monthly_price_cents || 0), 0);
+      const comboPrice = Number(combo.monthly_price_cents || 0);
+      const savings = Math.max(0, comboBase - comboPrice);
+      if (savings > bestSavings) {
+        bestSavings = savings;
+        best = combo;
+      }
+    });
+
+    let monthlySubtotal = baseMonthly;
+    if (best) {
+      const comboSet = normalizeSelectedModules(best.modules || []);
+      const extras = selected.filter((m) => !comboSet.includes(m));
+      const extrasPrice = extras.reduce((acc, key) => acc + Number(catalog[key]?.monthly_price_cents || 0), 0);
+      monthlySubtotal = Number(best.monthly_price_cents || 0) + extrasPrice;
+    }
+
+    const annualDiscount = 0.16; // 16% (equiv ~2 mois off)
+    const annualTotal = Math.round(monthlySubtotal * 12 * (1 - annualDiscount));
+    const monthlyEffectiveForAnnual = Math.round(annualTotal / 12);
+    const totalPerMonth = interval === "annual" ? monthlyEffectiveForAnnual : monthlySubtotal;
+
+    return {
+      selected,
+      baseMonthly,
+      monthlySubtotal,
+      totalPerMonth,
+      annualTotal,
+      annualDiscountPct: Math.round(annualDiscount * 100),
+      combo: best,
+      savingsMonthly: Math.max(0, baseMonthly - monthlySubtotal),
+    };
+  }
+
+  function mapSelectedToPlanModules(selectedModules) {
+    const selected = normalizeSelectedModules(selectedModules);
+    const mapped = new Set();
+
+    selected.forEach((m) => {
+      if (m === "restaurant_qr" || m === "restaurant_pos") {
+        mapped.add("restaurant");
+      } else {
+        mapped.add(m);
+      }
+    });
+
+    return Array.from(mapped);
+  }
+
+  function scorePlanAgainstSelection(plan, selectedModules) {
+    const wanted = mapSelectedToPlanModules(selectedModules);
+    const pmodsObj = plan?.modules && typeof plan.modules === "object" ? plan.modules : {};
+    const pmods = Object.keys(pmodsObj).filter((k) => Boolean(pmodsObj[k]));
+    const hasAll = wanted.every((w) => pmods.includes(w));
+    const extras = pmods.filter((k) => !wanted.includes(k)).length;
+    return { hasAll, extras };
+  }
+
+  function findSuggestedPlan(plans, selectedModules, interval) {
+    const list = Array.isArray(plans) ? plans : [];
+    if (!list.length) return null;
+
+    const priced = list
+      .map((p) => {
+        const price = interval === "annual" && Number(p?.annual_price_cents || 0) > 0 ? Number(p.annual_price_cents || 0) : Number(p?.monthly_price_cents || 0);
+        const score = scorePlanAgainstSelection(p, selectedModules);
+        return { plan: p, price, ...score };
+      })
+      .filter((x) => x.hasAll)
+      .sort((a, b) => {
+        if (a.price !== b.price) return a.price - b.price;
+        return a.extras - b.extras;
+      });
+
+    return priced.length ? priced[0].plan : null;
+  }
+
+  function renderAssistant(els, state, onSubscribe) {
+    if (!els?.assistant) return;
+
+    const business = getBusinessByKey(state.businessKey);
+    const moduleCatalog = getModulesForBusiness(state.businessKey);
+    const pricing = computeModulePricing(state.businessKey, state.selectedModules, state.interval);
+    const selectedSet = new Set(pricing.selected);
+    const step = Number(state.step || 1);
+    const canGoStep2 = Boolean(state.businessKey);
+    const canGoStep3 = pricing.selected.length > 0;
+
+    const suggestedPlan = findSuggestedPlan(state.plans, pricing.selected, state.interval) || state.recommended || null;
+    const selectedModuleCards = moduleCatalog
+      .map((m) => {
+        const active = selectedSet.has(m.key);
+        return `
+          <label class="sb-mod ${active ? "is-active" : ""}">
+            <input type="checkbox" data-module="${escapeHTML(m.key)}" ${active ? "checked" : ""} />
+            <div class="sb-mod-head">
+              <div class="sb-mod-title">${escapeHTML(m.label)}</div>
+              <div class="sb-mod-price">${escapeHTML(formatCents(m.monthly_price_cents))}/mois</div>
+            </div>
+            <div class="sb-mod-desc">${escapeHTML(m.desc || "")}</div>
+          </label>
+        `;
+      })
+      .join("");
+
+    const businessCards = BUSINESS_TYPES.map((b) => {
+      const active = state.businessKey === b.key;
+      return `
+        <button type="button" class="sb-biz ${active ? "is-active" : ""}" data-business="${escapeHTML(b.key)}">
+          <div class="sb-biz-title">${escapeHTML(b.label)}</div>
+          <div class="sb-biz-desc">${escapeHTML(b.desc)}</div>
+          <div class="sb-biz-tag">${escapeHTML(b.highlight)}</div>
+        </button>
+      `;
+    }).join("");
+
+    const recapModules = pricing.selected
+      .map((key) => MODULE_CATALOG[key])
+      .filter(Boolean)
+      .map((m) => `<li>${escapeHTML(m.label)} - ${escapeHTML(formatCents(m.monthly_price_cents))}/mois</li>`)
+      .join("");
+
+    const comboText = pricing.combo
+      ? `${pricing.combo.label} (${formatCents(pricing.combo.monthly_price_cents)}/mois, -${formatCents(pricing.savingsMonthly)}/mois)`
+      : STR.noCombo;
+
+    const planLine = suggestedPlan
+      ? `${suggestedPlan.name || suggestedPlan.code} (${state.interval === "annual" ? formatCents(suggestedPlan.annual_price_cents || 0) + "/an" : formatCents(
+          suggestedPlan.monthly_price_cents || 0
+        ) + "/mois"})`
+      : "Aucun plan mappe";
+
+    els.assistant.innerHTML = `
+      <div class="sb-steps">
+        <button type="button" class="sb-step ${step === 1 ? "is-active" : step > 1 ? "is-done" : ""}" data-goto-step="1">${escapeHTML(STR.wizardStep1)}</button>
+        <button type="button" class="sb-step ${step === 2 ? "is-active" : step > 2 ? "is-done" : ""}" data-goto-step="2" ${canGoStep2 ? "" : "disabled"}>${escapeHTML(
+          STR.wizardStep2
+        )}</button>
+        <button type="button" class="sb-step ${step === 3 ? "is-active" : ""}" data-goto-step="3" ${canGoStep3 ? "" : "disabled"}>${escapeHTML(
+          STR.wizardStep3
+        )}</button>
+      </div>
+
+      <div class="sb-wizard">
+        <section class="sb-stage ${step === 1 ? "is-active" : ""}" data-stage="1">
+          <h3>${escapeHTML(STR.pickBusiness)}</h3>
+          <div class="sb-biz-grid">${businessCards}</div>
+          <div class="sb-nav">
+            <span></span>
+            <button type="button" class="sb-btn sb-btn--primary" data-nav="next-1">${escapeHTML(STR.next)}</button>
+          </div>
+        </section>
+
+        <section class="sb-stage ${step === 2 ? "is-active" : ""}" data-stage="2">
+          <h3>${escapeHTML(STR.pickModules)} ${business ? `- ${escapeHTML(business.label)}` : ""}</h3>
+          <div class="sb-mod-grid">${selectedModuleCards || `<div class="sb-empty">Aucun module pour cette activite.</div>`}</div>
+          <div class="sb-nav">
+            <button type="button" class="sb-btn" data-nav="back-2">${escapeHTML(STR.back)}</button>
+            <button type="button" class="sb-btn sb-btn--primary" data-nav="next-2">${escapeHTML(STR.next)}</button>
+          </div>
+        </section>
+
+        <section class="sb-stage ${step === 3 ? "is-active" : ""}" data-stage="3">
+          <h3>${escapeHTML(STR.pricingSummary)}</h3>
+          <div class="sb-recap-grid">
+            <div class="sb-recap-box">
+              <div class="sb-recap-k">${escapeHTML(STR.moduleIncludes)}</div>
+              <ul class="sb-recap-list">${recapModules || "<li>Aucun module</li>"}</ul>
+            </div>
+            <div class="sb-recap-box">
+              <div class="sb-recap-k">${escapeHTML(STR.comboApplied)}</div>
+              <div class="sb-recap-v">${escapeHTML(comboText)}</div>
+              <div class="sb-recap-lines">
+                <div><span>${escapeHTML(STR.monthlyTotal)}</span><strong>${escapeHTML(formatCents(pricing.totalPerMonth))}/mois</strong></div>
+                <div><span>${escapeHTML(STR.annualTotal)}</span><strong>${escapeHTML(formatCents(pricing.annualTotal))}/an</strong></div>
+                <div><span>${escapeHTML(STR.planTarget)}</span><strong>${escapeHTML(planLine)}</strong></div>
+              </div>
+            </div>
+          </div>
+          <div class="sb-nav">
+            <button type="button" class="sb-btn" data-nav="back-3">${escapeHTML(STR.back)}</button>
+            <button type="button" class="sb-btn sb-btn--primary" data-subscribe-plan="${escapeHTML(suggestedPlan?.code || "")}" ${
+              suggestedPlan && state.orgId ? "" : "disabled"
+            }>${escapeHTML(STR.launchCheckout)}</button>
+          </div>
+        </section>
+      </div>
+    `;
+
+    const navNext1 = els.assistant.querySelector('[data-nav="next-1"]');
+    const navNext2 = els.assistant.querySelector('[data-nav="next-2"]');
+    const navBack2 = els.assistant.querySelector('[data-nav="back-2"]');
+    const navBack3 = els.assistant.querySelector('[data-nav="back-3"]');
+
+    navNext1?.addEventListener("click", () => {
+      if (!state.businessKey) {
+        showBanner(els, STR.noBusinessPicked, "error");
+        return;
+      }
+      showBanner(els, "", "");
+      state.step = 2;
+      renderAssistant(els, state, onSubscribe);
+    });
+    navNext2?.addEventListener("click", () => {
+      if (!pricing.selected.length) {
+        showBanner(els, STR.noModulePicked, "error");
+        return;
+      }
+      showBanner(els, "", "");
+      state.step = 3;
+      renderAssistant(els, state, onSubscribe);
+    });
+    navBack2?.addEventListener("click", () => {
+      state.step = 1;
+      renderAssistant(els, state, onSubscribe);
+    });
+    navBack3?.addEventListener("click", () => {
+      state.step = 2;
+      renderAssistant(els, state, onSubscribe);
+    });
+
+    Array.from(els.assistant.querySelectorAll("[data-business]")).forEach((btn) => {
+      btn.addEventListener("click", () => {
+        state.businessKey = btn.dataset.business || "";
+        state.selectedModules = [];
+        state.step = 2;
+        showBanner(els, "", "");
+        renderAssistant(els, state, onSubscribe);
+      });
+    });
+
+    Array.from(els.assistant.querySelectorAll("input[data-module]")).forEach((cb) => {
+      cb.addEventListener("change", () => {
+        const key = cb.dataset.module || "";
+        const set = new Set(normalizeSelectedModules(state.selectedModules));
+        if (cb.checked) set.add(key);
+        else set.delete(key);
+        state.selectedModules = Array.from(set);
+        renderAssistant(els, state, onSubscribe);
+      });
+    });
+
+    Array.from(els.assistant.querySelectorAll("[data-goto-step]")).forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const next = Number(btn.dataset.gotoStep || 1);
+        if (next === 2 && !state.businessKey) return;
+        if (next === 3 && !state.selectedModules.length) return;
+        state.step = next;
+        renderAssistant(els, state, onSubscribe);
+      });
+    });
+
+    const subscribeBtn = els.assistant.querySelector("[data-subscribe-plan]");
+    subscribeBtn?.addEventListener("click", () => {
+      if (!suggestedPlan) return;
+      onSubscribe(suggestedPlan, subscribeBtn);
+    });
+  }
+
   function renderSkeleton(els) {
-    if (!els.grid) return;
-    els.grid.innerHTML = `
-      ${Array.from({ length: 3 })
-        .map(
-          (_, i) => `
-          <article class="sb-card sb-skel">
-            <div style="height:18px; width:${i === 1 ? "62%" : i === 2 ? "48%" : "55%"}; border-radius:10px; background:rgba(15,23,42,0.10);"></div>
-            <div style="height:42px; width:100%; border-radius:12px; background:rgba(15,23,42,0.08);"></div>
-            <div style="height:56px; width:100%; border-radius:12px; background:rgba(15,23,42,0.06);"></div>
-            <div style="height:90px; width:100%; border-radius:12px; background:rgba(15,23,42,0.05);"></div>
-            <div style="height:44px; width:100%; border-radius:14px; background:rgba(var(--sb-primary-rgb),0.22);"></div>
-          </article>
-        `
-        )
-        .join("")}
+    if (!els.assistant) return;
+    els.assistant.innerHTML = `
+      <div class="sb-card sb-skel">
+        <div style="height:20px; width:180px; border-radius:10px; background:rgba(15,23,42,0.10);"></div>
+        <div style="height:110px; width:100%; border-radius:14px; background:rgba(15,23,42,0.08);"></div>
+        <div style="height:110px; width:100%; border-radius:14px; background:rgba(15,23,42,0.06);"></div>
+        <div style="height:48px; width:220px; border-radius:14px; background:rgba(var(--sb-primary-rgb),0.22);"></div>
+      </div>
     `;
   }
 
@@ -1660,7 +2374,6 @@
     const els = renderShell(root, themePrimary);
     kickoffAnimations(els);
     renderSkeleton(els);
-    if (opts.variant !== "modal") renderFaq(els);
     wireLogout();
 
     const state = {
@@ -1672,6 +2385,9 @@
       loading: true,
       recommended: null,
       isLogged: false,
+      step: 1,
+      businessKey: "",
+      selectedModules: [],
     };
 
     const handleSubscribe = async (plan, btn) => {
@@ -1706,7 +2422,7 @@
         renderCurrent(els, state.subscription, { isLogged: state.isLogged });
         if (state.loading) return;
         if (els.saveHint) els.saveHint.textContent = computeAnnualSavings(state.plans);
-        renderPlans(els, state.plans, state.interval, state.subscription, handleSubscribe, state.recommended);
+        renderAssistant(els, state, handleSubscribe);
       });
     });
 
@@ -1729,30 +2445,13 @@
           state.isLogged = false;
           state.loading = false;
           renderCurrent(els, null, { isLogged: false });
-          if (els.grid) {
-            els.grid.innerHTML = `
+          if (els.assistant) {
+            els.assistant.innerHTML = `
               <article class="sb-card" data-featured="1">
                 <div>
                   <h3 class="sb-plan-title">Connexion requise</h3>
-                  <p class="sb-plan-desc">Connecte-toi pour afficher les offres et gerer l'abonnement de ton organisation.</p>
+                  <p class="sb-plan-desc">Connecte-toi pour afficher les modules, les prix et activer ton abonnement.</p>
                 </div>
-                <div>
-                  <div class="sb-price">
-                    <div class="sb-price-main">
-                      <div class="sb-price-value">—</div>
-                      <div class="sb-price-suffix"></div>
-                    </div>
-                  </div>
-                  <div class="sb-price-meta">Acces aux offres apres connexion.</div>
-                </div>
-                <ul class="sb-feats">
-                  <li>Voir les offres et modules</li>
-                  <li>Gerer ton abonnement Stripe</li>
-                  <li>Activer la facturation et les interventions</li>
-                  <li>Acces instantane apres paiement</li>
-                  <li>Support et mises a jour incluses</li>
-                  <li>Annulation simple</li>
-                </ul>
                 <a class="sb-btn sb-btn--primary" href="${escapeHTML(PATHS.login)}">${escapeHTML(STR.loginCta)}</a>
               </article>
             `;
@@ -1783,8 +2482,7 @@
         state.loading = false;
         renderCurrent(els, state.subscription, { isLogged: true });
         if (els.saveHint) els.saveHint.textContent = computeAnnualSavings(state.plans);
-        renderPlans(els, state.plans, state.interval, state.subscription, handleSubscribe, state.recommended);
-        renderCompare(els, state.plans, state.recommended);
+        renderAssistant(els, state, handleSubscribe);
       } catch (e) {
         console.error("[ABONNEMENT] refresh error:", e);
         showBanner(els, STR.plansError, "error");
