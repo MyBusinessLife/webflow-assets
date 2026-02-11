@@ -1158,11 +1158,30 @@
       form.appendChild(layout);
     }
 
+    function readButtonText(btn) {
+      if (!btn) return "";
+      const tag = String(btn.tagName || "").toLowerCase();
+      if (tag === "input") return String(btn.value || btn.getAttribute("value") || "").trim();
+      return String(btn.textContent || "").trim();
+    }
+
+    function writeButtonText(btn, text) {
+      if (!btn) return;
+      const tag = String(btn.tagName || "").toLowerCase();
+      const safe = String(text || "");
+      if (tag === "input") {
+        btn.value = safe;
+        btn.setAttribute("value", safe);
+        return;
+      }
+      btn.textContent = safe;
+    }
+
     function setButtonLoading(btn, loading) {
       if (!btn) return;
-      if (!btn.dataset.prevText) btn.dataset.prevText = btn.textContent || "";
+      if (!btn.dataset.prevText) btn.dataset.prevText = readButtonText(btn);
       btn.disabled = loading;
-      btn.textContent = loading ? STR.signingUp : btn.dataset.prevText || "S'inscrire";
+      writeButtonText(btn, loading ? STR.signingUp : btn.dataset.prevText || "S'inscrire");
     }
 
     function setGoogleLoading(btn, loading) {
@@ -1366,6 +1385,7 @@
     }
 
     const submitBtn = findSubmitButton(form);
+    writeButtonText(submitBtn, "Creer mon compte");
 
     const googleBtn = document.querySelector("[data-auth-google], #btnGoogle, .btnGoogle");
     const authDivider = document.querySelector(".mbl-auth-divider");

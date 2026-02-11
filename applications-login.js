@@ -953,6 +953,25 @@
     form.appendChild(layout);
   }
 
+  function readButtonText(btn) {
+    if (!btn) return "";
+    const tag = String(btn.tagName || "").toLowerCase();
+    if (tag === "input") return String(btn.value || btn.getAttribute("value") || "").trim();
+    return String(btn.textContent || "").trim();
+  }
+
+  function writeButtonText(btn, text) {
+    if (!btn) return;
+    const tag = String(btn.tagName || "").toLowerCase();
+    const safe = String(text || "");
+    if (tag === "input") {
+      btn.value = safe;
+      btn.setAttribute("value", safe);
+      return;
+    }
+    btn.textContent = safe;
+  }
+
   function getNextParam() {
     const p = new URLSearchParams(location.search);
     const next = String(p.get("next") || "").trim();
@@ -1125,9 +1144,9 @@
 
   function setButtonLoading(btn, loading) {
     if (!btn) return;
-    if (!btn.dataset.prevText) btn.dataset.prevText = btn.textContent || "";
+    if (!btn.dataset.prevText) btn.dataset.prevText = readButtonText(btn);
     btn.disabled = loading;
-    btn.textContent = loading ? STR.signingIn : btn.dataset.prevText || "Connexion";
+    writeButtonText(btn, loading ? STR.signingIn : btn.dataset.prevText || "Connexion");
   }
 
   async function getRole(userId) {
@@ -1274,6 +1293,7 @@
   const emailEl = findEmailInput(form);
   const pwdEl = findPasswordInput(form);
   const submitBtn = findSubmitButton(form);
+  writeButtonText(submitBtn, "Se connecter");
 
   normalizeAuthFormLayout({
     form,
