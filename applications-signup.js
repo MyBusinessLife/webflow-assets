@@ -1057,120 +1057,105 @@
       return true;
     }
 
-    function getFieldBlock(form, control) {
-      if (!form || !control || !(control instanceof Element)) return null;
+    function labelTextForControl(control, fallback = "") {
+      if (!control) return String(fallback || "").trim();
+      const preferred = String(fallback || "").trim();
+      if (preferred) return preferred;
 
-      let node = control;
-      while (node?.parentElement && node.parentElement !== form) {
-        const parent = node.parentElement;
-        const controlsCount = parent.querySelectorAll('input:not([type="hidden"]), select, textarea, button').length;
-        if (controlsCount > 1) break;
-        node = parent;
-      }
+      const fromLabel = String(control.getAttribute("aria-label") || "").trim();
+      if (fromLabel) return fromLabel;
 
-      return node || control;
+      const fromPlaceholder = String(control.getAttribute("placeholder") || "").trim();
+      if (fromPlaceholder) return fromPlaceholder;
+
+      const fromName = String(control.getAttribute("name") || control.id || "").trim();
+      return fromName;
     }
 
-    function ensureFieldLabel({ form, control, label = "" }) {
-      if (!form || !control || !(control instanceof Element)) return;
-      const block = getFieldBlock(form, control);
-      if (!block || !(block instanceof Element)) return;
-
+    function getOrCreateLabel({ form, control, label = "" }) {
+      if (!form || !control || !(control instanceof Element)) return null;
       const id = ensureControlId(control, control.getAttribute("name") || control.type || "field");
-      if (!id) return;
-
-      block.classList.add("mbl-auth-field");
+      if (!id) return null;
 
       let localLabel = null;
       try {
-        localLabel = block.querySelector(`label[for="${cssEscape(id)}"]`) || null;
+        localLabel = form.querySelector(`label[for="${cssEscape(id)}"]`) || null;
       } catch (_) {}
+
       if (!localLabel) {
-        const inBlock = Array.from(block.querySelectorAll("label")).find((lab) => {
-          return String(lab.getAttribute("for") || "").trim() === id;
-        });
-        if (inBlock) localLabel = inBlock;
-      }
-      if (!localLabel) {
-        try {
-          const external = form.querySelector(`label[for="${cssEscape(id)}"]`);
-          if (external) {
-            localLabel = external;
-            if (!block.contains(localLabel)) block.insertBefore(localLabel, control);
-          }
-        } catch (_) {}
-      }
-      if (!localLabel && label) {
-        localLabel = document.createElement("label");
-        localLabel.setAttribute("for", id);
-        block.insertBefore(localLabel, control);
+        const prev = control.previousElementSibling;
+        if (prev && prev.tagName === "LABEL") localLabel = prev;
       }
 
-      if (localLabel) {
-        localLabel.classList.add("mbl-auth-label");
-        localLabel.setAttribute("for", id);
-        const text = String(label || localLabel.textContent || control.getAttribute("aria-label") || control.placeholder || "").trim();
-        if (text) localLabel.textContent = text;
+      if (!localLabel) {
+        localLabel = document.createElement("label");
       }
+
+      localLabel.classList.add("mbl-auth-label");
+      localLabel.setAttribute("for", id);
+
+      const text = labelTextForControl(control, label);
+      if (text) localLabel.textContent = text;
 
       try {
         const duplicates = Array.from(form.querySelectorAll(`label[for="${cssEscape(id)}"]`));
         duplicates.forEach((lab) => {
           if (lab === localLabel) return;
-          if (!block.contains(lab)) lab.style.display = "none";
+          lab.remove();
         });
       } catch (_) {}
+
+      return localLabel;
+    }
+
+    function appendControlToLayout({ form, layout, control, label = "", submit = false }) {
+      if (!form || !layout || !isVisibleControl(control)) return false;
+
+      const wrap = document.createElement("div");
+      wrap.className = submit ? "mbl-auth-field mbl-auth-submit-wrap" : "mbl-auth-field";
+
+      const lab = getOrCreateLabel({ form, control, label });
+      if (!submit && lab) wrap.appendChild(lab);
+      if (submit && lab) lab.remove();
+
+      wrap.appendChild(control);
+      layout.appendChild(wrap);
+      return true;
     }
 
     function normalizeSignupFormLayout({ form, submitBtn, fields = [] }) {
       if (!form) return;
 
-      let layout = Array.from(form.children).find((node) => {
-        return node instanceof Element && node.classList.contains("mbl-auth-form");
-      });
-      if (!layout) {
-        layout = document.createElement("div");
-        layout.className = "mbl-auth-form";
-        const firstVisible = Array.from(form.children).find((node) => {
-          return node instanceof Element && !node.matches('input[type="hidden"]');
-        });
-        if (firstVisible) form.insertBefore(layout, firstVisible);
-        else form.appendChild(layout);
-      }
+      const existingLayout = form.querySelector(".mbl-auth-form");
+      if (existingLayout) existingLayout.remove();
 
-      const moved = new Set();
+      const layout = document.createElement("div");
+      layout.className = "mbl-auth-form";
+
       const preferredControls = new Set();
-
-      const moveControlBlock = (control, { submit = false } = {}) => {
-        if (!isVisibleControl(control)) return;
-        const block = getFieldBlock(form, control);
-        if (!block || !(block instanceof Element) || moved.has(block)) return;
-        if (submit) block.classList.add("mbl-auth-submit-wrap");
-        layout.appendChild(block);
-        moved.add(block);
-      };
-
       fields.forEach((field) => {
         const control = field?.control || null;
         if (!isVisibleControl(control)) return;
-        ensureFieldLabel({ form, control, label: String(field?.label || "") });
-        preferredControls.add(control);
-        moveControlBlock(control);
+        if (appendControlToLayout({ form, layout, control, label: String(field?.label || "") })) {
+          preferredControls.add(control);
+        }
       });
 
       const controls = Array.from(form.querySelectorAll("input, select, textarea, button")).filter((el) => isVisibleControl(el));
       controls.forEach((control) => {
         if (preferredControls.has(control)) return;
         if (isSubmitControl(control)) return;
-        moveControlBlock(control);
+        appendControlToLayout({ form, layout, control });
       });
 
-      if (isVisibleControl(submitBtn)) {
-        moveControlBlock(submitBtn, { submit: true });
-      } else {
-        const fallbackSubmit = controls.find((control) => isSubmitControl(control));
-        if (fallbackSubmit) moveControlBlock(fallbackSubmit, { submit: true });
-      }
+      const submitControl = isVisibleControl(submitBtn) ? submitBtn : controls.find((control) => isSubmitControl(control)) || null;
+      if (submitControl) appendControlToLayout({ form, layout, control: submitControl, submit: true });
+
+      Array.from(form.querySelectorAll(".div-block-64, .login-button-redirect")).forEach((node) => {
+        if (node?.closest("form") === form) node.remove();
+      });
+
+      form.appendChild(layout);
     }
 
     function setButtonLoading(btn, loading) {
