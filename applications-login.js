@@ -428,24 +428,24 @@
 
       .mbl-auth-card {
         animation: mblAuthCardIn 540ms ease both;
-        background: rgba(255, 255, 255, 0.86);
-        border: 1px solid rgba(15, 23, 42, 0.12);
+        background: rgba(255, 255, 255, 0.92);
+        border: 1px solid rgba(15, 23, 42, 0.10);
         border-radius: 22px;
         box-shadow:
-          0 26px 80px rgba(2, 6, 23, 0.14),
-          0 1px 0 rgba(255, 255, 255, 0.70) inset;
-        padding: 18px 18px 16px;
-        backdrop-filter: blur(8px);
+          0 28px 72px rgba(2, 6, 23, 0.12),
+          0 1px 0 rgba(255, 255, 255, 0.80) inset;
+        padding: 20px 20px 18px;
+        backdrop-filter: blur(6px);
       }
       .mbl-auth-card__top {
         display: flex;
         align-items: flex-end;
         justify-content: space-between;
         gap: 12px;
-        margin-bottom: 10px;
+        margin-bottom: 12px;
       }
       .mbl-auth-card__title {
-        font-size: 18px;
+        font-size: 20px;
         font-weight: 950;
         color: rgba(2, 6, 23, 0.90);
         letter-spacing: -0.01em;
@@ -458,7 +458,38 @@
       }
 
       .mbl-auth-card .w-form { margin: 0; }
-      .mbl-auth-card form { margin: 0; }
+      .mbl-auth-card form {
+        margin: 0;
+        display: grid;
+        gap: 12px;
+      }
+
+      .mbl-auth-form {
+        display: grid;
+        gap: 12px;
+      }
+
+      .mbl-auth-field {
+        display: grid;
+        gap: 6px;
+      }
+
+      .mbl-auth-label {
+        margin: 0;
+        font-size: 12px;
+        line-height: 1.4;
+        font-weight: 800;
+        color: rgba(15, 23, 42, 0.78);
+        letter-spacing: 0.01em;
+      }
+
+      .mbl-auth-submit-wrap {
+        margin-top: 2px;
+      }
+
+      .mbl-auth-card label {
+        color: rgba(15, 23, 42, 0.78);
+      }
 
       .mbl-auth-card input[type="email"],
       .mbl-auth-card input[type="password"],
@@ -468,15 +499,15 @@
       .mbl-auth-card select,
       .mbl-auth-card textarea {
         width: 100%;
-        border-radius: 14px;
+        border-radius: 12px;
         border: 1px solid rgba(15, 23, 42, 0.14);
-        background: rgba(255, 255, 255, 0.96);
-        padding: 13px 14px;
-        min-height: 48px;
+        background: #fff;
+        padding: 12px 13px;
+        min-height: 46px;
         font-size: 15px;
         line-height: 1.2;
         color: rgba(2, 6, 23, 0.88);
-        box-shadow: 0 10px 24px rgba(2, 6, 23, 0.06);
+        box-shadow: 0 6px 16px rgba(2, 6, 23, 0.06);
         transition: box-shadow 160ms ease, border-color 160ms ease, transform 160ms ease;
       }
 
@@ -492,22 +523,22 @@
         outline: none;
         border-color: rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.60);
         box-shadow:
-          0 18px 40px rgba(2, 6, 23, 0.10),
-          0 0 0 4px rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.14);
-        transform: translateY(-1px);
+          0 10px 28px rgba(2, 6, 23, 0.10),
+          0 0 0 4px rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.15);
+        transform: translateY(-0.5px);
       }
 
       .mbl-auth-card button[type="submit"],
       .mbl-auth-card input[type="submit"] {
         width: 100%;
-        border-radius: 14px;
-        min-height: 50px;
+        border-radius: 12px;
+        min-height: 48px;
         border: 1px solid rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.22);
-        background: rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.98);
+        background: linear-gradient(145deg, rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.96), rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.88));
         color: #fff;
         font-weight: 950;
         letter-spacing: 0.01em;
-        box-shadow: 0 20px 52px rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.22);
+        box-shadow: 0 14px 36px rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.24);
         transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
         cursor: pointer;
       }
@@ -516,7 +547,7 @@
       .mbl-auth-card input[type="submit"]:hover {
         transform: translateY(-1px);
         filter: saturate(1.02);
-        box-shadow: 0 26px 68px rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.26);
+        box-shadow: 0 20px 44px rgba(var(--mbl-primary-rgb, 14, 165, 233), 0.28);
       }
 
       .mbl-auth-card button[type="submit"]:disabled,
@@ -524,7 +555,7 @@
         opacity: 0.7;
         transform: none;
         cursor: not-allowed;
-        box-shadow: 0 18px 40px rgba(2, 6, 23, 0.10);
+        box-shadow: 0 12px 28px rgba(2, 6, 23, 0.10);
       }
 
       .mbl-auth-divider {
@@ -563,9 +594,15 @@
         .mbl-auth-shell__grid {
           grid-template-columns: 1fr;
           align-items: start;
+          padding: 16px;
         }
         .mbl-auth-hero { order: 2; }
         .mbl-auth-card { order: 1; }
+        .mbl-auth-card {
+          border-radius: 18px;
+          padding: 16px;
+        }
+        .mbl-auth-card__title { font-size: 18px; }
       }
 
       @media (prefers-reduced-motion: reduce) {
@@ -769,6 +806,166 @@
       form.querySelector("button") ||
       null
     );
+  }
+
+  function cssEscape(value) {
+    const v = String(value || "");
+    try {
+      if (window.CSS?.escape) return window.CSS.escape(v);
+    } catch (_) {}
+    return v.replace(/([^\w-])/g, "\\$1");
+  }
+
+  function ensureControlId(control, seed = "field") {
+    if (!control) return "";
+    const existing = String(control.id || "").trim();
+    if (existing) return existing;
+
+    const base =
+      String(seed || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, "-")
+        .replace(/^-+|-+$/g, "") || "field";
+    let next = `mbl-${base}`;
+    let i = 2;
+    while (document.getElementById(next)) {
+      next = `mbl-${base}-${i++}`;
+    }
+    control.id = next;
+    return next;
+  }
+
+  function isSubmitControl(el) {
+    if (!el || !(el instanceof Element)) return false;
+    const tag = String(el.tagName || "").toLowerCase();
+    if (tag === "button") return String(el.getAttribute("type") || "submit").toLowerCase() === "submit";
+    if (tag === "input") return String(el.getAttribute("type") || "").toLowerCase() === "submit";
+    return false;
+  }
+
+  function isVisibleControl(el) {
+    if (!el || !(el instanceof Element)) return false;
+    if (!el.matches("input, select, textarea, button")) return false;
+    if (el.matches('input[type="hidden"]')) return false;
+    if (el.closest(".mbl-google-btn, [data-auth-google], #btnGoogle, .btnGoogle")) return false;
+    if (el.closest(".w-form-done, .w-form-fail")) return false;
+    return true;
+  }
+
+  function getFieldBlock(form, control) {
+    if (!form || !control || !(control instanceof Element)) return null;
+
+    let node = control;
+    while (node?.parentElement && node.parentElement !== form) {
+      const parent = node.parentElement;
+      const controlsCount = parent.querySelectorAll('input:not([type="hidden"]), select, textarea, button').length;
+      if (controlsCount > 1) break;
+      node = parent;
+    }
+
+    return node || control;
+  }
+
+  function ensureFieldLabel({ form, control, label = "" }) {
+    if (!form || !control || !(control instanceof Element)) return;
+    const block = getFieldBlock(form, control);
+    if (!block || !(block instanceof Element)) return;
+
+    const id = ensureControlId(control, control.getAttribute("name") || control.type || "field");
+    if (!id) return;
+
+    block.classList.add("mbl-auth-field");
+
+    let localLabel = null;
+    try {
+      localLabel = block.querySelector(`label[for="${cssEscape(id)}"]`) || null;
+    } catch (_) {}
+    if (!localLabel) {
+      const inBlock = Array.from(block.querySelectorAll("label")).find((lab) => {
+        return String(lab.getAttribute("for") || "").trim() === id;
+      });
+      if (inBlock) localLabel = inBlock;
+    }
+    if (!localLabel) {
+      try {
+        const external = form.querySelector(`label[for="${cssEscape(id)}"]`);
+        if (external) {
+          localLabel = external;
+          if (!block.contains(localLabel)) block.insertBefore(localLabel, control);
+        }
+      } catch (_) {}
+    }
+    if (!localLabel && label) {
+      localLabel = document.createElement("label");
+      localLabel.setAttribute("for", id);
+      block.insertBefore(localLabel, control);
+    }
+
+    if (localLabel) {
+      localLabel.classList.add("mbl-auth-label");
+      localLabel.setAttribute("for", id);
+      const text = String(label || localLabel.textContent || control.getAttribute("aria-label") || control.placeholder || "").trim();
+      if (text) localLabel.textContent = text;
+    }
+
+    try {
+      const duplicates = Array.from(form.querySelectorAll(`label[for="${cssEscape(id)}"]`));
+      duplicates.forEach((lab) => {
+        if (lab === localLabel) return;
+        if (!block.contains(lab)) lab.style.display = "none";
+      });
+    } catch (_) {}
+  }
+
+  function normalizeAuthFormLayout({ form, submitBtn, fields = [] }) {
+    if (!form) return;
+
+    let layout = Array.from(form.children).find((node) => {
+      return node instanceof Element && node.classList.contains("mbl-auth-form");
+    });
+    if (!layout) {
+      layout = document.createElement("div");
+      layout.className = "mbl-auth-form";
+      const firstVisible = Array.from(form.children).find((node) => {
+        return node instanceof Element && !node.matches('input[type="hidden"]');
+      });
+      if (firstVisible) form.insertBefore(layout, firstVisible);
+      else form.appendChild(layout);
+    }
+
+    const moved = new Set();
+    const preferredControls = new Set();
+
+    const moveControlBlock = (control, { submit = false } = {}) => {
+      if (!isVisibleControl(control)) return;
+      const block = getFieldBlock(form, control);
+      if (!block || !(block instanceof Element) || moved.has(block)) return;
+      if (submit) block.classList.add("mbl-auth-submit-wrap");
+      layout.appendChild(block);
+      moved.add(block);
+    };
+
+    fields.forEach((field) => {
+      const control = field?.control || null;
+      if (!isVisibleControl(control)) return;
+      ensureFieldLabel({ form, control, label: String(field?.label || "") });
+      preferredControls.add(control);
+      moveControlBlock(control);
+    });
+
+    const controls = Array.from(form.querySelectorAll("input, select, textarea, button")).filter((el) => isVisibleControl(el));
+    controls.forEach((control) => {
+      if (preferredControls.has(control)) return;
+      if (isSubmitControl(control)) return;
+      moveControlBlock(control);
+    });
+
+    if (isVisibleControl(submitBtn)) {
+      moveControlBlock(submitBtn, { submit: true });
+    } else {
+      const fallbackSubmit = controls.find((control) => isSubmitControl(control));
+      if (fallbackSubmit) moveControlBlock(fallbackSubmit, { submit: true });
+    }
   }
 
   function getNextParam() {
@@ -1092,6 +1289,15 @@
   const emailEl = findEmailInput(form);
   const pwdEl = findPasswordInput(form);
   const submitBtn = findSubmitButton(form);
+
+  normalizeAuthFormLayout({
+    form,
+    submitBtn,
+    fields: [
+      { control: emailEl, label: "Email professionnel" },
+      { control: pwdEl, label: "Mot de passe" },
+    ],
+  });
 
   // Prevent Webflow forms from blocking password inputs ("Passwords cannot be submitted.")
   // We intercept click + submit in capture phase before Webflow handlers.
